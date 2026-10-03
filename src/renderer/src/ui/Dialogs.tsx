@@ -240,7 +240,8 @@ const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
   previousEditPoint: 'Previous edit point',
   nextEditPoint: 'Next edit point',
   zoomIn: 'Zoom in',
-  zoomOut: 'Zoom out'
+  zoomOut: 'Zoom out',
+  fullScreenPreview: 'Full screen preview (Esc to exit)'
 }
 
 const MOUSE = [
@@ -297,7 +298,7 @@ function AboutDialog(): React.JSX.Element {
         </p>
       </div>
       <p className="dim">
-        Built with Electron, React and WebCodecs. Runs on Intel Arc and NVIDIA GPUs without vendor-specific code.
+        Built with Electron, React and WebCodecs. Runs on Intel, NVIDIA and AMD GPUs without vendor-specific code.
       </p>
     </Modal>
   )

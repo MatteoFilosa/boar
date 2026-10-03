@@ -27,9 +27,9 @@ export function Transport(): React.JSX.Element {
     <div className="transport">
       <ToolButton icon={Repeat} title="Loop playback" command="toggleLoop" active={options.loop} />
       <ToolButton icon={SkipBack} title="Play from start" command="playFromStart" />
-      <ToolButton icon={Play} title="Play" command="play" active={playing} />
-      <ToolButton icon={Pause} title="Pause" command="playPause" />
-      <ToolButton icon={Square} title="Stop" command="stop" />
+      <ToolButton icon={Play} title="Play" command="play" active={playing} tone="play" />
+      <ToolButton icon={Pause} title="Pause" command="playPause" tone="pause" />
+      <ToolButton icon={Square} title="Stop" command="stop" tone="stop" />
       <div className="tool-sep" />
       <ToolButton icon={ChevronFirst} title="Go to start" command="goToStart" />
       <ToolButton icon={StepBack} title="Previous frame" command="previousFrame" />

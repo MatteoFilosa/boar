@@ -38,6 +38,7 @@
 - **Auto Ripple** (`Ctrl+L`): eliminando, tagliando o incollando i buchi si chiudono da soli, sulle tracce interessate o su tutte.
 - **Velocità**: `Ctrl` + trascina un bordo per accelerare o rallentare (0.25x–4x, l'audio mantiene l'intonazione).
 - Split, gruppi, marker, snapping, quantizzazione ai frame, menu contestuali e 200 livelli di annulla.
+- **Anteprima a schermo intero** (`F`): rivedi il montaggio senza distrazioni, con barra di avanzamento e marker al volo (`M`).
 
 ### Verticale e social
 
@@ -133,6 +134,7 @@ L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: 
 | Tasto | Azione |
 | --- | --- |
 | `Spazio` / `Invio` | play e stop / play e pausa |
+| `F` / `F11` | anteprima a schermo intero (`Esc` per uscire) |
 | `S` | split al cursore o ai bordi della selezione temporale |
 | `Canc` / `Shift+Canc` | elimina / elimina e chiudi il buco |
 | `Ctrl+T` | tieni solo la selezione temporale |

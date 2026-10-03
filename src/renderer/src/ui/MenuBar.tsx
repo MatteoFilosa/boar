@@ -86,7 +86,8 @@ function useMenus(): Menu[] {
         quality('good', 'Preview Quality: Good (Full)'),
         quality('best', 'Preview Quality: Best (Full)'),
         'separator',
-        { label: 'Safe Areas Overlay', command: 'toggleSafeAreas', checked: options.safeAreas }
+        { label: 'Safe Areas Overlay', command: 'toggleSafeAreas', checked: options.safeAreas },
+        { label: 'Full Screen Preview', command: 'fullScreenPreview' }
       ]
     },
     {

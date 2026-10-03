@@ -25,13 +25,15 @@ interface ToolButtonProps {
   command?: CommandId
   active?: boolean
   disabled?: boolean
+  /** Transport color: green play, amber pause, red stop. */
+  tone?: 'play' | 'pause' | 'stop'
 }
 
-export function ToolButton({ icon: Icon, title, command, active, disabled }: ToolButtonProps): React.JSX.Element {
+export function ToolButton({ icon: Icon, title, command, active, disabled, tone }: ToolButtonProps): React.JSX.Element {
   const shortcut = command ? shortcutLabel(command) : ''
   return (
     <button
-      className={`tool-btn${active ? ' active' : ''}`}
+      className={`tool-btn${tone ? ` tone-${tone}` : ''}${active ? ' active' : ''}`}
       title={shortcut ? `${title} (${shortcut})` : title}
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}

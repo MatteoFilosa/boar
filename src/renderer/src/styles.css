@@ -15,6 +15,9 @@
   --danger: #ff6161;
   --mute: #e0574f;
   --solo: #e8c33f;
+  --play: #45c463;
+  --pause: #e8b33a;
+  --stop: #ef5350;
   --header-w: 240px;
   color-scheme: dark;
 }
@@ -247,6 +250,30 @@ button {
 .tool-btn.labeled {
   padding: 0 7px;
   font-size: 11px;
+}
+
+.tool-btn.tone-play,
+.icon-play {
+  color: var(--play);
+}
+
+.tool-btn.tone-pause {
+  color: var(--pause);
+}
+
+.tool-btn.tone-stop {
+  color: var(--stop);
+}
+
+.tool-btn[class*='tone-'] svg,
+.icon-play {
+  fill: currentColor;
+}
+
+.tool-btn.tone-play.active {
+  background: rgba(69, 196, 99, 0.16);
+  border-color: rgba(69, 196, 99, 0.55);
+  color: var(--play);
 }
 
 .tool-sep {
@@ -1021,6 +1048,115 @@ input[type='range'] {
   color: #ffd2d2;
   font-size: 10px;
   border-radius: 2px;
+}
+
+/* Full screen preview */
+
+.preview-full-screen {
+  margin-left: auto;
+}
+
+.preview-host:fullscreen {
+  background: #000;
+}
+
+.preview-host:fullscreen .preview-canvas {
+  box-shadow: none;
+}
+
+.preview-host.idle {
+  cursor: none;
+}
+
+.fs-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 40px 24px 16px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0));
+  transition: opacity 0.25s;
+}
+
+.fs-controls.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fs-seek {
+  position: relative;
+  height: 16px;
+  cursor: pointer;
+}
+
+.fs-seek::before,
+.fs-seek-fill {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.fs-seek::before {
+  content: '';
+  right: 0;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.fs-seek-fill {
+  background: var(--accent);
+}
+
+.fs-seek-fill::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.fs-seek-marker {
+  position: absolute;
+  top: 2px;
+  width: 3px;
+  height: 12px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: #ff9f1a;
+}
+
+.fs-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fs-bar .tool-btn {
+  min-width: 32px;
+  height: 32px;
+}
+
+.fs-bar .tc {
+  font-size: 15px;
+  color: #e9ebf0;
+  letter-spacing: 0.03em;
+}
+
+.fs-bar .tc-dim {
+  color: var(--text-dim);
+}
+
+.fs-bar .fs-exit {
+  margin-left: auto;
+  color: var(--text);
 }
 
 /* Floating windows */

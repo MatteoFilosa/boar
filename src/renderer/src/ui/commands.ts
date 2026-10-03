@@ -5,6 +5,7 @@ import { getEngine } from '../engine/preview'
 import { importPaths, loadDemoMedia, openImportDialog } from '../media/importer'
 import { openProject, saveProject } from '../core/session'
 import { bridge } from '../platform'
+import { toggleFullScreenPreview } from './fullScreen'
 
 /**
  * Ctrl+V: an image on the system clipboard (a screenshot, "Copy image" in the
@@ -110,6 +111,7 @@ export const commands = {
   fillFrame: (): void => A.reframeVideoEvents('fill'),
   fitFrame: (): void => A.reframeVideoEvents('fit'),
   toggleSafeAreas: (): void => A.setOption('safeAreas', !useEditor.getState().options.safeAreas),
+  fullScreenPreview: toggleFullScreenPreview,
   toggleSnapping: (): void => A.toggleOption('snapping'),
   toggleCrossfades: (): void => A.toggleOption('autoCrossfade'),
   toggleQuantize: (): void => A.toggleOption('quantize'),

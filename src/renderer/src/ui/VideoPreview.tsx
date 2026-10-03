@@ -1,9 +1,21 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Grid2x2, RectangleHorizontal, RectangleVertical, Square } from 'lucide-react'
-import { setFrameSize, setOption } from '../core/actions'
+import {
+  Grid2x2,
+  Maximize,
+  Minimize,
+  Pause,
+  Play,
+  RectangleHorizontal,
+  RectangleVertical,
+  Square
+} from 'lucide-react'
+import { setCursor, setFrameSize, setOption } from '../core/actions'
 import { useEditor, type PreviewQuality } from '../core/store'
-import { frameIndex, rateLabel } from '../core/time'
+import { projectEnd } from '../core/timeline'
+import { formatTimecode, frameIndex, rateLabel } from '../core/time'
 import { QUALITY_SCALE, getEngine } from '../engine/preview'
+import { setFullScreenHost, toggleFullScreenPreview } from './fullScreen'
+import { shortcutLabel } from './shortcuts'
 import { TransformOverlay } from './TransformOverlay'
 
 const QUALITIES: { id: PreviewQuality; label: string }[] = [
@@ -50,6 +62,59 @@ function FrameInfo(): React.JSX.Element {
   return <span>Frame: {frameIndex(cursor, rate)}</span>
 }
 
+/** Seek bar, play/pause, position and exit over the full screen preview. */
+function FullScreenControls({ visible }: { visible: boolean }): React.JSX.Element {
+  const playing = useEditor((s) => s.playing)
+  const cursor = useEditor((s) => s.cursor)
+  const markers = useEditor((s) => s.project.markers)
+  const rate = useEditor((s) => s.project.settings.frameRate)
+  const end = useEditor((s) => projectEnd(s.project))
+  const at = (t: number): string => `${end > 0 ? Math.min(100, (t / end) * 100) : 0}%`
+  const seek = (e: React.PointerEvent<HTMLDivElement>): void => {
+    const box = e.currentTarget.getBoundingClientRect()
+    setCursor(Math.round(Math.min(1, Math.max(0, (e.clientX - box.left) / box.width)) * end))
+  }
+  return (
+    <div className={`fs-controls${visible ? '' : ' hidden'}`}>
+      <div
+        className="fs-seek"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return
+          e.currentTarget.setPointerCapture(e.pointerId)
+          seek(e)
+        }}
+        onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && seek(e)}
+      >
+        <div className="fs-seek-fill" style={{ width: at(cursor) }} />
+        {markers.map((m) => (
+          <div key={m.id} className="fs-seek-marker" style={{ left: at(m.time) }} title={m.label} />
+        ))}
+      </div>
+      <div className="fs-bar">
+        <button
+          className={`tool-btn ${playing ? 'tone-pause' : 'tone-play'}`}
+          title={`${playing ? 'Pause' : 'Play'} (${shortcutLabel('playPause')})`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => getEngine().togglePlay(false)}
+        >
+          {playing ? <Pause size={18} /> : <Play size={18} />}
+        </button>
+        <span className="tc">{formatTimecode(cursor, rate)}</span>
+        <span className="tc-dim">/ {formatTimecode(end, rate)}</span>
+        <button
+          className="tool-btn labeled fs-exit"
+          title="Exit full screen (Esc)"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={toggleFullScreenPreview}
+        >
+          <Minimize size={14} />
+          <span>Exit Full Screen</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function VideoPreview(): React.JSX.Element {
   const settings = useEditor((s) => s.project.settings)
   const quality = useEditor((s) => s.options.previewQuality)
@@ -57,6 +122,8 @@ export function VideoPreview(): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [display, setDisplay] = useState({ width: 0, height: 0 })
+  const [full, setFull] = useState(false)
+  const [idle, setIdle] = useState(false)
 
   useEffect(() => {
     const canvas = canvasRef.current!
@@ -65,11 +132,53 @@ export function VideoPreview(): React.JSX.Element {
     return () => engine.detach(canvas)
   }, [])
 
+  useEffect(() => {
+    const host = hostRef.current!
+    setFullScreenHost(host)
+    const onChange = (): void => setFull(document.fullscreenElement === host)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange)
+      setFullScreenHost(null)
+    }
+  }, [])
+
+  // In full screen the controls and the pointer hide when the mouse rests
+  // (not while it is over the controls); a new marker shows them again.
+  useEffect(() => {
+    if (!full) return
+    const host = hostRef.current!
+    let timer = 0
+    const hide = (): void => {
+      if (host.querySelector('.fs-controls:hover')) timer = window.setTimeout(hide, 2000)
+      else setIdle(true)
+    }
+    const wake = (): void => {
+      setIdle(false)
+      window.clearTimeout(timer)
+      timer = window.setTimeout(hide, 2000)
+    }
+    wake()
+    host.addEventListener('pointermove', wake)
+    host.addEventListener('pointerdown', wake)
+    const unsubscribe = useEditor.subscribe((s, prev) => {
+      if (s.project.markers !== prev.project.markers) wake()
+    })
+    return () => {
+      window.clearTimeout(timer)
+      host.removeEventListener('pointermove', wake)
+      host.removeEventListener('pointerdown', wake)
+      unsubscribe()
+      setIdle(false)
+    }
+  }, [full])
+
   useLayoutEffect(() => {
     const host = hostRef.current!
+    const margin = full ? 0 : 12
     const fit = (): void => {
-      const aw = host.clientWidth - 12
-      const ah = host.clientHeight - 12
+      const aw = host.clientWidth - margin
+      const ah = host.clientHeight - margin
       const scale = Math.max(0, Math.min(aw / settings.width, ah / settings.height))
       setDisplay({ width: Math.floor(settings.width * scale), height: Math.floor(settings.height * scale) })
     }
@@ -77,7 +186,7 @@ export function VideoPreview(): React.JSX.Element {
     const observer = new ResizeObserver(fit)
     observer.observe(host)
     return () => observer.disconnect()
-  }, [settings.width, settings.height])
+  }, [settings.width, settings.height, full])
 
   const scale = QUALITY_SCALE[quality]
   const fps = rateLabel(settings.frameRate)
@@ -122,8 +231,16 @@ export function VideoPreview(): React.JSX.Element {
             </button>
           )
         })}
+        <button
+          className="tool-btn preview-full-screen"
+          title={`Full screen preview (${shortcutLabel('fullScreenPreview')})`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={toggleFullScreenPreview}
+        >
+          <Maximize size={14} />
+        </button>
       </div>
-      <div className="preview-host" ref={hostRef}>
+      <div className={`preview-host${full && idle ? ' idle' : ''}`} ref={hostRef}>
         <div className="preview-frame" style={{ width: display.width, height: display.height }}>
           <canvas
             ref={canvasRef}
@@ -131,9 +248,10 @@ export function VideoPreview(): React.JSX.Element {
             style={{ width: display.width, height: display.height }}
             onDoubleClick={() => getEngine().togglePlay(false)}
           />
-          {safeAreas && <SafeAreas vertical={settings.height > settings.width} />}
-          <TransformOverlay width={display.width} />
+          {!full && safeAreas && <SafeAreas vertical={settings.height > settings.width} />}
+          {!full && <TransformOverlay width={display.width} />}
         </div>
+        {full && <FullScreenControls visible={!idle} />}
       </div>
       <div className="preview-info">
         <span>

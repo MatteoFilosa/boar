@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { closeDialog } from '../core/actions'
 import { useEditor } from '../core/store'
 import { type CommandId, commands } from './commands'
+import { isPreviewFullScreen, toggleFullScreenPreview } from './fullScreen'
 
 interface Binding {
   key: string
@@ -37,6 +38,8 @@ export const BINDINGS: Binding[] = [
   { key: 'u', command: 'ungroup' },
   { key: 'm', command: 'addMarker' },
   { key: 'q', command: 'toggleLoop' },
+  { key: 'f', command: 'fullScreenPreview' },
+  { key: 'F11', command: 'fullScreenPreview' },
   { key: 'F8', command: 'toggleSnapping' },
   { key: 'F8', alt: true, command: 'toggleQuantize' },
   { key: 'x', ctrl: true, shift: true, command: 'toggleCrossfades' },
@@ -80,7 +83,20 @@ const FLOATING_ALLOWED = new Set<CommandId>([
   'previousFrame',
   'nextFrame',
   'undo',
-  'redo'
+  'redo',
+  'fullScreenPreview'
+])
+
+/** The full screen preview is for watching: playback, navigation and markers only. */
+const FULL_SCREEN_ALLOWED = new Set<CommandId>([
+  ...FLOATING_ALLOWED,
+  'backOneSecond',
+  'previousEditPoint',
+  'nextEditPoint',
+  'goToStart',
+  'goToEnd',
+  'toggleLoop',
+  'addMarker'
 ])
 
 function isTyping(target: EventTarget | null): boolean {
@@ -94,6 +110,12 @@ export function useGlobalShortcuts(): void {
     const onKeyDown = (e: KeyboardEvent): void => {
       const { dialog, exporting } = useEditor.getState()
       if (exporting) return
+      const full = isPreviewFullScreen()
+      if (full && e.key === 'Escape') {
+        e.preventDefault()
+        toggleFullScreenPreview()
+        return
+      }
       if (dialog && e.key === 'Escape') {
         closeDialog()
         return
@@ -101,8 +123,8 @@ export function useGlobalShortcuts(): void {
       if (isTyping(e.target)) return
       // Floating tool windows (Pan/Crop) keep transport keys; modal dialogs block everything.
       const floating = dialog?.kind === 'panCrop' || dialog?.kind === 'text' || dialog?.kind === 'mask' || dialog?.kind === 'fx' || dialog?.kind === 'transition'
-      const allowed = floating ? FLOATING_ALLOWED : null
-      if (dialog && !allowed) return
+      if (dialog && !floating) return
+      const allowed = full ? FULL_SCREEN_ALLOWED : floating ? FLOATING_ALLOWED : null
       // Sliders keep their arrow keys.
       if (e.target instanceof HTMLInputElement && e.key.startsWith('Arrow')) return
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key

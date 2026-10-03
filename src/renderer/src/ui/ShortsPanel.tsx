@@ -161,7 +161,7 @@ export function ShortsPanel(): React.JSX.Element {
               <div className="shorts-actions">
                 <span className="badge">{c.source}</span>
                 <button className="btn small" disabled={!!busy} onClick={() => preview(c)}>
-                  <Play size={12} /> Preview
+                  <Play size={12} className="icon-play" /> Preview
                 </button>
                 <button className="btn small primary" disabled={!!busy} onClick={() => void make(c)}>
                   <Clapperboard size={12} /> Make Short
