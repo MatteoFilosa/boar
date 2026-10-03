@@ -3,94 +3,98 @@
 <h1 align="center">Boar</h1>
 
 <p align="center">
-  <b>Editor video desktop con timeline multitraccia e AI che gira sul tuo PC.</b><br>
-  Montaggio classico, verticale 9:16, sottotitoli parola per parola, montaggio dal testo e Shorts in un clic.
+  <b>A desktop video editor with a multitrack timeline and AI that runs on your PC.</b><br>
+  Classic editing, vertical 9:16, word-by-word captions, text-based editing and Shorts in one click.
 </p>
 
 <p align="center">
-  <img alt="Licenza MIT" src="https://img.shields.io/badge/licenza-MIT-3fb950">
-  <img alt="Windows 10 e 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4">
+  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3fb950">
+  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4">
   <img alt="GPU Intel, NVIDIA, AMD" src="https://img.shields.io/badge/GPU-Intel%20%7C%20NVIDIA%20%7C%20AMD-555">
-  <img alt="Versione 0.3.1 alpha" src="https://img.shields.io/badge/versione-0.3.1%20alpha-f28c28">
+  <img alt="Version 0.3.1 alpha" src="https://img.shields.io/badge/version-0.3.1%20alpha-f28c28">
 </p>
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Boar: progetto verticale con sfondo sfocato, titolo d'aggancio, sottotitoli karaoke e montaggio dal testo">
+  <img src="docs/flags/gb.svg" height="14" alt=""> <b>English</b> · <a href="README.it.md"><img src="docs/flags/it.svg" height="14" alt=""> Italiano</a>
 </p>
 
-> **Alpha.** Si usa già per montare davvero, ma è giovane: salva spesso e segnala quello che non va.
+<p align="center">
+  <img src="docs/screenshot.png" alt="Boar: vertical project with blurred background, hook title, karaoke captions and text-based editing">
+</p>
 
-## Perché Boar
+> **Alpha.** It is already good for real editing, but it is young: save often and report what goes wrong.
 
-- **Tutto in locale.** Trascrizione, riconoscimento del volto, rimozione dello sfondo e riduzione del rumore girano sul tuo PC. Niente account, niente abbonamenti, niente caricato online.
-- **Pensato per i video di oggi.** Formato verticale, sottotitoli animati parola per parola, titoli d'aggancio, zoom sui tagli, dal video lungo agli Shorts.
-- **Montaggio vero.** Timeline multitraccia con eventi, fade e dissolvenze, selezione temporale, ripple, keyframe, effetti e transizioni.
-- **Veloce sul tuo hardware.** Export con l'encoder hardware della scheda video (Intel, NVIDIA o AMD), effetti sulla GPU.
-- **Il tuo agente AI può montare con te.** Se usi già un assistente AI compatibile con MCP, può tagliare, sottotitolare e fare Shorts dentro Boar con il tuo piano, senza chiavi o costi in più.
+## Why Boar
 
-## Funzioni
+- **Everything runs locally.** Transcription, face tracking, background removal and noise reduction run on your PC. No account, no subscription, nothing uploaded.
+- **Made for today's videos.** Vertical format, animated word-by-word captions, hook titles, zoom on cuts, from a long video to Shorts.
+- **Real editing.** Multitrack timeline with events, fades and crossfades, time selection, ripple, keyframes, effects and transitions.
+- **Fast on your hardware.** Export with your graphics card's hardware encoder (Intel, NVIDIA or AMD), effects on the GPU.
+- **Your AI agent can edit with you.** If you already use an AI assistant that supports MCP, it can cut, caption and make Shorts inside Boar with your own plan, with no API keys and no extra cost.
 
-### Montaggio
+## Features
 
-- Timeline multitraccia: trascina i media da Project Media o da Esplora file; video e audio di una clip restano raggruppati.
-- Trim dai bordi, **fade dagli angoli** dell'evento (curve Fast, Linear, Slow, Smooth, Sharp), crossfade automatico sovrapponendo due eventi.
-- **Selezione temporale**: trascina sul righello per lavorare su una porzione: split, elimina, trim, play e render solo di quella parte.
-- **Auto Ripple** (`Ctrl+L`): eliminando, tagliando o incollando i buchi si chiudono da soli, sulle tracce interessate o su tutte.
-- **Velocità**: `Ctrl` + trascina un bordo per accelerare o rallentare (0.25x–4x, l'audio mantiene l'intonazione).
-- Split, gruppi, marker, snapping, quantizzazione ai frame, menu contestuali e 200 livelli di annulla.
-- **Anteprima a schermo intero** (`F`): rivedi il montaggio senza distrazioni, con barra di avanzamento e marker al volo (`M`).
+### Editing
 
-### Verticale e social
+- Multitrack timeline: drag media from Project Media or from the Explorer; a clip's video and audio stay grouped.
+- Trim from the edges, **fades from the event's top corners** (Fast, Linear, Slow, Smooth and Sharp curves), automatic crossfades by overlapping two events.
+- **Time selection**: drag on the ruler to work on a portion: split, delete, trim, play and render just that part.
+- **Auto Ripple** (`Ctrl+L`): deleting, cutting or pasting closes the gaps by itself, on the affected tracks or on all of them.
+- **Speed**: `Ctrl` + drag an edge to speed up or slow down (0.25x–4x, audio keeps its pitch).
+- Split, groups, markers, snapping, frame quantization, context menus and 200 undo levels.
+- **Full screen preview** (`F`): review the edit without distractions, with a seek bar and markers on the fly (`M`).
 
-- Progetto 16:9, **9:16** o 1:1 con un clic, safe area delle app nell'anteprima.
-- **Auto Reframe**: trova il volto e muove l'inquadratura per seguirlo, con un movimento morbido.
-- **Layout**: sfondo sfocato (niente bande nere con il 16:9 in verticale), schermo diviso sopra/sotto, riquadro nell'angolo.
-- **Auto Zoom**: zoom alternato a ogni taglio, zoom rapido sui momenti più forti della voce o lento avvicinamento.
-- **Da video lungo a Shorts** (tab *Shorts*): Boar propone i momenti che funzionano da soli e *Make Short* crea il video verticale con taglio, inquadratura, sottotitoli e titolo d'aggancio. Un clic e torni al video lungo per fare il prossimo.
+### Vertical and social
 
-### Sottotitoli e testo
+- 16:9, **9:16** or 1:1 project in one click, with the apps' safe areas in the preview.
+- **Auto Reframe**: finds the face and moves the framing to follow it, smoothly.
+- **Layouts**: blurred background (no black bars when 16:9 footage goes vertical), top/bottom split screen, picture in picture.
+- **Auto Zoom**: alternating zoom on every cut, a quick punch-in on the strongest moments of the voice, or a slow push-in.
+- **From a long video to Shorts** (*Shorts* tab): Boar suggests the moments that work on their own, and *Make Short* builds the vertical video with cuts, framing, captions and a hook title. One click takes you back to the long video to make the next one.
 
-- **Sottotitoli automatici parola per parola** con Whisper, in locale: karaoke, box sulla parola, parole che compaiono, una parola alla volta, sottotitoli classici.
-- **Montaggio dal testo** (tab *Transcript*): il parlato diventa testo; selezioni le parole, premi `Canc` e il video si taglia. Un pulsante seleziona ehm, uhm e parole ripetute; un altro accorcia le pause lunghe.
-- Parole chiave evidenziate (`*parola*` nel testo, o in automatico) ed emoji sulle parole a tema.
-- 21 preset di testo, tra cui titolo d'aggancio in alto e progress bar; oltre 30 font inclusi; animazioni di entrata e uscita.
-- Maniglie direttamente nell'anteprima per spostare e scalare testi, immagini e video.
+### Captions and text
+
+- **Automatic word-by-word captions** with Whisper, locally: karaoke, box on the spoken word, words popping in, one word at a time, classic subtitles.
+- **Text-based editing** (*Transcript* tab): speech becomes text; select words, press `Delete` and the video is cut. One button selects ums, uhs and repeated words; another shortens long pauses.
+- Highlighted keywords (`*word*` in the text, or automatic) and emoji on matching words.
+- 21 text presets, including a hook title at the top and a progress bar; more than 30 bundled fonts; in and out animations.
+- Handles right in the preview to move and scale text, images and video.
 
 ### Audio
 
-- **Volume uniforme**: l'export è normalizzato a −14 LUFS (o −16, −23), con limiter sui picchi.
-- **Riduzione del rumore con AI** in locale, noise gate, equalizzatore a 10 bande, compressore, riverbero, eco, pitch e altri effetti.
-- **Rimozione silenzi** (jump cut) e **Auto Ducking**: la musica si abbassa quando qualcuno parla.
-- Mixer con volume, pan, mute e solo per traccia, meter master.
+- **Even loudness**: exports are normalized to −14 LUFS (or −16, −23), with a peak limiter.
+- **AI noise reduction**, locally; noise gate, 10-band equalizer, compressor, reverb, echo, pitch and more.
+- **Remove Silences** (jump cuts) and **Auto Ducking**: the music goes down when someone speaks.
+- Mixer with volume, pan, mute and solo per track, master meters.
 
-### Effetti, transizioni, export
+### Effects, transitions, export
 
-- 24 effetti video sulla GPU: look colore pronti, correzione colore, chroma key, sfocatura, glow, vignettatura, grana, VHS, glitch e altri. **Rimozione dello sfondo** con AI, senza green screen.
-- Transizioni: zoom, whip pan, spin, glitch, flash, dissolvenza al nero, blur, pixel.
-- Maschere a ellisse e rettangolo, Event Pan/Crop con keyframe.
-- **Render As** in MP4 (H.264, HEVC, AV1, VP9) con l'encoder hardware della GPU. L'anteprima e l'export usano lo stesso motore: quello che vedi è quello che esporti.
+- 24 GPU video effects: ready-made color looks, color correction, chroma key, blur, glow, vignette, grain, VHS, glitch and more. AI **background removal**, no green screen needed.
+- Transitions: zoom, whip pan, spin, glitch, flash, dip to black, blur, pixelate.
+- Ellipse and rectangle masks, Event Pan/Crop with keyframes.
+- **Render As** MP4 (H.264, HEVC, AV1, VP9) with the GPU's hardware encoder. Preview and export use the same engine: what you see is what you export.
 
-## Installazione
+## Installation
 
 ### Windows
 
-1. Scarica `Boar-Setup-x.y.z.exe` dalla pagina *Releases* e avvialo.
-2. L'installer non è ancora firmato: se Windows SmartScreen mostra "PC protetto", clicca *Ulteriori informazioni › Esegui comunque*.
-3. Per sottotitoli e Transcript installa FFmpeg 8 (vedi sotto).
+1. Download `Boar-Setup-x.y.z.exe` from the [Releases](https://github.com/MatteoFilosa/boar/releases) page and run it.
+2. The installer is not signed yet: if Windows SmartScreen shows "Windows protected your PC", click *More info › Run anyway*.
+3. For captions and Transcript, install FFmpeg 8 (see below).
 
-### FFmpeg per sottotitoli e Transcript
+### FFmpeg for captions and Transcript
 
-La trascrizione usa il filtro `whisper` di FFmpeg 8. Il modo più semplice:
+Transcription uses FFmpeg 8's `whisper` filter. The easiest way:
 
 ```bash
 winget install Gyan.FFmpeg
 ```
 
-Poi riapri Boar. Per controllare: `ffmpeg -filters | findstr whisper`. Il modello Whisper (148 MB per il più leggero) si scarica dall'app al primo uso. Tutto il resto funziona anche senza FFmpeg.
+Then reopen Boar. To check: `ffmpeg -filters | findstr whisper`. The Whisper model (148 MB for the lightest one) downloads from the app the first time. Everything else works without FFmpeg.
 
-### Dai sorgenti
+### From source
 
-Serve [Node.js](https://nodejs.org/) 22 o più recente.
+You need [Node.js](https://nodejs.org/) 22 or later.
 
 ```bash
 git clone https://github.com/MatteoFilosa/boar.git
@@ -99,79 +103,79 @@ npm install
 npm run dev
 ```
 
-`npm run dist` crea l'installer in `dist/`.
+`npm run dist` builds the installer in `dist/`.
 
-## Schede video
+## Graphics cards
 
-Boar funziona con GPU **Intel, NVIDIA e AMD**: non c'è codice legato a un produttore.
+Boar works with **Intel, NVIDIA and AMD** GPUs: no code is tied to one vendor.
 
-| Cosa | Come |
+| What | How |
 | --- | --- |
-| Export | Encoder hardware della scheda video tramite WebCodecs. *Render As* mostra solo i formati che la tua GPU sa codificare: H.264 c'è sempre, HEVC e AV1 dipendono dalla generazione della scheda. |
-| Anteprima ed effetti | WebGL2, uguale su tutte le GPU recenti. |
-| Volto e sfondo (AI) | MediaPipe sulla GPU, con ripiego sul processore. |
-| Trascrizione | whisper.cpp dentro FFmpeg: usa la GPU se la tua build di FFmpeg la supporta, altrimenti il processore. |
-| Riduzione del rumore | Sul processore, identica ovunque. |
+| Export | The graphics card's hardware encoder through WebCodecs. *Render As* only lists the formats your GPU can encode: H.264 is always there, HEVC and AV1 depend on the card's generation. |
+| Preview and effects | WebGL2, the same on every recent GPU. |
+| Face and background (AI) | MediaPipe on the GPU, falling back to the CPU. |
+| Transcription | whisper.cpp inside FFmpeg: uses the GPU if your FFmpeg build supports it, otherwise the CPU. |
+| Noise reduction | On the CPU, identical everywhere. |
 
-Con driver video aggiornati va tutto meglio, soprattutto per l'encoder hardware.
+Up-to-date graphics drivers make everything work better, especially the hardware encoder.
 
-## Agenti AI (MCP)
+## AI agents (MCP)
 
-Gli assistenti e gli agenti AI compatibili con MCP (app desktop, agenti di coding, editor AI) possono usare Boar con il tuo abbonamento: Boar non chiede chiavi API e non costa nulla in più.
+AI assistants and agents that support MCP (desktop apps, coding agents, AI editors) can use Boar with your subscription: Boar asks for no API key and costs nothing extra.
 
-1. In Boar attiva *Options › AI Agents (MCP)*. Il server ascolta solo su questo PC ed è protetto da un token.
-2. Copia la configurazione adatta al tuo agente: URL con header, comando (JSON) o TOML.
-3. Chiedi, per esempio: "togli gli intercalari e aggiungi i sottotitoli", oppure usa i prompt pronti *make_shorts*, *clean_up_talking_head* e *youtube_chapters*.
+1. In Boar, turn on *Options › AI Agents (MCP)*. The server only listens on this PC and is protected by a token.
+2. Copy the configuration that fits your agent: URL with header, command (JSON) or TOML.
+3. Ask, for example, "remove the filler words and add captions", or use the ready-made prompts *make_shorts*, *clean_up_talking_head* and *youtube_chapters*.
 
-L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: ognuna si annulla con `Ctrl+Z` e la finestra mostra tutto quello che ha fatto. Video e audio restano sul tuo PC.
+The agent reads the timeline and the transcripts, looks at frames and makes the edits: each one can be undone with `Ctrl+Z`, and the window shows everything it did. Video and audio stay on your PC.
 
-## Funzioni opzionali
+## Optional features
 
-**Download da link (yt-dlp).** Spento di default: si attiva da *Options*. Scarica video o audio dai siti supportati da [yt-dlp](https://github.com/yt-dlp/yt-dlp), che non è incluso in Boar e viene scaricato al primo uso. Scarica solo contenuti che hai il diritto di usare: i termini di molti siti vietano il download.
+**Download from Link (yt-dlp).** Off by default: turn it on in *Options*. It downloads video or audio from the sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp), which is not included in Boar and is downloaded on first use. Only download content you have the right to use: the terms of many sites forbid downloading.
 
-## Scorciatoie
+## Keyboard shortcuts
 
-| Tasto | Azione |
+| Key | Action |
 | --- | --- |
-| `Spazio` / `Invio` | play e stop / play e pausa |
-| `F` / `F11` | anteprima a schermo intero (`Esc` per uscire) |
-| `S` | split al cursore o ai bordi della selezione temporale |
-| `Canc` / `Shift+Canc` | elimina / elimina e chiudi il buco |
-| `Ctrl+T` | tieni solo la selezione temporale |
+| `Space` / `Enter` | play and stop / play and pause |
+| `F` / `F11` | full screen preview (`Esc` to leave) |
+| `S` | split at the cursor or at the edges of the time selection |
+| `Delete` / `Shift+Delete` | delete / delete and close the gap |
+| `Ctrl+T` | keep only the time selection |
 | `Ctrl+L` | Auto Ripple |
-| `Ctrl` + trascina un bordo | cambia velocità |
-| `Ctrl+Z` / `Ctrl+Y` | annulla / ripeti |
-| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copia / taglia / incolla (anche immagini dagli appunti) |
-| `Ctrl+S` / `Ctrl+O` | salva / apri progetto (`.boar`) |
+| `Ctrl` + drag an edge | change speed |
+| `Ctrl+Z` / `Ctrl+Y` | undo / redo |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copy / cut / paste (images from the clipboard too) |
+| `Ctrl+S` / `Ctrl+O` | save / open project (`.boar`) |
 | `Ctrl+M` | Render As |
-| `M`, `G` / `U`, `F8`, `Q` | marker, raggruppa / separa, snapping, loop |
-| `←` `→` / `↑` `↓` | frame precedente e successivo / zoom |
-| `Esc` | togli la selezione temporale |
+| `M`, `G` / `U`, `F8`, `Q` | marker, group / ungroup, snapping, loop |
+| `←` `→` / `↑` `↓` | previous and next frame / zoom |
+| `Esc` | clear the time selection |
 
-Elenco completo in *Help › Keyboard Shortcuts*.
+Full list in *Help › Keyboard Shortcuts*.
 
-## Per sviluppatori
+## For developers
 
-| Comando | Cosa fa |
+| Command | What it does |
 | --- | --- |
-| `npm run dev` | app con hot reload |
-| `npm run dev:web` | solo interfaccia nel browser (http://localhost:5180) |
-| `npm run samples` | genera media di prova in `dev-samples/` (serve FFmpeg) |
-| `npm run typecheck` | controllo TypeScript |
-| `npm run smoke` | build e avvio nascosto: errori, encoder hardware, protocollo media |
-| `npm run icons` | rigenera le icone da `resources/icon.svg` |
-| `npm run dist` | installer Windows in `dist/` |
+| `npm run dev` | app with hot reload |
+| `npm run dev:web` | interface only, in the browser (http://localhost:5180) |
+| `npm run samples` | generates test media in `dev-samples/` (needs FFmpeg) |
+| `npm run typecheck` | TypeScript check |
+| `npm run smoke` | build and hidden run: errors, hardware encoders, media protocol |
+| `npm run icons` | regenerates the icons from `resources/icon.svg` |
+| `npm run dist` | Windows installer in `dist/` |
 
-Stack: Electron, React, TypeScript, zustand e immer, [Mediabunny](https://github.com/Vanilagy/mediabunny) per decodifica, codifica e MP4 con WebCodecs.
+Stack: Electron, React, TypeScript, zustand and immer, [Mediabunny](https://github.com/Vanilagy/mediabunny) for decoding, encoding and MP4 with WebCodecs.
 
-- `src/main`: processo principale (finestra, file, protocollo `boar-media://`, trascrizione, server MCP)
-- `src/renderer/src/core`: modello del progetto, azioni con annulla, testo, Pan/Crop, trascrizioni
-- `src/renderer/src/engine`: compositor condiviso da anteprima ed export, effetti, audio, analisi
-- `src/renderer/src/ui`: interfaccia e timeline su canvas
-- `src/renderer/src/agent`: strumenti e prompt per gli agenti AI
+- `src/main`: main process (window, files, `boar-media://` protocol, transcription, MCP server)
+- `src/renderer/src/core`: project model, undoable actions, text, Pan/Crop, transcripts
+- `src/renderer/src/engine`: compositor shared by preview and export, effects, audio, analysis
+- `src/renderer/src/ui`: interface and canvas timeline
+- `src/renderer/src/agent`: tools and prompts for AI agents
 
-Il tempo è un intero in *flicks* (1/705.600.000 di secondo): tutti i frame rate comuni, NTSC compresi, cadono su valori esatti.
+Time is an integer number of *flicks* (1/705,600,000 of a second): every common frame rate, NTSC included, lands on exact values.
 
-## Licenza
+## License
 
-[MIT](LICENSE) © Matteo Filosa. Il nome Boar e il logo non sono coperti dalla licenza. Componenti di terze parti: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[MIT](LICENSE) © Matteo Filosa. The Boar name and logo are not covered by the license. Third-party components: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
