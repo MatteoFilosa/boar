@@ -995,6 +995,22 @@ input[type='range'] {
   background: #3a7ce0;
 }
 
+.link-btn {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.update-startup {
+  margin-right: auto;
+}
+
 .shortcuts table {
   width: 100%;
   border-collapse: collapse;

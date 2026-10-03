@@ -44,6 +44,24 @@ export interface BoarBridge {
   agentStatus(): Promise<AgentStatus>
   agentSetEnabled(enabled: boolean): Promise<AgentStatus>
   agentNewToken(): Promise<AgentStatus>
+  /** Latest release on GitHub compared with this version; null when running from the sources. */
+  checkUpdate(): Promise<UpdateInfo | null>
+  downloadUpdate(): Promise<void>
+  cancelUpdate(): Promise<void>
+  /** now: install and restart; otherwise when Boar closes. A dmg or deb is opened instead. */
+  installUpdate(now: boolean): Promise<void>
+  openUpdatePage(): Promise<void>
+  onUpdateProgress(callback: (progress: number) => void): () => void
+}
+
+/** Keep in sync with src/main/updates.ts. */
+export interface UpdateInfo {
+  current: string
+  latest: string
+  available: boolean
+  page: string
+  file: { name: string; size: number } | null
+  mode: 'restart' | 'open'
 }
 
 export interface AgentRequest {
@@ -137,8 +155,10 @@ declare global {
     boar?: BoarBridge
     /** Set once the UI has mounted; read by the Electron smoke test. */
     __boarReady?: boolean
-    /** Unsaved changes; read by the main process before closing the window. */
-    __boarDirty?: boolean
+    /** Name of the project when it has unsaved changes, else null; read by the main process before closing. */
+    __boarUnsaved?: string | null
+    /** Saves the project (asking for a path if it has none); false if cancelled. */
+    __boarSave?: () => Promise<boolean>
   }
 }
 

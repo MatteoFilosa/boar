@@ -8,6 +8,7 @@ import { registerCaptionIpc } from './captions'
 import { registerLibraryIpc } from './library'
 import { registerMcp } from './mcp'
 import { extendToolPath } from './toolPath'
+import { registerUpdateIpc } from './updates'
 
 // `--smoke`: load the UI hidden, report renderer errors, exit. Used to verify builds.
 const smoke = process.argv.includes('--smoke')
@@ -56,25 +57,32 @@ function createWindow(): void {
   if (smoke) runSmokeTest(win)
   else win.once('ready-to-show', () => win.show())
 
-  // Ask before closing with unsaved changes.
+  // Unsaved changes (the renderer gives the project name): save, discard or stay.
   let closing = false
+  let asking = false
   win.on('close', (event) => {
     if (closing || smoke) return
     event.preventDefault()
+    if (asking) return
+    asking = true
     void win.webContents
-      .executeJavaScript('Boolean(window.__boarDirty)')
-      .catch(() => false)
-      .then(async (dirty: boolean) => {
-        if (dirty) {
+      .executeJavaScript('window.__boarUnsaved ?? null')
+      .catch(() => null)
+      .then(async (name: string | null) => {
+        if (name !== null) {
           const { response } = await dialog.showMessageBox(win, {
             type: 'warning',
-            buttons: ['Close without saving', 'Cancel'],
-            defaultId: 1,
-            cancelId: 1,
-            message: 'The project has unsaved changes.',
-            detail: 'Close Boar anyway?'
+            buttons: ['Save', "Don't Save", 'Cancel'],
+            defaultId: 0,
+            cancelId: 2,
+            noLink: true,
+            message: `Do you want to save the changes to “${name}”?`,
+            detail: "Your changes are lost if you don't save them."
           })
-          if (response !== 0) {
+          const saved =
+            response === 0 &&
+            (await win.webContents.executeJavaScript('window.__boarSave ? window.__boarSave() : false').catch(() => false))
+          if (response === 2 || (response === 0 && !saved)) {
             quitting = false
             return
           }
@@ -84,6 +92,7 @@ function createWindow(): void {
         // A quit (Cmd+Q) was interrupted by the question: finish it.
         if (quitting) app.quit()
       })
+      .finally(() => (asking = false))
   })
 
   const devUrl = process.env['ELECTRON_RENDERER_URL']
@@ -257,6 +266,7 @@ app.whenReady().then(() => {
   registerIpc()
   registerCaptionIpc()
   registerLibraryIpc()
+  registerUpdateIpc()
   // AI agents (MCP): not in smoke runs, which may overlap a running editor.
   if (!smoke) void registerMcp(() => mainWindow)
   createWindow()

@@ -135,6 +135,7 @@ function useMenus(): Menu[] {
         'separator',
         { label: 'AI Agents (MCP)...', command: 'aiAgents' },
         { label: 'Download from Link (yt-dlp, optional)', command: 'toggleLinkDownloads', checked: options.linkDownloads },
+        { label: 'Check for Updates at Startup', command: 'toggleUpdateCheck', checked: options.checkUpdates },
         'separator',
         { label: 'Auto Ripple', command: 'toggleRipple', checked: options.autoRipple },
         ...(['tracks', 'tracksMarkers', 'all'] as const).map(
@@ -152,6 +153,7 @@ function useMenus(): Menu[] {
         { label: 'Keyboard Shortcuts', command: 'shortcuts' },
         ...(import.meta.env.DEV ? [{ label: 'Load Demo Media', command: 'loadDemoMedia' } as Item] : []),
         'separator',
+        { label: 'Check for Updates...', command: 'checkForUpdates' },
         { label: 'About Boar', command: 'about' }
       ]
     }

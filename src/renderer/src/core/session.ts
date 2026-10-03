@@ -1,6 +1,6 @@
 import { setStatus, updateMedia } from './actions'
 import { parseProject, serializeProject } from './projectFile'
-import { useEditor } from './store'
+import { hasUnsavedChanges, mediaKey, useEditor } from './store'
 import type { MediaItem } from './types'
 import { dropMediaCache } from '../media/cache'
 import { track } from '../media/importer'
@@ -10,10 +10,7 @@ import { bridge, mediaPathUrl } from '../platform'
 const get = useEditor.getState
 const set = useEditor.setState
 
-export const isDirty = (): boolean => {
-  const s = get()
-  return s.project !== s.savedProject || s.transcripts !== s.savedTranscripts || s.shorts !== s.savedShorts
-}
+export const isDirty = (): boolean => hasUnsavedChanges(get())
 
 export function projectName(path: string | null): string {
   if (!path) return 'Untitled'
@@ -28,7 +25,7 @@ export async function saveProject(saveAs = false): Promise<boolean> {
     try {
       const path = await bridge.saveProject(json, projectPath, saveAs)
       if (!path) return false
-      set({ projectPath: path, savedProject: project, savedTranscripts: transcripts, savedShorts: shorts })
+      set({ projectPath: path, savedProject: project, savedTranscripts: transcripts, savedShorts: shorts, savedMediaKey: mediaKey(media) })
       setStatus(`Saved ${path}`)
       return true
     } catch (err) {
@@ -43,7 +40,7 @@ export async function saveProject(saveAs = false): Promise<boolean> {
   a.download = name
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
-  set({ projectPath: name, savedProject: project, savedTranscripts: transcripts, savedShorts: shorts })
+  set({ projectPath: name, savedProject: project, savedTranscripts: transcripts, savedShorts: shorts, savedMediaKey: mediaKey(media) })
   setStatus(`Downloaded ${name} (only the desktop app keeps media paths)`)
   return true
 }
@@ -116,6 +113,7 @@ export async function openProject(): Promise<void> {
     savedTranscripts: parsed.transcripts,
     shorts: parsed.shorts,
     savedShorts: parsed.shorts,
+    savedMediaKey: mediaKey(media),
     longVideo: null
   })
   setStatus(`Opened ${opened.path}`)

@@ -92,6 +92,10 @@
 - **Debian, Ubuntu e derivate**: scarica `Boar-x.y.z-amd64.deb` e installalo con `sudo apt install ./Boar-x.y.z-amd64.deb`.
 - **Qualsiasi distribuzione**: scarica `Boar-x.y.z-x86_64.AppImage`, rendilo eseguibile (`chmod +x`) e avvialo. Su Ubuntu 24.04 e successivi una restrizione di sistema può impedire l'avvio di AppImage di questo tipo: lì usa il .deb.
 
+### Aggiornamenti
+
+All'avvio Boar controlla se c'è una nuova versione e propone di installarla: su Windows e con l'AppImage si aggiorna da solo e riparte; su macOS e con il .deb scarica il nuovo file da installare. *Help › Check for Updates* controlla quando vuoi, *Options › Check for Updates at Startup* disattiva il controllo all'avvio.
+
 ### FFmpeg per sottotitoli e Transcript
 
 La trascrizione usa il filtro `whisper` di FFmpeg 8 o successivo. Su Windows il modo più semplice è:

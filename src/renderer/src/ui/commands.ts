@@ -6,6 +6,7 @@ import { importPaths, loadDemoMedia, openImportDialog } from '../media/importer'
 import { openProject, saveProject } from '../core/session'
 import { bridge } from '../platform'
 import { toggleFullScreenPreview } from './fullScreen'
+import { checkForUpdates } from './updates'
 
 /**
  * Ctrl+V: an image on the system clipboard (a screenshot, "Copy image" in the
@@ -131,6 +132,8 @@ export const commands = {
   backOneSecond: (): void => A.setCursor(useEditor.getState().cursor - FLICKS_PER_SECOND),
   shortcuts: (): void => A.openDialog({ kind: 'shortcuts' }),
   about: (): void => A.openDialog({ kind: 'about' }),
+  checkForUpdates: (): void => void checkForUpdates(true),
+  toggleUpdateCheck: (): void => A.toggleOption('checkUpdates'),
   loadDemoMedia: (): void => void loadDemoMedia()
 }
 

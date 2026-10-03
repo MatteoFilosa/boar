@@ -1,6 +1,7 @@
 import { produce, type Draft } from 'immer'
 import {
   emptyProject,
+  hasUnsavedChanges,
   mediaById,
   useEditor,
   type Dialog,
@@ -177,7 +178,8 @@ const OPTION_LABELS = {
   autoCrossfade: 'Automatic crossfades',
   quantize: 'Quantize to frames',
   loop: 'Loop playback',
-  autoRipple: 'Auto Ripple'
+  autoRipple: 'Auto Ripple',
+  checkUpdates: 'Check for updates at startup'
 } as const
 
 export function toggleOption(key: keyof typeof OPTION_LABELS): void {
@@ -1710,15 +1712,15 @@ export function applyFxToSelection(eventId: string): number {
 }
 
 export function newProject(): void {
-  const { project, savedProject, playing, transcripts, savedTranscripts, shorts, savedShorts } = get()
-  if (playing) return
-  const dirty = project !== savedProject || transcripts !== savedTranscripts || shorts !== savedShorts
-  if (dirty && !window.confirm('The project has unsaved changes. Discard them?')) return
+  if (get().playing) return
+  if (hasUnsavedChanges(get()) && !window.confirm('The project has unsaved changes. Discard them?')) return
   for (const m of get().media) {
     if (m.url.startsWith('blob:')) URL.revokeObjectURL(m.url)
     dropMediaCache(m.id)
   }
   const fresh = emptyProject()
+  const transcripts = {}
+  const shorts: ShortCandidate[] = []
   set({
     project: fresh,
     savedProject: fresh,
@@ -1730,10 +1732,11 @@ export function newProject(): void {
     selectedTrackId: null,
     timeSelection: null,
     cursor: 0,
-    transcripts: {},
-    savedTranscripts: {},
-    shorts: [],
-    savedShorts: [],
+    transcripts,
+    savedTranscripts: transcripts,
+    shorts,
+    savedShorts: shorts,
+    savedMediaKey: '',
     longVideo: null,
     status: 'New project'
   })

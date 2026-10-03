@@ -3,6 +3,7 @@ import type { MediaItem, Project, ProjectSettings } from './types'
 import type { Flicks } from './time'
 import type { MediaTranscript } from './transcript'
 import type { ShortCandidate } from './shorts'
+import type { UpdateInfo } from '../platform'
 
 export type PreviewQuality = 'draft' | 'preview' | 'good' | 'best'
 export type DockTab = 'media' | 'explorer' | 'transitions' | 'fx' | 'afx' | 'generators' | 'transcript' | 'shorts'
@@ -34,6 +35,8 @@ export interface EditorOptions {
   renderLoudness: number | null
   /** Optional feature: Download from Link through yt-dlp (off until the user enables it). */
   linkDownloads: boolean
+  /** Look for a new release when Boar starts. */
+  checkUpdates: boolean
 }
 
 const DEFAULT_OPTIONS: EditorOptions = {
@@ -47,7 +50,8 @@ const DEFAULT_OPTIONS: EditorOptions = {
   autoRipple: false,
   rippleMode: 'tracks',
   renderLoudness: -14,
-  linkDownloads: false
+  linkDownloads: false,
+  checkUpdates: true
 }
 
 const OPTIONS_KEY = 'boar.options'
@@ -87,6 +91,7 @@ export type Dialog =
   | { kind: 'saveSfx'; eventId: string }
   | { kind: 'shortcuts' }
   | { kind: 'about' }
+  | { kind: 'update'; info: UpdateInfo | null; error?: string }
 
 export interface EditorState {
   project: Project
@@ -119,6 +124,8 @@ export interface EditorState {
   /** Short-form candidates found in this (long) video; saved with the project. */
   shorts: ShortCandidate[]
   savedShorts: ShortCandidate[]
+  /** Project Media as last saved or opened (mediaKey). */
+  savedMediaKey: string
   /** While editing a Short made with Make Short: the long video to go back to. */
   longVideo: LongVideo | null
 }
@@ -154,6 +161,21 @@ export function emptyProject(): Project {
 }
 
 const initialProject = emptyProject()
+const noTranscripts: Record<string, MediaTranscript> = {}
+const noShorts: ShortCandidate[] = []
+
+/** What a project file keeps of Project Media: which files, in which order. */
+export const mediaKey = (media: MediaItem[]): string => media.map((m) => m.id).join('|')
+
+/** Anything a save would write differs from the last save: timeline, transcripts, Shorts, Project Media. */
+export function hasUnsavedChanges(s: EditorState): boolean {
+  return (
+    s.project !== s.savedProject ||
+    s.transcripts !== s.savedTranscripts ||
+    s.shorts !== s.savedShorts ||
+    mediaKey(s.media) !== s.savedMediaKey
+  )
+}
 
 export const useEditor = create<EditorState>()(() => ({
   project: initialProject,
@@ -174,10 +196,11 @@ export const useEditor = create<EditorState>()(() => ({
   snapLine: null,
   timeSelection: null,
   exporting: false,
-  transcripts: {},
-  savedTranscripts: {},
-  shorts: [],
-  savedShorts: [],
+  transcripts: noTranscripts,
+  savedTranscripts: noTranscripts,
+  shorts: noShorts,
+  savedShorts: noShorts,
+  savedMediaKey: '',
   longVideo: null
 }))
 

@@ -12,7 +12,8 @@ import { Timeline } from './ui/timeline/Timeline'
 import { useGlobalShortcuts } from './ui/shortcuts'
 import { getEngine } from './engine/preview'
 import { useEditor } from './core/store'
-import { isDirty, projectName } from './core/session'
+import { isDirty, projectName, saveProject } from './core/session'
+import { checkForUpdates } from './ui/updates'
 import { startAgentHost } from './agent/host'
 
 export function App(): React.JSX.Element {
@@ -24,14 +25,20 @@ export function App(): React.JSX.Element {
     getEngine()
     startAgentHost()
     window.__boarReady = true
+    window.__boarSave = () => saveProject(false)
+    // A few seconds after opening, so the check never slows down the start.
+    const timer = window.setTimeout(() => {
+      if (useEditor.getState().options.checkUpdates) void checkForUpdates(false)
+    }, 3000)
+    return () => window.clearTimeout(timer)
   }, [])
 
-  // Window title "Name * - Boar"; the main process reads __boarDirty on close.
+  // Window title "Name * - Boar"; the main process reads __boarUnsaved on close.
   useEffect(() => {
     const update = (): void => {
       const s = useEditor.getState()
       const dirty = isDirty()
-      window.__boarDirty = dirty
+      window.__boarUnsaved = dirty ? projectName(s.projectPath) : null
       document.title = `${projectName(s.projectPath)}${dirty ? ' *' : ''} - Boar`
     }
     update()
@@ -41,7 +48,11 @@ export function App(): React.JSX.Element {
         s.savedProject !== p.savedProject ||
         s.projectPath !== p.projectPath ||
         s.transcripts !== p.transcripts ||
-        s.savedTranscripts !== p.savedTranscripts
+        s.savedTranscripts !== p.savedTranscripts ||
+        s.shorts !== p.shorts ||
+        s.savedShorts !== p.savedShorts ||
+        s.media !== p.media ||
+        s.savedMediaKey !== p.savedMediaKey
       ) {
         update()
       }

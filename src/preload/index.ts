@@ -56,5 +56,15 @@ contextBridge.exposeInMainWorld('boar', {
   agentRespond: (id: number, ok: boolean, value: unknown): void => ipcRenderer.send('agent:response', id, ok, value),
   agentStatus: (): Promise<unknown> => ipcRenderer.invoke('agent:status'),
   agentSetEnabled: (enabled: boolean): Promise<unknown> => ipcRenderer.invoke('agent:setEnabled', enabled),
-  agentNewToken: (): Promise<unknown> => ipcRenderer.invoke('agent:newToken')
+  agentNewToken: (): Promise<unknown> => ipcRenderer.invoke('agent:newToken'),
+  checkUpdate: (): Promise<unknown> => ipcRenderer.invoke('update:check'),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke('update:download'),
+  cancelUpdate: (): Promise<void> => ipcRenderer.invoke('update:cancel'),
+  installUpdate: (now: boolean): Promise<void> => ipcRenderer.invoke('update:install', now),
+  openUpdatePage: (): Promise<void> => ipcRenderer.invoke('update:page'),
+  onUpdateProgress(callback: (progress: number) => void): () => void {
+    const listener = (_event: unknown, progress: number): void => callback(progress)
+    ipcRenderer.on('update:progress', listener)
+    return () => ipcRenderer.removeListener('update:progress', listener)
+  }
 })

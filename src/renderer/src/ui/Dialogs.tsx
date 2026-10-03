@@ -22,6 +22,7 @@ import { TransitionWindow } from './TransitionBrowser'
 import { ReframeDialog } from './ReframeDialog'
 import { AutoZoomDialog } from './AutoZoomDialog'
 import { AgentDialog } from './AgentDialog'
+import { UpdateDialog } from './UpdateDialog'
 
 function Modal({ title, children, width = 460 }: { title: string; children: React.ReactNode; width?: number }): React.JSX.Element {
   return (
@@ -346,5 +347,7 @@ export function Dialogs(): React.JSX.Element | null {
       return <ShortcutsDialog />
     case 'about':
       return <AboutDialog />
+    case 'update':
+      return <UpdateDialog info={dialog.info} error={dialog.error} />
   }
 }
