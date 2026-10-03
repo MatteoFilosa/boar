@@ -1,0 +1,97 @@
+name: Build
+
+# Every push: typecheck and smoke test on Windows, macOS and Linux.
+# Published releases (and manual runs): installers for the three systems,
+# checked by starting the packaged app; releases get them as assets.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    env:
+      INSTALLERS: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - name: Smoke test
+        run: |
+          npx electron-vite build
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a npx electron . --no-sandbox --smoke
+          else
+            npx electron . --smoke
+          fi
+
+      - name: Installers
+        if: env.INSTALLERS == 'true'
+        run: npx electron-builder --publish never
+
+      - name: Smoke test of the packaged app
+        if: env.INSTALLERS == 'true'
+        run: |
+          case "$RUNNER_OS" in
+            Windows) exe=dist/win-unpacked/Boar.exe; resources=dist/win-unpacked/resources ;;
+            macOS) exe=dist/mac-arm64/Boar.app/Contents/MacOS/Boar; resources=dist/mac-arm64/Boar.app/Contents/Resources ;;
+            Linux) exe=dist/linux-unpacked/boar; resources=dist/linux-unpacked/resources ;;
+          esac
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a "$exe" --no-sandbox --smoke
+          else
+            "$exe" --smoke
+          fi
+          # The MCP bridge runs with the app's own executable in Node mode.
+          reply=$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' |
+            BOAR_MCP_CONFIG=missing.json ELECTRON_RUN_AS_NODE=1 "$exe" "$resources/boar-mcp.mjs")
+          echo "$reply"
+          echo "$reply" | grep -q '"serverInfo"'
+
+      - uses: actions/upload-artifact@v4
+        if: env.INSTALLERS == 'true'
+        with:
+          name: Boar-${{ runner.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(dist/*.exe dist/*.dmg dist/*.AppImage dist/*.deb)
+          gh release upload "${{ github.event.release.tag_name }}" "${files[@]}" --clobber

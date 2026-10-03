@@ -9,7 +9,7 @@
 
 <p align="center">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3fb950">
-  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4">
+  <img alt="Windows, macOS, Linux" src="https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-0078d4">
   <img alt="GPU Intel, NVIDIA, AMD" src="https://img.shields.io/badge/GPU-Intel%20%7C%20NVIDIA%20%7C%20AMD-555">
   <img alt="Version 0.3.1 alpha" src="https://img.shields.io/badge/version-0.3.1%20alpha-f28c28">
 </p>
@@ -82,15 +82,27 @@
 2. The installer is not signed yet: if Windows SmartScreen shows "Windows protected your PC", click *More info › Run anyway*.
 3. For captions and Transcript, install FFmpeg 8 (see below).
 
+### macOS (experimental)
+
+1. Download `Boar-x.y.z-arm64.dmg` (Apple Silicon) or `Boar-x.y.z-x64.dmg` (Intel) from the [Releases](https://github.com/MatteoFilosa/boar/releases) page, open it and drag Boar into Applications.
+2. Boar is not signed with an Apple Developer ID, so macOS blocks the first launch: open *System Settings › Privacy & Security* and click *Open Anyway*. Or, in Terminal: `xattr -dr com.apple.quarantine /Applications/Boar.app`.
+
+### Linux (experimental)
+
+- **Debian, Ubuntu and derivatives**: download `Boar-x.y.z-amd64.deb` and install it with `sudo apt install ./Boar-x.y.z-amd64.deb`.
+- **Any distribution**: download `Boar-x.y.z-x86_64.AppImage`, make it executable (`chmod +x`) and run it. On Ubuntu 24.04 and later a system restriction can stop AppImages of this kind from starting: use the .deb there.
+
 ### FFmpeg for captions and Transcript
 
-Transcription uses FFmpeg 8's `whisper` filter. The easiest way:
+Transcription uses the `whisper` filter of FFmpeg 8 or later. On Windows the easiest way is:
 
 ```bash
 winget install Gyan.FFmpeg
 ```
 
 Then reopen Boar. To check: `ffmpeg -filters | findstr whisper`. The Whisper model (148 MB for the lightest one) downloads from the app the first time. Everything else works without FFmpeg.
+
+On macOS and Linux, the FFmpeg from Homebrew and from most distributions does not include the `whisper` filter yet: you need a build configured with `--enable-whisper` (check with `ffmpeg -filters | grep whisper`). Transcription built into Boar, with no FFmpeg needed, is planned.
 
 ### From source
 
@@ -111,7 +123,7 @@ Boar works with **Intel, NVIDIA and AMD** GPUs: no code is tied to one vendor.
 
 | What | How |
 | --- | --- |
-| Export | The graphics card's hardware encoder through WebCodecs. *Render As* only lists the formats your GPU can encode: H.264 is always there, HEVC and AV1 depend on the card's generation. |
+| Export | The graphics card's hardware encoder through WebCodecs. *Render As* only lists the formats your GPU can encode: H.264 is always there, HEVC and AV1 depend on the card's generation. On macOS the hardware encoder covers H.264 and HEVC; on Linux export often runs on the CPU, slower. |
 | Preview and effects | WebGL2, the same on every recent GPU. |
 | Face and background (AI) | MediaPipe on the GPU, falling back to the CPU. |
 | Transcription | whisper.cpp inside FFmpeg: uses the GPU if your FFmpeg build supports it, otherwise the CPU. |
@@ -152,7 +164,7 @@ The agent reads the timeline and the transcripts, looks at frames and makes the 
 | `←` `→` / `↑` `↓` | previous and next frame / zoom |
 | `Esc` | clear the time selection |
 
-Full list in *Help › Keyboard Shortcuts*.
+On a Mac, use ⌘ instead of Ctrl and ⌥ instead of Alt. Full list in *Help › Keyboard Shortcuts*.
 
 ## For developers
 
@@ -164,7 +176,7 @@ Full list in *Help › Keyboard Shortcuts*.
 | `npm run typecheck` | TypeScript check |
 | `npm run smoke` | build and hidden run: errors, hardware encoders, media protocol |
 | `npm run icons` | regenerates the icons from `resources/icon.svg` |
-| `npm run dist` | Windows installer in `dist/` |
+| `npm run dist` | installer for your system in `dist/` (GitHub Actions builds all three for each release) |
 
 Stack: Electron, React, TypeScript, zustand and immer, [Mediabunny](https://github.com/Vanilagy/mediabunny) for decoding, encoding and MP4 with WebCodecs.
 

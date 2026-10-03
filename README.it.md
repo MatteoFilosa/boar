@@ -9,7 +9,7 @@
 
 <p align="center">
   <img alt="Licenza MIT" src="https://img.shields.io/badge/licenza-MIT-3fb950">
-  <img alt="Windows 10 e 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4">
+  <img alt="Windows, macOS, Linux" src="https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-0078d4">
   <img alt="GPU Intel, NVIDIA, AMD" src="https://img.shields.io/badge/GPU-Intel%20%7C%20NVIDIA%20%7C%20AMD-555">
   <img alt="Versione 0.3.1 alpha" src="https://img.shields.io/badge/versione-0.3.1%20alpha-f28c28">
 </p>
@@ -82,15 +82,27 @@
 2. L'installer non è ancora firmato: se Windows SmartScreen mostra "PC protetto", clicca *Ulteriori informazioni › Esegui comunque*.
 3. Per sottotitoli e Transcript installa FFmpeg 8 (vedi sotto).
 
+### macOS (sperimentale)
+
+1. Scarica `Boar-x.y.z-arm64.dmg` (Apple Silicon) o `Boar-x.y.z-x64.dmg` (Intel) dalla pagina [Releases](https://github.com/MatteoFilosa/boar/releases), aprilo e trascina Boar in Applicazioni.
+2. Boar non è firmato con un Apple Developer ID, quindi macOS blocca il primo avvio: apri *Impostazioni di Sistema › Privacy e sicurezza* e clicca *Apri comunque*. Oppure, nel Terminale: `xattr -dr com.apple.quarantine /Applications/Boar.app`.
+
+### Linux (sperimentale)
+
+- **Debian, Ubuntu e derivate**: scarica `Boar-x.y.z-amd64.deb` e installalo con `sudo apt install ./Boar-x.y.z-amd64.deb`.
+- **Qualsiasi distribuzione**: scarica `Boar-x.y.z-x86_64.AppImage`, rendilo eseguibile (`chmod +x`) e avvialo. Su Ubuntu 24.04 e successivi una restrizione di sistema può impedire l'avvio di AppImage di questo tipo: lì usa il .deb.
+
 ### FFmpeg per sottotitoli e Transcript
 
-La trascrizione usa il filtro `whisper` di FFmpeg 8. Il modo più semplice:
+La trascrizione usa il filtro `whisper` di FFmpeg 8 o successivo. Su Windows il modo più semplice è:
 
 ```bash
 winget install Gyan.FFmpeg
 ```
 
 Poi riapri Boar. Per controllare: `ffmpeg -filters | findstr whisper`. Il modello Whisper (148 MB per il più leggero) si scarica dall'app al primo uso. Tutto il resto funziona anche senza FFmpeg.
+
+Su macOS e Linux l'FFmpeg di Homebrew e della maggior parte delle distribuzioni non include ancora il filtro `whisper`: serve una build configurata con `--enable-whisper` (controlla con `ffmpeg -filters | grep whisper`). È in programma la trascrizione integrata in Boar, senza bisogno di FFmpeg.
 
 ### Dai sorgenti
 
@@ -111,7 +123,7 @@ Boar funziona con GPU **Intel, NVIDIA e AMD**: non c'è codice legato a un produ
 
 | Cosa | Come |
 | --- | --- |
-| Export | Encoder hardware della scheda video tramite WebCodecs. *Render As* mostra solo i formati che la tua GPU sa codificare: H.264 c'è sempre, HEVC e AV1 dipendono dalla generazione della scheda. |
+| Export | Encoder hardware della scheda video tramite WebCodecs. *Render As* mostra solo i formati che la tua GPU sa codificare: H.264 c'è sempre, HEVC e AV1 dipendono dalla generazione della scheda. Su macOS l'encoder hardware copre H.264 e HEVC; su Linux spesso l'export usa il processore, più lento. |
 | Anteprima ed effetti | WebGL2, uguale su tutte le GPU recenti. |
 | Volto e sfondo (AI) | MediaPipe sulla GPU, con ripiego sul processore. |
 | Trascrizione | whisper.cpp dentro FFmpeg: usa la GPU se la tua build di FFmpeg la supporta, altrimenti il processore. |
@@ -152,7 +164,7 @@ L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: 
 | `←` `→` / `↑` `↓` | frame precedente e successivo / zoom |
 | `Esc` | togli la selezione temporale |
 
-Elenco completo in *Help › Keyboard Shortcuts*.
+Su Mac usa ⌘ al posto di Ctrl e ⌥ al posto di Alt. Elenco completo in *Help › Keyboard Shortcuts*.
 
 ## Per sviluppatori
 
@@ -164,7 +176,7 @@ Elenco completo in *Help › Keyboard Shortcuts*.
 | `npm run typecheck` | controllo TypeScript |
 | `npm run smoke` | build e avvio nascosto: errori, encoder hardware, protocollo media |
 | `npm run icons` | rigenera le icone da `resources/icon.svg` |
-| `npm run dist` | installer Windows in `dist/` |
+| `npm run dist` | installer per il tuo sistema in `dist/` (GitHub Actions crea i tre installer a ogni release) |
 
 Stack: Electron, React, TypeScript, zustand e immer, [Mediabunny](https://github.com/Vanilagy/mediabunny) per decodifica, codifica e MP4 con WebCodecs.
 
