@@ -1,0 +1,6 @@
+# Same line endings on every machine (both dev PCs are Windows with autocrlf).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.mp4 binary

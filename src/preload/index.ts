@@ -1,0 +1,60 @@
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
+
+// Keep in sync with BoarBridge in src/renderer/src/platform.ts.
+contextBridge.exposeInMainWorld('boar', {
+  platform: process.platform,
+  pathForFile(file: File): string {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return ''
+    }
+  },
+  pickExportPath: (suggestedName: string): Promise<string | null> => ipcRenderer.invoke('export:pick', suggestedName),
+  openFile: (path: string): Promise<number> => ipcRenderer.invoke('export:open', path),
+  writeFile: (id: number, position: number, data: Uint8Array): Promise<void> =>
+    ipcRenderer.invoke('export:write', id, position, data),
+  closeFile: (id: number): Promise<void> => ipcRenderer.invoke('export:close', id),
+  discardFile: (path: string): Promise<void> => ipcRenderer.invoke('export:discard', path),
+  revealFile: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),
+  saveProject: (json: string, currentPath: string | null, saveAs: boolean): Promise<string | null> =>
+    ipcRenderer.invoke('project:save', json, currentPath, saveAs),
+  openProject: (): Promise<{ path: string; json: string } | null> => ipcRenderer.invoke('project:open'),
+  captionsStatus: (): Promise<unknown> => ipcRenderer.invoke('captions:status'),
+  downloadModel: (id: string): Promise<void> => ipcRenderer.invoke('captions:download', id),
+  transcribe: (request: unknown): Promise<string> => ipcRenderer.invoke('captions:transcribe', request),
+  onCaptionProgress(callback: (progress: unknown) => void): () => void {
+    const listener = (_event: unknown, progress: unknown): void => callback(progress)
+    ipcRenderer.on('captions:progress', listener)
+    return () => ipcRenderer.removeListener('captions:progress', listener)
+  },
+  readAsset: (url: string): Promise<Uint8Array> => ipcRenderer.invoke('app:readAsset', url),
+  libraryFolders: (): Promise<unknown> => ipcRenderer.invoke('library:folders'),
+  addLibraryFolder: (): Promise<string | null> => ipcRenderer.invoke('library:addFolder'),
+  removeLibraryFolder: (path: string): Promise<void> => ipcRenderer.invoke('library:removeFolder', path),
+  listLibrary: (dir: string): Promise<unknown> => ipcRenderer.invoke('library:list', dir),
+  revealInLibrary: (path: string): Promise<void> => ipcRenderer.invoke('library:reveal', path),
+  saveToLibrary: (dir: string, name: string, ext: string, data: Uint8Array): Promise<string> =>
+    ipcRenderer.invoke('library:save', dir, name, ext, data),
+  clipboardImage: (): Promise<string | null> => ipcRenderer.invoke('clipboard:image'),
+  claimClipboard: (): Promise<void> => ipcRenderer.invoke('clipboard:claim'),
+  youtubeStatus: (): Promise<unknown> => ipcRenderer.invoke('youtube:status'),
+  installYtDlp: (): Promise<void> => ipcRenderer.invoke('youtube:install'),
+  updateYtDlp: (): Promise<string> => ipcRenderer.invoke('youtube:update'),
+  downloadYoutube: (request: unknown): Promise<string> => ipcRenderer.invoke('youtube:download', request),
+  cancelYoutube: (): Promise<void> => ipcRenderer.invoke('youtube:cancel'),
+  onYoutubeProgress(callback: (progress: unknown) => void): () => void {
+    const listener = (_event: unknown, progress: unknown): void => callback(progress)
+    ipcRenderer.on('youtube:progress', listener)
+    return () => ipcRenderer.removeListener('youtube:progress', listener)
+  },
+  onAgentRequest(callback: (request: unknown) => void): () => void {
+    const listener = (_event: unknown, request: unknown): void => callback(request)
+    ipcRenderer.on('agent:request', listener)
+    return () => ipcRenderer.removeListener('agent:request', listener)
+  },
+  agentRespond: (id: number, ok: boolean, value: unknown): void => ipcRenderer.send('agent:response', id, ok, value),
+  agentStatus: (): Promise<unknown> => ipcRenderer.invoke('agent:status'),
+  agentSetEnabled: (enabled: boolean): Promise<unknown> => ipcRenderer.invoke('agent:setEnabled', enabled),
+  agentNewToken: (): Promise<unknown> => ipcRenderer.invoke('agent:newToken')
+})

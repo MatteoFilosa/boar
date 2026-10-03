@@ -1,0 +1,10 @@
+node_modules/
+out/
+dist/
+release/
+dev-samples/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json

@@ -1,0 +1,36 @@
+# Windows installer (npm run dist): NSIS setup in dist/.
+# Everything the app needs is bundled by electron-vite into out/, so no
+# node_modules are packaged. The MCP bridge stays outside the asar archive so
+# agents can run it (with this app's own executable, ELECTRON_RUN_AS_NODE=1).
+appId: io.github.matteofilosa.boar
+productName: Boar
+copyright: Copyright © 2026 Matteo Filosa
+directories:
+  output: dist
+files:
+  - out/**/*
+  - resources/icon.ico
+  - resources/icon.png
+  - package.json
+extraResources:
+  - from: scripts/boar-mcp.mjs
+    to: boar-mcp.mjs
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+npmRebuild: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: resources/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Boar
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  artifactName: Boar-Setup-${version}.exe
+  license: LICENSE
