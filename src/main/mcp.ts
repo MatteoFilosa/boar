@@ -1,7 +1,7 @@
 import { app, type BrowserWindow, ipcMain } from 'electron'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomBytes } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 // MCP server (Streamable HTTP, stateless, JSON responses) on 127.0.0.1 with a
@@ -223,6 +223,27 @@ async function start(): Promise<void> {
   })
 }
 
+let bridgeFile = ''
+
+/** The stdio bridge script. An AppImage is mounted in a new temporary folder at each start, so it uses a copy. */
+async function prepareBridge(): Promise<void> {
+  if (!app.isPackaged) {
+    bridgeFile = join(app.getAppPath(), 'scripts', 'boar-mcp.mjs')
+    return
+  }
+  const bundled = join(process.resourcesPath, 'boar-mcp.mjs')
+  bridgeFile = bundled
+  if (!process.env.APPIMAGE) return
+  const copy = join(app.getPath('userData'), 'boar-mcp.mjs')
+  try {
+    await mkdir(app.getPath('userData'), { recursive: true })
+    await copyFile(bundled, copy)
+    bridgeFile = copy
+  } catch {
+    // Keep the bundled path: it works until the app restarts.
+  }
+}
+
 function status(): McpStatus {
   return {
     enabled: config.enabled,
@@ -234,8 +255,8 @@ function status(): McpStatus {
     client: lastClient,
     // Installed app: the bridge sits next to app.asar and runs with this executable in Node mode,
     // so agents need no Node.js. From the sources it runs with node.
-    bridgePath: app.isPackaged ? join(process.resourcesPath, 'boar-mcp.mjs') : join(app.getAppPath(), 'scripts', 'boar-mcp.mjs'),
-    bridgeCommand: app.isPackaged ? process.execPath : 'node',
+    bridgePath: bridgeFile,
+    bridgeCommand: app.isPackaged ? (process.env.APPIMAGE ?? process.execPath) : 'node',
     bridgeEnv: app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {},
     configPath: configPath()
   }
@@ -243,6 +264,7 @@ function status(): McpStatus {
 
 export async function registerMcp(window: () => BrowserWindow | null): Promise<void> {
   mainWindow = window
+  await prepareBridge()
   ipcMain.on('agent:response', (_event, id: number, ok: boolean, value: unknown) => {
     const request = pending.get(id)
     if (!request) return

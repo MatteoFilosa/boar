@@ -34,6 +34,7 @@ import { importFiles, importPaths } from '../../media/importer'
 import { registerMediaDrop, useMediaDrag } from '../mediaDrag'
 import { type MenuEntry, openContextMenu } from '../ContextMenu'
 import { fadeCurveIcon } from '../FadeCurveIcon'
+import { isMac, MOD } from '../../platform'
 import type { Corner } from '../../core/layouts'
 import { TrackHeader, useTrackDrag } from './TrackHeader'
 import { type DropPreview, type Rect, drawOverlay, drawRuler, drawTracks } from './draw'
@@ -541,7 +542,7 @@ function applyDrag(drag: Exclude<Drag, { kind: 'rubber' | 'range' }>, x: number,
     const first = drag.items[0]
     if (drag.stretch && first) {
       const length = drag.side === 'L' ? first.length - dt : first.length + dt
-      A.setStatus(`Playback rate ${formatRate((first.rate * first.length) / length)} (Ctrl+drag)`)
+      A.setStatus(`Playback rate ${formatRate((first.rate * first.length) / length)} (${MOD}+drag)`)
     }
     return
   }
@@ -643,7 +644,7 @@ function playbackRateEntry(ev: TimelineEvent): MenuEntry {
     run: () => A.setPlaybackRate(targetIds(ev), r)
   }))
   if (!RATE_PRESETS.some(isRate)) submenu.unshift({ header: `Current ${formatRate(ev.rate)}` }, 'separator')
-  submenu.push('separator', { label: 'Tip: Ctrl+drag an edge for any speed', disabled: true })
+  submenu.push('separator', { label: `Tip: ${MOD}+drag an edge for any speed`, disabled: true })
   return { label: 'Playback Rate', icon: Gauge, submenu }
 }
 
@@ -749,7 +750,7 @@ export function Timeline(): React.JSX.Element {
     const onKey = (e: KeyboardEvent): void => {
       const canvas = overlayRef.current
       const at = hoverRef.current
-      if (e.key !== 'Control' || !canvas || !at || dragRef.current) return
+      if ((e.key !== 'Control' && e.key !== 'Meta') || !canvas || !at || dragRef.current) return
       canvas.style.cursor = hoverCursor(hitTest(at.x, at.y), e.type === 'keydown')
     }
     window.addEventListener('keydown', onKey)
@@ -812,7 +813,8 @@ export function Timeline(): React.JSX.Element {
       if (!el) return
       const rect = canvas.getBoundingClientRect()
       const delta = e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY
-      if (e.ctrlKey) el.scrollLeft += delta
+      if (isMac && e.ctrlKey) A.zoomAround(Math.exp(-delta / 100), e.clientX - rect.left)
+      else if (isMac ? e.metaKey : e.ctrlKey) el.scrollLeft += delta
       else if (e.shiftKey) el.scrollTop += delta
       else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) el.scrollLeft += e.deltaX
       else A.zoomAround(delta < 0 ? 1.25 : 1 / 1.25, e.clientX - rect.left)

@@ -111,7 +111,7 @@ export function CaptionsDialog(): React.JSX.Element {
   else if (!bridge) blocker = 'Captions run in the desktop app (npm run dev), not in the browser preview.'
   else if (status && !status.ffmpeg) blocker = 'FFmpeg was not found in PATH.'
   else if (status && !status.whisper)
-    blocker = 'Your FFmpeg has no "whisper" filter. Install an FFmpeg 8 full build (e.g. gyan.dev) and restart.'
+    blocker = 'Your FFmpeg has no "whisper" filter. Install an FFmpeg 8 build that includes it (see the README) and restart.'
   else if (!event) blocker = 'Select an event with sound on the timeline.'
   else if (!media?.path) blocker = 'This media has no file path (import it again in the desktop app).'
 

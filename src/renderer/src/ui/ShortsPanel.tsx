@@ -10,6 +10,7 @@ import { uid } from '../core/ids'
 import { isDirty } from '../core/session'
 import { DEFAULT_SHORT_OPTIONS, type MakeShortOptions, type ShortFraming, backToLongVideo, makeShort } from '../engine/makeShort'
 import { commands } from './commands'
+import { shortcutLabel } from './shortcuts'
 
 const FRAMINGS: { id: ShortFraming; label: string }[] = [
   { id: 'reframe', label: 'Follow the face' },
@@ -41,7 +42,7 @@ export function ShortsPanel(): React.JSX.Element {
         <div className="shorts-banner">
           <Clapperboard size={16} />
           <span>
-            Short made from <b>{longVideo.name}</b>. Render it (Ctrl+M) and save it if you want to keep it.
+            Short made from <b>{longVideo.name}</b>. Render it ({shortcutLabel('render')}) and save it if you want to keep it.
           </span>
         </div>
         <div className="ex-bar">

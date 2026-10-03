@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, net, shell, type WebContents } from 'electron'
 import { spawn } from 'node:child_process'
 import { createWriteStream, existsSync } from 'node:fs'
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { allowMediaDir, allowMediaPaths } from './media-protocol'
 
@@ -88,7 +88,15 @@ async function uniquePath(dir: string, name: string, ext: string): Promise<strin
 
 // Download from Link (yt-dlp, optional)
 
-const YTDLP_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
+const YTDLP_RELEASE = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/'
+
+function ytDlpAsset(): string | null {
+  if (process.platform === 'win32') return 'yt-dlp.exe'
+  if (process.platform === 'darwin') return 'yt-dlp_macos'
+  if (process.platform === 'linux' && process.arch === 'x64') return 'yt-dlp_linux'
+  if (process.platform === 'linux' && process.arch === 'arm64') return 'yt-dlp_linux_aarch64'
+  return null
+}
 
 function run(cmd: string, args: string[]): Promise<{ code: number; out: string }> {
   return new Promise((resolvePromise) => {
@@ -113,11 +121,12 @@ async function findYtDlp(): Promise<{ path: string; version: string } | null> {
 }
 
 async function installYtDlp(sender: WebContents): Promise<void> {
-  if (process.platform !== 'win32') throw new Error('Install yt-dlp with your package manager')
+  const asset = ytDlpAsset()
+  if (!asset) throw new Error('Install yt-dlp with your package manager')
   await mkdir(binDir(), { recursive: true })
-  const target = join(binDir(), 'yt-dlp.exe')
+  const target = join(binDir(), process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
   const partial = `${target}.part`
-  const response = await net.fetch(YTDLP_URL)
+  const response = await net.fetch(YTDLP_RELEASE + asset)
   if (!response.ok || !response.body) throw new Error(`Download failed (${response.status})`)
   const total = Number(response.headers.get('content-length')) || 18 * 1024 * 1024
   const file = createWriteStream(partial)
@@ -132,6 +141,7 @@ async function installYtDlp(sender: WebContents): Promise<void> {
       sender.send('youtube:progress', { phase: 'install', progress: received / total, text: 'Downloading yt-dlp' })
     }
     await new Promise<void>((r, reject) => file.end((err?: Error | null) => (err ? reject(err) : r())))
+    if (process.platform !== 'win32') await chmod(partial, 0o755)
     await rename(partial, target)
   } catch (err) {
     file.destroy()

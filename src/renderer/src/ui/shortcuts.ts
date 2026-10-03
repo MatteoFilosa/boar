@@ -3,6 +3,7 @@ import { closeDialog } from '../core/actions'
 import { useEditor } from '../core/store'
 import { type CommandId, commands } from './commands'
 import { isPreviewFullScreen, toggleFullScreenPreview } from './fullScreen'
+import { isMac } from '../platform'
 
 interface Binding {
   key: string
@@ -72,6 +73,7 @@ export function shortcutLabel(command: CommandId): string {
     ArrowDown: '↓'
   }
   const key = names[binding.key] ?? (binding.key.length === 1 ? binding.key.toUpperCase() : binding.key)
+  if (isMac) return [binding.alt && '⌥', binding.shift && '⇧', binding.ctrl && '⌘', key].filter(Boolean).join('')
   return [binding.ctrl && 'Ctrl', binding.alt && 'Alt', binding.shift && 'Shift', key].filter(Boolean).join('+')
 }
 

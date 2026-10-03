@@ -5,6 +5,7 @@ import { mediaById, useEditor } from '../core/store'
 import { type FrameRate, STANDARD_RATES, nearestStandardRate, rateLabel } from '../core/time'
 import type { ProjectSettings } from '../core/types'
 import { BINDINGS, shortcutLabel } from './shortcuts'
+import { ALT, MOD } from '../platform'
 import type { CommandId } from './commands'
 import { PanCropDialog } from './PanCropDialog'
 import { TextEditor } from './TextEditor'
@@ -246,11 +247,12 @@ const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
 
 const MOUSE = [
   ['Wheel', 'Zoom timeline at the mouse'],
-  ['Ctrl+Wheel', 'Scroll left / right'],
+  [`${MOD}+Wheel`, 'Scroll left / right'],
   ['Shift+Wheel', 'Scroll tracks up / down'],
   ['Drag event', 'Move (also to another track of the same kind)'],
-  ['Alt while dragging', 'Ignore snapping'],
+  [`${ALT} while dragging`, 'Ignore snapping'],
   ['Drag event edge', 'Trim'],
+  [`${MOD}+drag event edge`, 'Change speed'],
   ['Drag event top corner', 'Fade in / fade out'],
   ['Overlap two events', 'Automatic crossfade'],
   ['Drag on empty area', 'Select events in a rectangle'],

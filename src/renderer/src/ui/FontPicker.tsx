@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { FONT_CATALOG, FONT_CATEGORIES, fontInfo, loadAllFonts, loadFont } from '../core/fonts'
+import { FONT_CATALOG, FONT_CATEGORIES, fontInfo, loadAllFonts, loadFont, systemFontInstalled } from '../core/fonts'
 
 /** Font dropdown that shows every font in its own typeface, grouped like a type catalog. */
 export function FontPicker({ value, onChange }: { value: string; onChange: (family: string) => void }): React.JSX.Element {
@@ -64,7 +64,12 @@ export function FontPicker({ value, onChange }: { value: string; onChange: (fami
           />
           <div className="fp-list" ref={listRef}>
             {FONT_CATEGORIES.map((category) => {
-              const fonts = FONT_CATALOG.filter((f) => f.category === category && (!q || f.family.toLowerCase().includes(q)))
+              const fonts = FONT_CATALOG.filter(
+                (f) =>
+                  f.category === category &&
+                  (!q || f.family.toLowerCase().includes(q)) &&
+                  (f.category !== 'System' || systemFontInstalled(f.family))
+              )
               if (fonts.length === 0) return null
               return (
                 <div key={category}>

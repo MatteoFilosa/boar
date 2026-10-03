@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Bot, Check, Copy, RefreshCw, X } from 'lucide-react'
 import * as A from '../core/actions'
 import { type AgentStatus, bridge } from '../platform'
+import { shortcutLabel } from './shortcuts'
 import { useAgentActivity } from '../agent/host'
 
 function CopyBox({ label, text }: { label: string; text: string }): React.JSX.Element {
@@ -85,7 +86,7 @@ export function AgentDialog(): React.JSX.Element {
             Let the AI agents you already use (desktop assistants, coding agents, AI editors) edit with Boar through the
             Model Context Protocol, with your own plan: no API keys or paid tokens here. Agents read the timeline and the
             transcripts (text), look at frames and make edits such as cutting fillers, captions, Shorts and chapters. Video and
-            audio never leave this PC except the frames an agent asks to see; every edit can be undone with Ctrl+Z.
+            audio never leave this PC except the frames an agent asks to see; every edit can be undone with {shortcutLabel('undo')}.
           </p>
           {!bridge ? (
             <div className="render-result error">AI agents connect to the desktop app (npm run dev), not to the browser preview.</div>

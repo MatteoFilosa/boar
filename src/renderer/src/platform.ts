@@ -144,3 +144,7 @@ declare global {
 
 export const bridge: BoarBridge | null = window.boar ?? null
 export const isElectron = bridge !== null
+export const isMac = bridge ? bridge.platform === 'darwin' : /Mac/.test(navigator.platform)
+/** Modifier names for help texts: Cmd and Option on a Mac. */
+export const MOD = isMac ? '⌘' : 'Ctrl'
+export const ALT = isMac ? '⌥' : 'Alt'

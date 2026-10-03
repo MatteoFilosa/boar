@@ -6,6 +6,7 @@ import { formatDuration, rateLabel, nearestStandardRate } from '../core/time'
 import type { MediaItem } from '../core/types'
 import { importFiles, openImportDialog } from '../media/importer'
 import { startMediaDrag } from './mediaDrag'
+import { shortcutLabel } from './shortcuts'
 
 function describe(m: MediaItem): string {
   if (m.status === 'error') return m.error
@@ -69,7 +70,7 @@ export function ProjectMedia(): React.JSX.Element {
       }}
     >
       <div className="panel-toolbar">
-        <button className="tool-btn" title="Import media (Ctrl+I)" onClick={() => openImportDialog()}>
+        <button className="tool-btn" title={`Import media (${shortcutLabel('importMedia')})`} onClick={() => openImportDialog()}>
           <FolderInput size={15} />
         </button>
         <button
@@ -90,7 +91,7 @@ export function ProjectMedia(): React.JSX.Element {
         <div className="empty-hint">
           <p>Drop video, audio or image files here</p>
           <p>
-            or use <b>File › Import Media</b> (Ctrl+I)
+            or use <b>File › Import Media</b> ({shortcutLabel('importMedia')})
           </p>
         </div>
       ) : (

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { open, readFile, unlink, writeFile, type FileHandle } from 'node:fs/promises'
 import { join, relative, isAbsolute } from 'node:path'
@@ -7,15 +7,19 @@ import { allowMediaPaths, handleMediaProtocol, registerMediaScheme } from './med
 import { registerCaptionIpc } from './captions'
 import { registerLibraryIpc } from './library'
 import { registerMcp } from './mcp'
+import { extendToolPath } from './toolPath'
 
 // `--smoke`: load the UI hidden, report renderer errors, exit. Used to verify builds.
 const smoke = process.argv.includes('--smoke')
 
 registerMediaScheme()
+extendToolPath()
 // Own taskbar identity on Windows (icon and grouping), instead of Electron's.
 if (process.platform === 'win32') app.setAppUserModelId('io.github.matteofilosa.boar')
 
 let mainWindow: BrowserWindow | null = null
+let quitting = false
+app.on('before-quit', () => (quitting = true))
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -70,10 +74,15 @@ function createWindow(): void {
             message: 'The project has unsaved changes.',
             detail: 'Close Boar anyway?'
           })
-          if (response !== 0) return
+          if (response !== 0) {
+            quitting = false
+            return
+          }
         }
         closing = true
         win.close()
+        // A quit (Cmd+Q) was interrupted by the question: finish it.
+        if (quitting) app.quit()
       })
   })
 
@@ -239,6 +248,11 @@ function runSmokeTest(win: BrowserWindow): void {
 }
 
 app.whenReady().then(() => {
+  // The editor has its own menu bar; macOS still needs the standard app, edit
+  // (copy and paste in text fields) and window menus.
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }]))
+  }
   handleMediaProtocol()
   registerIpc()
   registerCaptionIpc()

@@ -215,7 +215,7 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
       return b && contains(b, p.x, p.y)
     })
     if (!hit) return
-    A.selectEvents([hit.id], e.ctrlKey ? 'toggle' : 'replace')
+    A.selectEvents([hit.id], e.ctrlKey || e.metaKey ? 'toggle' : 'replace')
     startDrag(e, hit, 'move')
   }
 

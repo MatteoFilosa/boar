@@ -159,6 +159,27 @@ export const FONT_CATEGORIES: FontCategory[] = [
 const byFamily = new Map(FONT_CATALOG.map((f) => [f.family, f]))
 export const fontInfo = (family: string): FontInfo | undefined => byFamily.get(family)
 
+const installed = new Map<string, boolean>()
+
+/** Whether a system font exists here: a sample drawn with it differs from the fallback's. */
+export function systemFontInstalled(family: string): boolean {
+  let known = installed.get(family)
+  if (known === undefined) {
+    const ctx = document.createElement('canvas').getContext('2d')
+    const sample = 'mmmmmmmmmmlli WQ@ 0123456789'
+    known =
+      !ctx ||
+      ['monospace', 'serif'].some((fallback) => {
+        ctx.font = `72px ${fallback}`
+        const base = ctx.measureText(sample).width
+        ctx.font = `72px "${family}", ${fallback}`
+        return ctx.measureText(sample).width !== base
+      })
+    installed.set(family, known)
+  }
+  return known
+}
+
 // Loading
 
 const loading = new Map<string, Promise<void>>()

@@ -60,7 +60,7 @@ export interface TextContent {
 
 const BASE: TextContent = {
   text: 'Title',
-  font: 'Segoe UI',
+  font: 'Inter',
   size: 96,
   bold: true,
   italic: false,
@@ -149,7 +149,7 @@ export const TEXT_PRESETS: TextPreset[] = [
     content: {
       ...BASE,
       text: 'YOUR TEXT HERE',
-      font: 'Arial Black',
+      font: 'Archivo Black',
       size: 76,
       strokeWidth: 9,
       shadow: false,
@@ -396,7 +396,7 @@ function rgba(hex: string, alpha: number): string {
 export const fontCss = (c: TextContent, size: number): string => {
   const info = fontInfo(c.font)
   const weight = c.bold ? (info?.bold ?? 800) : (info?.regular ?? 400)
-  return `${c.italic ? 'italic ' : ''}${weight} ${size}px "${c.font}", "Segoe UI", sans-serif`
+  return `${c.italic ? 'italic ' : ''}${weight} ${size}px "${c.font}", "Inter", sans-serif`
 }
 
 interface PlacedWord {
