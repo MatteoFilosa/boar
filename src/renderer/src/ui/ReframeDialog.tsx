@@ -5,6 +5,7 @@ import { mediaById, useEditor } from '../core/store'
 import type { PanCropKey } from '../core/pancrop'
 import type { TimelineEvent } from '../core/types'
 import { type ReframeOptions, analyzeFaces, reframeKeys } from '../engine/reframe'
+import { BoarProgress } from './BoarProgress'
 
 /** Selected video clips (or every video clip when none is selected). */
 function targets(events: TimelineEvent[], selection: string[]): TimelineEvent[] {
@@ -111,12 +112,7 @@ export function ReframeDialog(): React.JSX.Element {
             </div>
           </div>
           {busy && (
-            <div className="render-progress">
-              <div className="render-bar">
-                <div style={{ width: `${Math.round((progress ?? 0) * 100)}%` }} />
-              </div>
-              <div className="dim">Looking for faces… {Math.round((progress ?? 0) * 100)}%</div>
-            </div>
+            <BoarProgress value={progress}>Looking for faces… {Math.round((progress ?? 0) * 100)}%</BoarProgress>
           )}
           {(error || list.length === 0) && <div className="render-result error">{error || 'Add a video clip to the timeline first.'}</div>}
           <div className="modal-actions">

@@ -5,6 +5,7 @@ import { mediaById, useEditor } from '../core/store'
 import { FLICKS_PER_SECOND, formatDuration, secondsToFlicks } from '../core/time'
 import type { TimelineEvent } from '../core/types'
 import { HOP, type Interval, autoThreshold, eventLevels, findSilences, mediaLevels } from '../engine/analysis'
+import { BoarProgress } from './BoarProgress'
 
 /** The audio events that decide where the pauses are: selected audio, or the sound of selected videos. */
 function detectorEvents(events: TimelineEvent[], selection: string[]): TimelineEvent[] {
@@ -136,7 +137,7 @@ export function SilenceDialog(): React.JSX.Element {
           {detectors.length === 0 ? (
             <div className="render-result error">Select the talking clip (its video or its audio event) first.</div>
           ) : !analyses ? (
-            <p className="dim">{error || 'Analyzing the sound…'}</p>
+            error ? <p className="dim">{error}</p> : <BoarProgress value={null}>Analyzing the sound…</BoarProgress>
           ) : (
             <>
               <p className="dim">

@@ -47,8 +47,6 @@ interface OpenMenu {
   x: number
   y: number
   entries: MenuEntry[]
-  /** 'above' opens upward from y (menus anchored to the bottom toolbar). */
-  placement: 'below' | 'above'
   id: number
 }
 
@@ -56,8 +54,8 @@ const useContextMenu = create<{ menu: OpenMenu | null }>()(() => ({ menu: null }
 
 let menuCount = 0
 
-export function openContextMenu(x: number, y: number, entries: MenuEntry[], placement: 'below' | 'above' = 'below'): void {
-  useContextMenu.setState({ menu: { x, y, entries, placement, id: ++menuCount } })
+export function openContextMenu(x: number, y: number, entries: MenuEntry[]): void {
+  useContextMenu.setState({ menu: { x, y, entries, id: ++menuCount } })
 }
 
 const close = (): void => useContextMenu.setState({ menu: null })
@@ -142,10 +140,9 @@ export function ContextMenu(): React.JSX.Element | null {
   useLayoutEffect(() => {
     if (!menu || !ref.current) return
     const r = ref.current.getBoundingClientRect()
-    const top = menu.placement === 'above' ? menu.y - r.height : menu.y
     setPos({
       x: Math.max(4, Math.min(menu.x, window.innerWidth - r.width - 4)),
-      y: Math.max(4, Math.min(top, window.innerHeight - r.height - 4))
+      y: Math.max(4, Math.min(menu.y, window.innerHeight - r.height - 4))
     })
   }, [menu])
 

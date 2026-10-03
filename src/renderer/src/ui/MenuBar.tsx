@@ -6,8 +6,9 @@ import { type CommandId, commands } from './commands'
 import { shortcutLabel } from './shortcuts'
 import logo from '../assets/logo.png'
 import { MenuIcon } from './ContextMenu'
+import { CommandSearch } from './CommandSearch'
 
-interface Item {
+export interface Item {
   label: string
   command?: CommandId
   run?: () => void
@@ -19,7 +20,7 @@ interface Item {
 
 type Entry = Item | 'separator'
 
-interface Menu {
+export interface Menu {
   label: string
   entries: Entry[]
 }
@@ -150,6 +151,7 @@ function useMenus(): Menu[] {
     {
       label: 'Help',
       entries: [
+        { label: 'Search Commands...', command: 'searchCommands' },
         { label: 'Keyboard Shortcuts', command: 'shortcuts' },
         ...(import.meta.env.DEV ? [{ label: 'Load Demo Media', command: 'loadDemoMedia' } as Item] : []),
         'separator',
@@ -224,6 +226,7 @@ export function MenuBar(): React.JSX.Element {
           )}
         </div>
       ))}
+      <CommandSearch menus={menus} />
       <div className="menubar-title">
         <img src={logo} alt="" />
         Boar

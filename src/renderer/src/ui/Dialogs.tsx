@@ -243,7 +243,8 @@ const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
   nextEditPoint: 'Next edit point',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
-  fullScreenPreview: 'Full screen preview (Esc to exit)'
+  fullScreenPreview: 'Full screen preview (Esc to exit)',
+  searchCommands: 'Search commands, options and effects'
 }
 
 const MOUSE = [

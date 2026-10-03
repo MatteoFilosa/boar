@@ -43,6 +43,7 @@
 - **Speed**: `Ctrl` + drag an edge to speed up or slow down (0.25x–4x, audio keeps its pitch).
 - Split, groups, markers, snapping, frame quantization, context menus and 200 undo levels.
 - **Full screen preview** (`F`): review the edit without distractions, with a seek bar and markers on the fly (`M`).
+- **Command search** (`Ctrl+F`): type what you need ("export", "subtitles", "blur") to find and run any menu command, option, panel, effect or title.
 
 ### Vertical and social
 
@@ -164,6 +165,7 @@ The agent reads the timeline and the transcripts, looks at frames and makes the 
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copy / cut / paste (images from the clipboard too) |
 | `Ctrl+S` / `Ctrl+O` | save / open project (`.boar`) |
 | `Ctrl+M` | Render As |
+| `Ctrl+F` | search commands, options and effects |
 | `M`, `G` / `U`, `F8`, `Q` | marker, group / ungroup, snapping, loop |
 | `←` `→` / `↑` `↓` | previous and next frame / zoom |
 | `Esc` | clear the time selection |

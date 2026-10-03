@@ -21,6 +21,8 @@ export interface BoarBridge {
   onCaptionProgress(callback: (progress: CaptionProgress) => void): () => void
   /** Bytes of a bundled file:// asset (packaged app). */
   readAsset(url: string): Promise<Uint8Array>
+  /** Progress on the taskbar button: 0..1, above 1 indeterminate, below 0 hidden. */
+  setProgress(value: number): void
   /** Media library folders picked by the user (Explorer tab). */
   libraryFolders(): Promise<LibraryFolder[]>
   addLibraryFolder(): Promise<string | null>

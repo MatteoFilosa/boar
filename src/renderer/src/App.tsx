@@ -6,7 +6,6 @@ import { MasterBus } from './ui/MasterBus'
 import { MediaDragGhost, StatusBar, useSplit } from './ui/Chrome'
 import { MenuBar } from './ui/MenuBar'
 import { Toolbar } from './ui/Toolbar'
-import { Transport } from './ui/Transport'
 import { VideoPreview } from './ui/VideoPreview'
 import { Timeline } from './ui/timeline/Timeline'
 import { useGlobalShortcuts } from './ui/shortcuts'
@@ -78,7 +77,6 @@ export function App(): React.JSX.Element {
       </div>
       <div className="splitter-h" onPointerDown={(e) => startTopResize(e, 'y')} />
       <Timeline />
-      <Transport />
       <StatusBar />
       <Dialogs />
       <ContextMenu />

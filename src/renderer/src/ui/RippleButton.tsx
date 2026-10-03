@@ -7,7 +7,7 @@ import { shortcutLabel } from './shortcuts'
 const MODES: RippleMode[] = ['tracks', 'tracksMarkers', 'all']
 
 /** Auto Ripple toggle with its mode dropdown. */
-export function RippleButton({ placement = 'below' }: { placement?: 'below' | 'above' }): React.JSX.Element {
+export function RippleButton(): React.JSX.Element {
   const on = useEditor((s) => s.options.autoRipple)
   const mode = useEditor((s) => s.options.rippleMode)
   return (
@@ -26,16 +26,11 @@ export function RippleButton({ placement = 'below' }: { placement?: 'below' | 'a
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect()
-          openContextMenu(
-            r.left,
-            placement === 'above' ? r.top - 2 : r.bottom + 2,
-            [
-              ...MODES.map((m) => ({ label: A.RIPPLE_LABELS[m], checked: on && m === mode, run: () => A.setRippleMode(m) })),
-              'separator' as const,
-              { label: 'Auto Ripple off', checked: !on, run: () => A.setOption('autoRipple', false) }
-            ],
-            placement
-          )
+          openContextMenu(r.left, r.bottom + 2, [
+            ...MODES.map((m) => ({ label: A.RIPPLE_LABELS[m], checked: on && m === mode, run: () => A.setRippleMode(m) })),
+            'separator' as const,
+            { label: 'Auto Ripple off', checked: !on, run: () => A.setOption('autoRipple', false) }
+          ])
         }}
       >
         <ChevronDown size={12} />

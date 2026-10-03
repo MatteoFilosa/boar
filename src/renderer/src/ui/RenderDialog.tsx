@@ -15,10 +15,11 @@ import {
 } from '../engine/export'
 import { chooseDestination } from '../engine/targets'
 import { LOUDNESS_TARGETS, type LoudnessResult, formatLufs } from '../engine/loudness'
+import { BoarProgress } from './BoarProgress'
 
 type RenderState =
   | { kind: 'idle' }
-  | { kind: 'running'; progress: ExportProgress; started: number }
+  | { kind: 'running'; progress: ExportProgress; started: number; withAudio: boolean }
   | { kind: 'done'; label: string; seconds: number; reveal?: () => void; loudness: LoudnessResult | null }
   | { kind: 'error'; message: string }
 
@@ -26,6 +27,13 @@ const PHASES: Record<ExportProgress['phase'], string> = {
   audio: 'Mixing audio',
   video: 'Rendering video',
   finalizing: 'Finalizing file'
+}
+
+/** The phases as one run: mixing audio (when there is audio) is the first tenth. */
+function overallProgress({ phase, progress }: ExportProgress, withAudio: boolean): number {
+  if (phase === 'audio') return progress * 0.1
+  if (phase === 'finalizing') return 0.99
+  return withAudio ? 0.1 + progress * 0.89 : progress * 0.99
 }
 
 export function RenderDialog(): React.JSX.Element {
@@ -65,7 +73,7 @@ export function RenderDialog(): React.JSX.Element {
     cancelled.current = false
     useEditor.setState({ playing: false, exporting: true })
     const started = performance.now()
-    setState({ kind: 'running', progress: { phase: 'audio', progress: 0 }, started })
+    setState({ kind: 'running', progress: { phase: 'audio', progress: 0 }, started, withAudio: false })
     try {
       const result = await exportProject(
         project,
@@ -78,7 +86,10 @@ export function RenderDialog(): React.JSX.Element {
           autoCrossfade: options.autoCrossfade,
           loudness: options.renderLoudness
         },
-        (progress) => setState((s) => (s.kind === 'running' ? { ...s, progress } : s)),
+        (progress) =>
+          setState((s) =>
+            s.kind === 'running' ? { ...s, progress, withAudio: s.withAudio || progress.phase === 'audio' } : s
+          ),
         () => cancelled.current,
         range
       )
@@ -101,7 +112,7 @@ export function RenderDialog(): React.JSX.Element {
     }
   }
 
-  const percent = running ? Math.round(state.progress.progress * 100) : 0
+  const overall = running ? overallProgress(state.progress, state.withAudio) : 0
   const elapsed = running ? (performance.now() - state.started) / 1000 : 0
   const eta =
     running && state.progress.phase === 'video' && state.progress.progress > 0.02
@@ -189,17 +200,13 @@ export function RenderDialog(): React.JSX.Element {
           </div>
 
           {running && (
-            <div className="render-progress">
-              <div className="render-bar">
-                <div style={{ width: `${percent}%` }} />
-              </div>
-              <div className="dim">
-                {PHASES[state.progress.phase]} {percent}%
-                {state.progress.frames ? ` · frame ${state.progress.frame} / ${state.progress.frames}` : ''}
-                {eta !== null ? ` · about ${Math.ceil(eta)} s left` : ''}
-              </div>
-            </div>
+            <BoarProgress value={overall}>
+              {PHASES[state.progress.phase]} · {Math.round(overall * 100)}%
+              {state.progress.frames ? ` · frame ${state.progress.frame} / ${state.progress.frames}` : ''}
+              {eta !== null ? ` · about ${Math.ceil(eta)} s left` : ''}
+            </BoarProgress>
           )}
+          {state.kind === 'done' && <BoarProgress value={1} done />}
           {state.kind === 'done' && (
             <div className="render-result ok">
               Rendered in {state.seconds.toFixed(1)} s: <b>{state.label}</b>

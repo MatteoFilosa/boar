@@ -4,6 +4,7 @@ import * as A from '../core/actions'
 import { useEditor } from '../core/store'
 import { importPaths } from '../media/importer'
 import { type LibraryFolder, type YoutubeProgress, type YoutubeStatus, bridge } from '../platform'
+import { BoarProgress } from './BoarProgress'
 
 const QUALITIES = [
   { label: 'Best available', height: 0 },
@@ -182,12 +183,7 @@ export function YoutubeDialog(): React.JSX.Element {
           <p className="dim">Download only content you own or have permission to use.</p>
 
           {busy && (
-            <div className="render-progress">
-              <div className="render-bar">
-                <div style={{ width: `${Math.round(busy.progress * 100)}%` }} />
-              </div>
-              <div className="dim">{busy.text}</div>
-            </div>
+            <BoarProgress value={busy.progress}>{busy.text}</BoarProgress>
           )}
           {(blocker || message) && (
             <div className={`render-result${message && !message.error ? '' : ' error'}`}>{message?.text ?? blocker}</div>

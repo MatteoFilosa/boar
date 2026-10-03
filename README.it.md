@@ -43,6 +43,7 @@
 - **Velocità**: `Ctrl` + trascina un bordo per accelerare o rallentare (0.25x–4x, l'audio mantiene l'intonazione).
 - Split, gruppi, marker, snapping, quantizzazione ai frame, menu contestuali e 200 livelli di annulla.
 - **Anteprima a schermo intero** (`F`): rivedi il montaggio senza distrazioni, con barra di avanzamento e marker al volo (`M`).
+- **Ricerca comandi** (`Ctrl+F`): scrivi quello che ti serve ("export", "subtitles", "blur") per trovare e lanciare qualsiasi comando dei menu, opzione, pannello, effetto o titolo.
 
 ### Verticale e social
 
@@ -164,6 +165,7 @@ L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: 
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copia / taglia / incolla (anche immagini dagli appunti) |
 | `Ctrl+S` / `Ctrl+O` | salva / apri progetto (`.boar`) |
 | `Ctrl+M` | Render As |
+| `Ctrl+F` | cerca comandi, opzioni ed effetti |
 | `M`, `G` / `U`, `F8`, `Q` | marker, raggruppa / separa, snapping, loop |
 | `←` `→` / `↑` `↓` | frame precedente e successivo / zoom |
 | `Esc` | togli la selezione temporale |

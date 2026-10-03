@@ -52,6 +52,7 @@ export const BINDINGS: Binding[] = [
   { key: 's', ctrl: true, command: 'saveProject' },
   { key: 's', ctrl: true, shift: true, command: 'saveProjectAs' },
   { key: 'm', ctrl: true, command: 'render' },
+  { key: 'f', ctrl: true, command: 'searchCommands' },
   { key: 'Home', command: 'goToStart' },
   { key: 'End', command: 'goToEnd' },
   { key: 'ArrowLeft', command: 'previousFrame' },

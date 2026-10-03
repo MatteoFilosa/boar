@@ -11,6 +11,7 @@ import { isDirty } from '../core/session'
 import { DEFAULT_SHORT_OPTIONS, type MakeShortOptions, type ShortFraming, backToLongVideo, makeShort } from '../engine/makeShort'
 import { commands } from './commands'
 import { shortcutLabel } from './shortcuts'
+import { BoarProgress } from './BoarProgress'
 
 const FRAMINGS: { id: ShortFraming; label: string }[] = [
   { id: 'reframe', label: 'Follow the face' },
@@ -136,7 +137,11 @@ export function ShortsPanel(): React.JSX.Element {
           Progress bar
         </label>
       </div>
-      {busy && <div className="dim shorts-busy">{busy}</div>}
+      {busy && (
+        <BoarProgress value={null} className="shorts-busy">
+          {busy}
+        </BoarProgress>
+      )}
       {error && <div className="render-result error">{error}</div>}
       <div className="shorts-list">
         {shorts.length === 0 ? (

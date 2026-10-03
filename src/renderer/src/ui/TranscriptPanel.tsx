@@ -7,6 +7,7 @@ import { type TimelineWord, type WordFlag, defaultSpeechTrack, hasSpeech, longPa
 import { FLICKS_PER_SECOND, type Flicks, formatTimecode } from '../core/time'
 import type { MediaItem } from '../core/types'
 import { type CaptionProgress, type CaptionStatus, bridge } from '../platform'
+import { BoarProgress } from './BoarProgress'
 
 const LANGUAGES = [
   ['auto', 'Auto'],
@@ -327,14 +328,9 @@ export function TranscriptPanel(): React.JSX.Element {
         )}
       </div>
       {busy && (
-        <div className="render-progress tr-busy">
-          <div className="render-bar">
-            <div style={{ width: `${Math.round(busy.progress * 100)}%` }} />
-          </div>
-          <div className="dim">
-            {busy.phase === 'download' ? 'Downloading' : 'Transcribing'} {busy.label} {Math.round(busy.progress * 100)}%
-          </div>
-        </div>
+        <BoarProgress value={busy.progress} className="tr-busy">
+          {busy.phase === 'download' ? 'Downloading' : 'Transcribing'} {busy.label} {Math.round(busy.progress * 100)}%
+        </BoarProgress>
       )}
       {error && <div className="render-result error">{error}</div>}
       {notice && <p className="dim tr-notice">{notice}</p>}

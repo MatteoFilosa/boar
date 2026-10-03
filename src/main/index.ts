@@ -143,6 +143,11 @@ function registerIpc(): void {
     if (userChosenPaths.has(path)) shell.showItemInFolder(path)
   })
 
+  // Progress of long tasks on the taskbar button: 0..1, above 1 indeterminate, below 0 hidden.
+  ipcMain.on('app:progress', (event, value: unknown) => {
+    if (typeof value === 'number' && Number.isFinite(value)) BrowserWindow.fromWebContents(event.sender)?.setProgressBar(value)
+  })
+
   // Bundled assets (AI models, wasm) for the packaged app, whose pages are
   // file:// and cannot fetch() them. Only files inside the app are readable.
   ipcMain.handle('app:readAsset', async (_event, url: string) => {

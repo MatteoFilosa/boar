@@ -17,6 +17,7 @@ import { QUALITY_SCALE, getEngine } from '../engine/preview'
 import { setFullScreenHost, toggleFullScreenPreview } from './fullScreen'
 import { shortcutLabel } from './shortcuts'
 import { TransformOverlay } from './TransformOverlay'
+import { Transport } from './Transport'
 
 const QUALITIES: { id: PreviewQuality; label: string }[] = [
   { id: 'draft', label: 'Draft (1/4)' },
@@ -253,6 +254,7 @@ export function VideoPreview(): React.JSX.Element {
         </div>
         {full && <FullScreenControls visible={!idle} />}
       </div>
+      <Transport />
       <div className="preview-info">
         <span>
           Project: {settings.width}x{settings.height}x32, {fps}p

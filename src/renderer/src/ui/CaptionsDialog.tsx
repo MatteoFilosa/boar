@@ -11,6 +11,7 @@ import { flicksToSeconds, formatTimecode } from '../core/time'
 import { sourceLength } from '../core/timeline'
 import type { TimelineEvent } from '../core/types'
 import { type CaptionProgress, type CaptionStatus, bridge } from '../platform'
+import { BoarProgress } from './BoarProgress'
 
 const LANGUAGES = [
   ['auto', 'Detect automatically'],
@@ -170,14 +171,9 @@ export function CaptionsDialog(): React.JSX.Element {
           </div>
 
           {busy && (
-            <div className="render-progress">
-              <div className="render-bar">
-                <div style={{ width: `${Math.round(busy.progress * 100)}%` }} />
-              </div>
-              <div className="dim">
-                {busy.phase === 'download' ? 'Downloading model' : 'Transcribing'} {Math.round(busy.progress * 100)}%
-              </div>
-            </div>
+            <BoarProgress value={busy.progress}>
+              {busy.phase === 'download' ? 'Downloading model' : 'Transcribing'} {Math.round(busy.progress * 100)}%
+            </BoarProgress>
           )}
           {(blocker || error) && <div className="render-result error">{error || blocker}</div>}
 

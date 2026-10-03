@@ -11,7 +11,7 @@ import { TransitionBrowser } from './TransitionBrowser'
 import { TranscriptPanel } from './TranscriptPanel'
 import { ShortsPanel } from './ShortsPanel'
 
-const TABS: { id: DockTab; label: string; title: string }[] = [
+export const DOCK_TABS: { id: DockTab; label: string; title: string }[] = [
   { id: 'media', label: 'Project Media', title: 'Media used in this project' },
   { id: 'transcript', label: 'Transcript', title: 'Edit the speech as text: delete words to cut the video, remove fillers' },
   { id: 'shorts', label: 'Shorts', title: 'Turn a long video into vertical Shorts' },
@@ -74,7 +74,7 @@ export function Dock(): React.JSX.Element {
           if (tabsRef.current) tabsRef.current.scrollLeft += e.deltaY + e.deltaX
         }}
       >
-        {TABS.map((t) => (
+        {DOCK_TABS.map((t) => (
           <button
             key={t.id}
             className={`dock-tab${tab === t.id ? ' active' : ''}`}

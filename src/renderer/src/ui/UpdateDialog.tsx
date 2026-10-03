@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import * as A from '../core/actions'
 import { useEditor } from '../core/store'
 import { type UpdateInfo, bridge } from '../platform'
+import { BoarProgress } from './BoarProgress'
 
 type Phase = 'idle' | 'downloading' | 'ready' | 'failed'
 
@@ -66,14 +67,9 @@ export function UpdateDialog({ info, error }: { info: UpdateInfo | null; error?:
         </p>
         {!info.file && <p className="dim">This release has no installer for this system: get it from the release page.</p>}
         {phase === 'downloading' && (
-          <div className="render-progress">
-            <div className="render-bar">
-              <div style={{ width: `${Math.round(progress * 100)}%` }} />
-            </div>
-            <div className="dim">
-              Downloading {info.file?.name} {Math.round(progress * 100)}%
-            </div>
-          </div>
+          <BoarProgress value={progress}>
+            Downloading {info.file?.name} {Math.round(progress * 100)}%
+          </BoarProgress>
         )}
         {phase === 'ready' && (
           <p>

@@ -131,6 +131,7 @@ export const commands = {
   goToEnd: A.goToEnd,
   backOneSecond: (): void => A.setCursor(useEditor.getState().cursor - FLICKS_PER_SECOND),
   shortcuts: (): void => A.openDialog({ kind: 'shortcuts' }),
+  searchCommands: (): void => document.querySelector<HTMLInputElement>('#command-search')?.select(),
   about: (): void => A.openDialog({ kind: 'about' }),
   checkForUpdates: (): void => void checkForUpdates(true),
   toggleUpdateCheck: (): void => A.toggleOption('checkUpdates'),

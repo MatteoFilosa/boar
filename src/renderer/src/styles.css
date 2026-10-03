@@ -172,7 +172,6 @@ button {
 }
 
 .menubar-title {
-  margin-left: auto;
   padding: 0 12px;
   display: flex;
   align-items: center;
@@ -198,6 +197,72 @@ button {
   flex: none;
 }
 
+/* Command search (menu bar) */
+
+.command-search {
+  position: relative;
+  margin: 0 auto;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+}
+
+.command-search input {
+  width: 280px;
+  height: 20px;
+  padding: 0 8px 0 25px;
+  background: var(--input);
+  border: 1px solid #3a3c42;
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.command-search input::placeholder {
+  color: var(--text-faint);
+}
+
+.command-search input:focus {
+  border-color: var(--accent);
+}
+
+.command-search-icon {
+  position: absolute;
+  left: 20px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.command-results {
+  left: 12px;
+  width: 440px;
+  max-height: min(420px, 70vh);
+  overflow-y: auto;
+}
+
+.command-results .menu-item.active:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.command-results .menu-item.active:not(:disabled) .menu-shortcut,
+.command-results .menu-item.active:not(:disabled) .command-path {
+  color: #e8f0ff;
+}
+
+.command-path {
+  margin-left: 16px;
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.command-empty {
+  padding: 6px 12px;
+  color: var(--text-faint);
+}
+
 /* Toolbars */
 
 .toolbar,
@@ -212,9 +277,30 @@ button {
   flex: none;
 }
 
+/* Under the preview: narrow previews drop the end time, then the navigation buttons. */
 .transport {
   border-bottom: 0;
   border-top: 1px solid var(--border);
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.transport-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+@container (max-width: 420px) {
+  .transport-time .tc-dim {
+    display: none;
+  }
+}
+
+@container (max-width: 330px) {
+  .transport-nav {
+    display: none;
+  }
 }
 
 .tool-btn {
@@ -283,13 +369,6 @@ button {
   background: #3d3f45;
 }
 
-.transport-tools {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
 .split-btn {
   display: inline-flex;
   align-items: center;
@@ -308,7 +387,9 @@ button {
 }
 
 .transport-time {
-  margin-left: 12px;
+  margin-left: auto;
+  padding-left: 12px;
+  white-space: nowrap;
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -1459,18 +1540,236 @@ body.moving-window * {
   gap: 6px;
 }
 
-.render-bar {
-  height: 10px;
-  background: #17181b;
-  border: 1px solid #3a3c42;
-  border-radius: 5px;
+/* Progress: the boar runs toward the flag, its dug-up trail is the bar (BoarProgress.tsx). */
+
+.boar-track {
+  --boar-w: 64px;
+  /* Space the runner covers: the track minus the boar and the flag. */
+  --run: calc(100% - var(--boar-w) - 26px);
+  position: relative;
+  height: 44px;
   overflow: hidden;
 }
 
-.render-bar > div {
-  height: 100%;
-  background: linear-gradient(90deg, #2f6fd0, #4f9cff);
-  transition: width 0.2s;
+/* The ground: a dark track, filled orange where the boar has passed. */
+.boar-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: #17181b;
+  border: 1px solid #3a3c42;
+  border-radius: 3px;
+}
+
+.boar-trail {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 6px;
+  width: calc(var(--run) * var(--p) + 18px);
+  background: linear-gradient(90deg, #e5571f, #f7a42c);
+  border-radius: 3px;
+  transition: width 0.25s linear;
+}
+
+.boar-flag {
+  position: absolute;
+  right: 10px;
+  bottom: 5px;
+  width: 2px;
+  height: 30px;
+  background: var(--text-dim);
+}
+
+.boar-flag::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0;
+  width: 14px;
+  height: 10px;
+  background: repeating-conic-gradient(#1c1c1f 0 25%, var(--text) 0 50%) 0 0 / 7px 5px;
+}
+
+.boar-runner {
+  position: absolute;
+  bottom: 2px;
+  left: calc(var(--run) * var(--p));
+  width: var(--boar-w);
+  transition: left 0.25s linear;
+}
+
+.boar-sprite {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.boar-body {
+  animation: boar-bob 0.2s ease-in-out infinite alternate;
+}
+
+/* The logo's boar in reverse: orange on the dark UI. */
+.boar-coat {
+  fill: #f08a2c;
+}
+
+.boar-shade {
+  fill: #c4601c;
+}
+
+.boar-snout {
+  fill: #a94d16;
+}
+
+.boar-tusk {
+  fill: #f4ead8;
+}
+
+.boar-eye {
+  fill: #201716;
+}
+
+.boar-leg {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+  animation: boar-leg 0.4s ease-in-out infinite;
+}
+
+.boar-leg.hind-near {
+  animation-delay: -0.06s;
+}
+
+.boar-leg.front-far {
+  animation-delay: -0.2s;
+}
+
+.boar-leg.front-near {
+  animation-delay: -0.26s;
+}
+
+.boar-tail {
+  fill: none;
+  stroke: #f08a2c;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: 100% 30%;
+  animation: boar-tail 0.2s ease-in-out infinite alternate;
+}
+
+.boar-dust circle {
+  fill: #c9ccd4;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: boar-dust 0.6s ease-out infinite;
+}
+
+.boar-dust circle:nth-child(2) {
+  animation-delay: -0.2s;
+}
+
+.boar-dust circle:nth-child(3) {
+  animation-delay: -0.4s;
+}
+
+/* Unknown length: the boar runs back and forth, no trail or flag. */
+.boar-track.indeterminate .boar-trail,
+.boar-track.indeterminate .boar-flag {
+  display: none;
+}
+
+.boar-track.indeterminate .boar-runner {
+  transition: none;
+  animation: boar-patrol 3.2s linear infinite;
+}
+
+/* Finished: standing at the flag. */
+.boar-track.done .boar-runner *,
+.boar-track.done .boar-runner {
+  animation: none;
+}
+
+.boar-track.done .boar-dust {
+  display: none;
+}
+
+@keyframes boar-bob {
+  to {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes boar-leg {
+  0%,
+  100% {
+    transform: rotate(32deg);
+  }
+  50% {
+    transform: rotate(-32deg);
+  }
+}
+
+@keyframes boar-tail {
+  from {
+    transform: rotate(-12deg);
+  }
+  to {
+    transform: rotate(18deg);
+  }
+}
+
+@keyframes boar-dust {
+  0% {
+    opacity: 0.85;
+    transform: translate(0, 0) scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-16px, -6px) scale(1.8);
+  }
+}
+
+@keyframes boar-patrol {
+  0% {
+    left: 0;
+    transform: scaleX(1);
+  }
+  49.99% {
+    left: calc(100% - var(--boar-w));
+    transform: scaleX(1);
+  }
+  50% {
+    left: calc(100% - var(--boar-w));
+    transform: scaleX(-1);
+  }
+  99.99% {
+    left: 0;
+    transform: scaleX(-1);
+  }
+  100% {
+    left: 0;
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boar-track .boar-runner * {
+    animation: none;
+  }
+
+  .boar-track.indeterminate .boar-runner {
+    animation: none;
+    left: calc(50% - var(--boar-w) / 2);
+  }
+
+  .boar-dust {
+    display: none;
+  }
 }
 
 .render-result {
@@ -2459,7 +2758,7 @@ body.dragging-track * {
 }
 
 .shorts-busy {
-  padding: 6px 10px;
+  margin: 6px 10px;
 }
 
 .shorts-list {
