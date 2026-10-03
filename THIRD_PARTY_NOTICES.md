@@ -13,7 +13,7 @@ Boar bundles or downloads the following components. Each keeps its own license.
 | [Lucide](https://lucide.dev/) (lucide-react) | ISC | Icons |
 | [Mediabunny](https://github.com/Vanilagy/mediabunny) | MPL-2.0 (unmodified; source at the link) | Media decoding, encoding and MP4 muxing |
 | [MediaPipe Tasks Vision](https://github.com/google-ai-edge/mediapipe) and its models (BlazeFace short range, Selfie Segmenter) | Apache-2.0 | Face detection (Auto Reframe, Auto Zoom), background removal |
-| [web-noise-suppressor](https://github.com/sapphi-red/web-noise-suppressor) | MIT; includes RNNoise (BSD-3-Clause) and SpeexDSP (BSD-3-Clause) | Noise reduction |
+| [web-noise-suppressor](https://github.com/sapphi-red/web-noise-suppressor) | MIT; includes RNNoise (BSD-3-Clause), SpeexDSP (BSD-3-Clause) and [GTCRN](https://github.com/Xiaobin-Rong/gtcrn) (MIT) | Noise reduction |
 | Fonts via [Fontsource](https://fontsource.org/): Caveat, Dancing Script, Fredoka, Inter, League Spartan, Montserrat, Nunito, Oswald, Outfit, Playfair Display, Rubik, Sora, Space Grotesk, TikTok Sans, Tilt Neon, Unbounded, Abril Fatface, Anton, Archivo Black, Bangers, Barlow Condensed, Bebas Neue, Bungee, Courier Prime, DM Serif Display, Instrument Serif, Lilita One, Lobster, Monoton, Pacifico, Poppins, Press Start 2P, Righteous, Shrikhand | SIL Open Font License 1.1 | Text and captions |
 | Fonts via Fontsource: Luckiest Guy, Permanent Marker, Special Elite, Yellowtail | Apache-2.0 | Text and captions |
 
