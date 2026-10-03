@@ -11,7 +11,7 @@
   <img alt="Licenza MIT" src="https://img.shields.io/badge/licenza-MIT-3fb950">
   <img alt="Windows 10 e 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4">
   <img alt="GPU Intel, NVIDIA, AMD" src="https://img.shields.io/badge/GPU-Intel%20%7C%20NVIDIA%20%7C%20AMD-555">
-  <img alt="Versione 0.3.0 alpha" src="https://img.shields.io/badge/versione-0.3.0%20alpha-f28c28">
+  <img alt="Versione 0.3.1 alpha" src="https://img.shields.io/badge/versione-0.3.1%20alpha-f28c28">
 </p>
 
 <p align="center">

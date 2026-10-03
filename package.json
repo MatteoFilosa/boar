@@ -1,7 +1,7 @@
 {
   "name": "boar",
   "productName": "Boar",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Desktop video editor with a multitrack timeline and local AI tools.",
   "author": "Matteo Filosa",
