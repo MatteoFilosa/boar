@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/flags/gb.svg" height="14" alt=""> <b>English</b> · <a href="README.it.md"><img src="docs/flags/it.svg" height="14" alt=""> Italiano</a>
+  <a href="README.md"><img src="docs/flags/gb.svg" height="14" alt=""> <b>English</b></a> · <a href="README.it.md"><img src="docs/flags/it.svg" height="14" alt=""> Italiano</a>
 </p>
 
 <p align="center">
