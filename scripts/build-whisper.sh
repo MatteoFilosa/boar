@@ -44,7 +44,8 @@ case "$(uname -s)" in
       -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH='$ORIGIN'
     ;;
   *)
-    cmake -S "$work/src" -B "$work/build" -G "Visual Studio 17 2022" -A x64 "${common[@]}" \
+    # The newest Visual Studio installed (CMake's default generator), 64-bit.
+    cmake -S "$work/src" -B "$work/build" "${common[@]}" \
       -DBUILD_SHARED_LIBS=ON -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON \
       -DGGML_VULKAN=ON \
       -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
