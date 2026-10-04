@@ -205,7 +205,7 @@ function MatchMediaDialog({ mediaId }: { mediaId: string }): React.JSX.Element {
 }
 
 const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
-  playStop: 'Play / stop (back to start position)',
+  playStop: 'Play / pause (Options can make it return to the start)',
   playPause: 'Play / pause',
   play: 'Play',
   pause: 'Pause',

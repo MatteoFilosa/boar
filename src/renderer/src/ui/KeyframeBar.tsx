@@ -9,6 +9,13 @@ import { previewUrl } from '../media/proxy'
 // Shared by the keyframed tool windows (Event Pan/Crop, Event Mask): the
 // source picture at the cursor and the keyframe bar under the workspace.
 
+/** Elements that decoded a frame once: while a seek decodes the next one they still draw the last. */
+const decoded = new WeakSet<HTMLVideoElement>()
+
+/** A frame of the element can be drawn (the last one while it seeks, instead of black). */
+export const canDraw = (video: HTMLVideoElement | null): video is HTMLVideoElement =>
+  !!video && (video.readyState >= 2 || decoded.has(video))
+
 /** Keeps a muted video element on the frame a tool window is showing. */
 export function useSourceFrame(media: MediaItem | undefined, seconds: number, onFrame: () => void): HTMLVideoElement | null {
   const [video, setVideo] = useState<HTMLVideoElement | null>(null)
@@ -27,7 +34,10 @@ export function useSourceFrame(media: MediaItem | undefined, seconds: number, on
   }, [media])
   useEffect(() => {
     if (!video) return
-    const done = (): void => onFrame()
+    const done = (): void => {
+      decoded.add(video)
+      onFrame()
+    }
     video.addEventListener('seeked', done)
     video.addEventListener('loadeddata', done)
     if (Math.abs(video.currentTime - seconds) > 0.001) video.currentTime = seconds + 0.001
@@ -47,7 +57,7 @@ interface Props {
   srcTime: Flicks
   /** Index in `keys` of the keyframe at the cursor (-1: none). */
   here: number
-  /** Cursor position within the event (timeline flicks from its start). */
+  /** Cursor position within the event (timeline flicks from its start); the bar shows the project time, like the preview. */
   local: Flicks
   /** One frame, in flicks. */
   frame: Flicks
@@ -131,7 +141,9 @@ export function KeyframeBar({ event, keys, srcTime, here, local, frame, frameRat
         }}
         onPointerMove={(e) => e.buttons === 1 && seek(e)}
       />
-      <span className="pc-time">{formatTimecode(local, frameRate)}</span>
+      <span className="pc-time" title="Project time at the cursor, as in the preview">
+        {formatTimecode(event.start + local, frameRate)}
+      </span>
     </div>
   )
 }

@@ -30,11 +30,18 @@ import { type LoudnessResult, normalizeLoudness } from './loudness'
 
 export type ExportCodec = 'avc' | 'hevc' | 'av1' | 'vp9'
 export type ExportQuality = 'medium' | 'high' | 'veryHigh'
+/** Who encodes the video: the graphics card's encoder, the software one on the processor, or the best available. */
+export type ExportEncoder = 'auto' | 'gpu' | 'cpu'
+export type ExportAudioCodec = 'aac' | 'opus'
 
 export interface ExportSettings {
   codec: ExportCodec
   quality: ExportQuality
+  /** Default 'auto'. */
+  encoder?: ExportEncoder
   includeAudio: boolean
+  /** Default 'aac' (Opus when this system has no AAC encoder). */
+  audioCodec?: ExportAudioCodec
   masterDb: number
   autoCrossfade: boolean
   /** Integrated loudness target in LUFS for the audio (null or absent = leave the mix as is). */
@@ -57,9 +64,39 @@ export interface ExportProgress {
 export const CODEC_LABELS: Record<ExportCodec, string> = {
   avc: 'H.264 / AVC (most compatible)',
   hevc: 'H.265 / HEVC (smaller files)',
-  av1: 'AV1 (smallest, slow if not hardware)',
-  vp9: 'VP9'
+  av1: 'AV1 (smallest files)',
+  vp9: 'VP9 (open format)'
 }
+
+export interface EncoderSupport {
+  /** The graphics card has an encoder for this codec at this size. */
+  gpu: boolean
+  /** A software encoder (on the processor) is available. */
+  cpu: boolean
+}
+
+/** For each codec, whether the graphics card and the processor can encode it at the project size. */
+export async function encoderSupport(width: number, height: number): Promise<Record<ExportCodec, EncoderSupport>> {
+  const check = (codec: ExportCodec, hardwareAcceleration: 'prefer-hardware' | 'prefer-software'): Promise<boolean> =>
+    canEncodeVideo(codec, { width, height, hardwareAcceleration }).catch(() => false)
+  const entries = await Promise.all(
+    (['avc', 'hevc', 'av1', 'vp9'] as const).map(async (codec) => {
+      const [gpu, cpu] = await Promise.all([check(codec, 'prefer-hardware'), check(codec, 'prefer-software')])
+      return [codec, { gpu, cpu }] as const
+    })
+  )
+  return Object.fromEntries(entries) as Record<ExportCodec, EncoderSupport>
+}
+
+/** Audio codecs this system can encode for the render. */
+export async function audioSupport(): Promise<Record<ExportAudioCodec, boolean>> {
+  const check = (codec: ExportAudioCodec): Promise<boolean> =>
+    canEncodeAudio(codec, { numberOfChannels: 2, sampleRate: 48000 }).catch(() => false)
+  const [aac, opus] = await Promise.all([check('aac'), check('opus')])
+  return { aac, opus }
+}
+
+const ACCELERATION = { auto: 'no-preference', gpu: 'prefer-hardware', cpu: 'prefer-software' } as const
 
 const QUALITIES = { medium: QUALITY_MEDIUM, high: QUALITY_HIGH, veryHigh: QUALITY_VERY_HIGH }
 
@@ -384,12 +421,13 @@ export async function exportProject(
     codec: settings.codec,
     quality: QUALITIES[settings.quality],
     keyFrameInterval: 2,
-    hardwareAcceleration: 'prefer-hardware'
+    // Automatic: the graphics card's encoder when it has one for this codec, otherwise software.
+    hardwareAcceleration: ACCELERATION[settings.encoder ?? 'auto']
   })
   output.addVideoTrack(video, { frameRate: rate })
   let audio: AudioBufferSource | null = null
   if (mix) {
-    const codec = (await canEncodeAudio('aac')) ? 'aac' : 'opus'
+    const codec = settings.audioCodec === 'opus' || !(await canEncodeAudio('aac')) ? 'opus' : 'aac'
     audio = new AudioBufferSource({ codec, quality: QUALITY_HIGH })
     output.addAudioTrack(audio)
   }

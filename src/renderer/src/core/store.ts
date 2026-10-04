@@ -33,12 +33,18 @@ export interface EditorOptions {
   rippleMode: RippleMode
   /** Render As loudness target in LUFS, null = off. */
   renderLoudness: number | null
+  /** Render As choices, kept for the next render. */
+  renderCodec: 'avc' | 'hevc' | 'av1' | 'vp9'
+  renderEncoder: 'auto' | 'gpu' | 'cpu'
+  renderAudio: 'aac' | 'opus' | 'none'
   /** Optional feature: Download from Link through yt-dlp (off until the user enables it). */
   linkDownloads: boolean
   /** Look for a new release when Boar starts. */
   checkUpdates: boolean
   /** Videos that are slow to seek get a light copy for the preview. */
   proxies: boolean
+  /** Space stops and goes back to where playback started (off: it pauses where it is). */
+  spaceReturns: boolean
 }
 
 const DEFAULT_OPTIONS: EditorOptions = {
@@ -52,9 +58,13 @@ const DEFAULT_OPTIONS: EditorOptions = {
   autoRipple: false,
   rippleMode: 'tracks',
   renderLoudness: -14,
+  renderCodec: 'avc',
+  renderEncoder: 'auto',
+  renderAudio: 'aac',
   linkDownloads: false,
   checkUpdates: true,
-  proxies: true
+  proxies: true,
+  spaceReturns: false
 }
 
 const OPTIONS_KEY = 'boar.options'

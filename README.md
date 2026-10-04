@@ -75,7 +75,7 @@
 - Transitions: zoom, whip pan, spin, glitch, flash, dip to black, blur, pixelate.
 - Masks: ellipse, rectangle or a custom shape drawn with points and animated with keyframes. **Smart Select** cuts out an object with a click (more clicks add or leave out parts) and *Track Motion* follows it through the clip.
 - Event Pan/Crop with keyframes.
-- **Render As** MP4 (H.264, HEVC, AV1, VP9) with the GPU's hardware encoder. Preview and export use the same engine: what you see is what you export.
+- **Render As** MP4 (H.264, HEVC, AV1, VP9): you choose who encodes, the graphics card (NVENC, Quick Sync, AMF, VideoToolbox) or the processor, and the audio (AAC or Opus). Preview and export use the same engine: what you see is what you export.
 
 ## Installation
 
@@ -122,7 +122,7 @@ Boar works with **Intel, NVIDIA and AMD** GPUs: no code is tied to one vendor.
 
 | What | How |
 | --- | --- |
-| Export | The graphics card's hardware encoder through WebCodecs. *Render As* only lists the formats your GPU can encode: H.264 is always there, HEVC and AV1 depend on the card's generation. On macOS the hardware encoder covers H.264 and HEVC; on Linux export often runs on the CPU, slower. |
+| Export | WebCodecs: the graphics card's encoder (NVENC on NVIDIA, Quick Sync on Intel, AMF on AMD, VideoToolbox on Mac) or the software one on the processor, as you choose in *Render As*, which marks for each format what your machine can do. HEVC and AV1 on the card depend on its generation; on Linux export often runs on the processor, slower. |
 | Preview and effects | WebGL2, the same on every recent GPU. |
 | Face, background and Smart Select (AI) | MediaPipe on the GPU, falling back to the CPU. |
 | Transcription | whisper.cpp built into Boar: on the GPU through Vulkan (Windows, Linux) or Metal (macOS), otherwise on the CPU. |
@@ -142,13 +142,13 @@ The agent reads the timeline and the transcripts, looks at frames and makes the 
 
 ## Optional features
 
-**Download from Link (yt-dlp).** Off by default: turn it on in *Options*. It downloads video or audio from the sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp), which is not included in Boar and is downloaded on first use. Only download content you have the right to use: the terms of many sites forbid downloading.
+**Download from Link (yt-dlp).** Off by default: turn it on in *Options*. It downloads video or audio from the sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp), which is not included in Boar and is downloaded on first use. The window stays open beside the timeline: *Download and Add to Timeline* puts the file at the cursor, or drag it from the window. Video and sound come as separate streams from most sites and Boar joins them itself, so FFmpeg is not needed. Only download content you have the right to use: the terms of many sites forbid downloading.
 
 ## Keyboard shortcuts
 
 | Key | Action |
 | --- | --- |
-| `Space` / `Enter` | play and stop / play and pause |
+| `Space` / `Enter` | play and pause (*Options* can make Space return to the start) |
 | `F` / `F11` | full screen preview (`Esc` to leave) |
 | `S` | split at the cursor or at the edges of the time selection |
 | `Delete` / `Shift+Delete` | delete / delete and close the gap |

@@ -136,6 +136,7 @@ function useMenus(): Menu[] {
         { label: 'Automatic Crossfades', command: 'toggleCrossfades', checked: options.autoCrossfade },
         { label: 'Quantize to Frames', command: 'toggleQuantize', checked: options.quantize },
         { label: 'Loop Playback', command: 'toggleLoop', checked: options.loop },
+        { label: 'Space Returns to the Start Position', command: 'toggleSpaceReturns', checked: options.spaceReturns },
         'separator',
         { label: 'AI Agents (MCP)...', command: 'aiAgents' },
         { label: 'Download from Link (yt-dlp, optional)', command: 'toggleLinkDownloads', checked: options.linkDownloads },

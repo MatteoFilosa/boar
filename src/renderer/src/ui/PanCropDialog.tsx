@@ -17,7 +17,7 @@ import type { MediaItem, TimelineEvent } from '../core/types'
 import { sourceTime } from '../core/timeline'
 import { imageCache } from '../media/cache'
 import { rotateCursor, snapAngle } from './rotateCursor'
-import { KeyframeBar, useSourceFrame } from './KeyframeBar'
+import { KeyframeBar, canDraw, useSourceFrame } from './KeyframeBar'
 
 type Corners = [number, number][]
 
@@ -214,7 +214,7 @@ function PanCropWindow({
     ctx.fillStyle = '#141518'
     ctx.fillRect(0, 0, cw, ch)
     const source: CanvasImageSource | null =
-      media.kind === 'image' ? (imageCache.get(media.id) ?? null) : video && video.readyState >= 2 ? video : null
+      media.kind === 'image' ? (imageCache.get(media.id) ?? null) : canDraw(video) ? video : null
     ctx.fillStyle = '#000'
     ctx.fillRect(sx(0), sy(0), sw * scale, sh * scale)
     if (source) ctx.drawImage(source, sx(0), sy(0), sw * scale, sh * scale)
@@ -339,22 +339,30 @@ function PanCropWindow({
             </button>
           </div>
           <div className="pc-group">Keyframe at cursor</div>
-          <select
-            className="select"
-            disabled={!keyHere}
-            value={keyHere?.ease ?? 'smooth'}
-            onChange={(e) =>
-              keyHere &&
-              A.setPanCropKeys(
-                event.id,
-                event.panCrop.map((k) => (k === keyHere ? { ...k, ease: e.target.value as Ease } : k))
-              )
-            }
-          >
-            <option value="smooth">Smooth</option>
-            <option value="linear">Linear</option>
-            <option value="hold">Hold</option>
-          </select>
+          {keyHere ? (
+            <label className="pc-field" title="How the framing moves from this keyframe to the next one">
+              <span>Motion</span>
+              <select
+                className="select"
+                value={keyHere.ease}
+                onChange={(e) =>
+                  A.setPanCropKeys(
+                    event.id,
+                    event.panCrop.map((k) => (k === keyHere ? { ...k, ease: e.target.value as Ease } : k))
+                  )
+                }
+              >
+                <option value="smooth">Smooth (eases in and out)</option>
+                <option value="linear">Linear (steady speed)</option>
+                <option value="hold">Hold (jumps at the next)</option>
+              </select>
+            </label>
+          ) : (
+            <p className="dim pc-hint">
+              No keyframe here. To animate, add one with <b>+◇</b> under the picture at each moment and change the framing:
+              Boar moves between them.
+            </p>
+          )}
         </div>
         <div className="pc-main">
           <canvas

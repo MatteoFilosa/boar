@@ -180,7 +180,8 @@ const OPTION_LABELS = {
   loop: 'Loop playback',
   autoRipple: 'Auto Ripple',
   checkUpdates: 'Check for updates at startup',
-  proxies: 'Proxies for videos that are slow to seek'
+  proxies: 'Proxies for videos that are slow to seek',
+  spaceReturns: 'Space returns to the start position'
 } as const
 
 export function toggleOption(key: keyof typeof OPTION_LABELS): void {

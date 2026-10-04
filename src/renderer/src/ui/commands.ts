@@ -123,7 +123,8 @@ export const commands = {
   play: (): void => getEngine().play(),
   pause: (): void => getEngine().pause(),
   stop: (): void => getEngine().stop(),
-  playStop: (): void => getEngine().togglePlay(true),
+  // Space: pauses where it is, or (Options) stops back at the start position.
+  playStop: (): void => getEngine().togglePlay(useEditor.getState().options.spaceReturns),
   playPause: (): void => getEngine().togglePlay(false),
   playFromStart: (): void => getEngine().playFromStart(),
   previousFrame: (): void => A.stepFrames(-1),
@@ -139,6 +140,7 @@ export const commands = {
   checkForUpdates: (): void => void checkForUpdates(true),
   toggleUpdateCheck: (): void => A.toggleOption('checkUpdates'),
   toggleProxies: (): void => A.toggleOption('proxies'),
+  toggleSpaceReturns: (): void => A.toggleOption('spaceReturns'),
   loadDemoMedia: (): void => void loadDemoMedia()
 }
 

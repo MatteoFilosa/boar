@@ -75,7 +75,7 @@
 - Transizioni: zoom, whip pan, spin, glitch, flash, dissolvenza al nero, blur, pixel.
 - Maschere: ellisse, rettangolo o forma custom disegnata a punti e animata con i keyframe. **Smart Select** scontorna un oggetto con un clic (altri clic aggiungono o tolgono parti) e *Track Motion* lo segue per tutta la clip.
 - Event Pan/Crop con keyframe.
-- **Render As** in MP4 (H.264, HEVC, AV1, VP9) con l'encoder hardware della GPU. L'anteprima e l'export usano lo stesso motore: quello che vedi è quello che esporti.
+- **Render As** in MP4 (H.264, HEVC, AV1, VP9): scegli chi codifica, la scheda video (NVENC, Quick Sync, AMF, VideoToolbox) o il processore, e l'audio (AAC o Opus). L'anteprima e l'export usano lo stesso motore: quello che vedi è quello che esporti.
 
 ## Installazione
 
@@ -122,7 +122,7 @@ Boar funziona con GPU **Intel, NVIDIA e AMD**: non c'è codice legato a un produ
 
 | Cosa | Come |
 | --- | --- |
-| Export | Encoder hardware della scheda video tramite WebCodecs. *Render As* mostra solo i formati che la tua GPU sa codificare: H.264 c'è sempre, HEVC e AV1 dipendono dalla generazione della scheda. Su macOS l'encoder hardware copre H.264 e HEVC; su Linux spesso l'export usa il processore, più lento. |
+| Export | WebCodecs: l'encoder della scheda video (NVENC su NVIDIA, Quick Sync su Intel, AMF su AMD, VideoToolbox su Mac) o quello software sul processore, come scegli in *Render As*, che indica per ogni formato cosa sa fare la tua macchina. HEVC e AV1 sulla scheda dipendono dalla sua generazione; su Linux spesso l'export usa il processore, più lento. |
 | Anteprima ed effetti | WebGL2, uguale su tutte le GPU recenti. |
 | Volto, sfondo e Smart Select (AI) | MediaPipe sulla GPU, con ripiego sul processore. |
 | Trascrizione | whisper.cpp integrato in Boar: sulla GPU con Vulkan (Windows, Linux) o Metal (macOS), altrimenti sul processore. |
@@ -142,13 +142,13 @@ L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: 
 
 ## Funzioni opzionali
 
-**Download da link (yt-dlp).** Spento di default: si attiva da *Options*. Scarica video o audio dai siti supportati da [yt-dlp](https://github.com/yt-dlp/yt-dlp), che non è incluso in Boar e viene scaricato al primo uso. Scarica solo contenuti che hai il diritto di usare: i termini di molti siti vietano il download.
+**Download da link (yt-dlp).** Spento di default: si attiva da *Options*. Scarica video o audio dai siti supportati da [yt-dlp](https://github.com/yt-dlp/yt-dlp), che non è incluso in Boar e viene scaricato al primo uso. La finestra resta aperta accanto alla timeline: *Download and Add to Timeline* mette il file al cursore, oppure lo trascini dalla finestra. Dalla maggior parte dei siti video e audio arrivano separati e Boar li unisce da solo, quindi FFmpeg non serve. Scarica solo contenuti che hai il diritto di usare: i termini di molti siti vietano il download.
 
 ## Scorciatoie
 
 | Tasto | Azione |
 | --- | --- |
-| `Spazio` / `Invio` | play e stop / play e pausa |
+| `Spazio` / `Invio` | play e pausa (in *Options* Spazio può tornare al punto di partenza) |
 | `F` / `F11` | anteprima a schermo intero (`Esc` per uscire) |
 | `S` | split al cursore o ai bordi della selezione temporale |
 | `Canc` / `Shift+Canc` | elimina / elimina e chiudi il buco |

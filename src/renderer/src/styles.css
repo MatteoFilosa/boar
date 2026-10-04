@@ -2600,6 +2600,56 @@ body.dragging-track * {
   gap: 4px 12px;
 }
 
+.youtube-window {
+  top: 72px;
+  left: calc(50% - 290px);
+  width: min(580px, calc(100vw - 32px));
+}
+
+.yt-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-2);
+  cursor: grab;
+}
+
+.yt-thumb {
+  width: 64px;
+  height: 36px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #111214;
+}
+
+.yt-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.yt-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.yt-name b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
 .silence-window {
   top: 72px;
   left: calc(50% - 300px);
@@ -2913,4 +2963,10 @@ body.dragging-track * {
   padding: 8px 10px;
   border-radius: 5px;
   background: var(--accent-soft);
+}
+
+.pc-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
 }

@@ -4,6 +4,7 @@ import { createWriteStream, existsSync } from 'node:fs'
 import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { allowMediaDir, allowMediaPaths } from './media-protocol'
+import { mergeVideoAudio } from './remux'
 
 // Media library: folders the user picked (Explorer tab) and the app's own
 // folders (pasted images, downloads, saved sound effects). The renderer can only
@@ -152,7 +153,8 @@ async function installYtDlp(sender: WebContents): Promise<void> {
 
 export interface YoutubeRequest {
   url: string
-  format: 'mp4' | 'mp3'
+  /** Video with sound (MP4), or the sound alone in its original format (usually M4A). */
+  format: 'mp4' | 'audio'
   /** Max video height (mp4), 0 = best available. */
   maxHeight: number
   folder: string
@@ -160,65 +162,82 @@ export interface YoutubeRequest {
 
 let activeDownload: ReturnType<typeof spawn> | null = null
 
+/** Runs yt-dlp; returns the paths of the files it wrote, or the reason it failed. */
+async function runYtDlp(tool: string, args: string[], sender: WebContents): Promise<{ paths: string[]; error: string }> {
+  const paths: string[] = []
+  let log = ''
+  const code = await new Promise<number>((resolvePromise) => {
+    const child = spawn(tool, args, { windowsHide: true, env: { ...process.env, PYTHONUTF8: '1' } })
+    activeDownload = child
+    let buffer = ''
+    const line = (raw: string): void => {
+      const text = raw.trim()
+      const m = /\[download\]\s+([\d.]+)%/.exec(text)
+      if (m) sender.send('youtube:progress', { phase: 'download', progress: Number(m[1]) / 100, text: text.replace('[download]', '').trim() })
+      else if (isAbsolute(text) && existsSync(text) && !paths.includes(text)) paths.push(text)
+    }
+    child.stdout.on('data', (d: Buffer) => {
+      buffer += d.toString('utf8')
+      const lines = buffer.split(/\r?\n/)
+      buffer = lines.pop() ?? ''
+      lines.forEach(line)
+    })
+    child.stderr.on('data', (d: Buffer) => (log = (log + d.toString('utf8')).slice(-3000)))
+    child.on('error', () => resolvePromise(-1))
+    child.on('close', (exit) => {
+      line(buffer)
+      resolvePromise(exit ?? -1)
+    })
+  })
+  activeDownload = null
+  const reason = log.split(/\r?\n/).reverse().find((l) => /ERROR/i.test(l))
+  return { paths: code === 0 ? paths : [], error: code === 0 ? '' : reason?.replace(/^ERROR:\s*/, '') || 'Download failed (try "Update yt-dlp")' }
+}
+
+/**
+ * Downloads with yt-dlp into a library folder. Sites usually serve video and
+ * sound as separate streams: both are downloaded and Boar joins them itself
+ * (no FFmpeg needed); a site that only has single files gets the best one.
+ */
 async function downloadYoutube(req: YoutubeRequest, sender: WebContents): Promise<string> {
   if (!/^https?:\/\//i.test(req.url)) throw new Error('Paste a full link (https://…)')
   if (!inLibrary(req.folder)) throw new Error('Pick a library folder for the download')
   const tool = await findYtDlp()
   if (!tool) throw new Error('yt-dlp is not installed')
-  const h = req.maxHeight > 0 ? `[height<=${req.maxHeight}]` : ''
-  const args = [
-    '--no-playlist',
-    '--quiet',
-    '--progress',
-    '--newline',
-    '--no-mtime',
-    '--windows-filenames',
-    '-o',
-    join(req.folder, '%(title).110B [%(id)s].%(ext)s'),
-    '--print',
-    'after_move:filepath',
-    ...(req.format === 'mp3'
-      ? ['-x', '--audio-format', 'mp3', '--audio-quality', '0']
-      : [
-          // H.264 + AAC first: decoded in hardware everywhere and fine for WebCodecs.
-          '-f',
-          `bv*${h}[vcodec^=avc1]+ba[ext=m4a]/bv*${h}+ba/b${h}/b`,
-          '--merge-output-format',
-          'mp4'
-        ]),
-    req.url
-  ]
-  let finalPath = ''
-  let log = ''
-  const code = await new Promise<number>((resolvePromise) => {
-    const child = spawn(tool.path, args, { windowsHide: true, env: { ...process.env, PYTHONUTF8: '1' } })
-    activeDownload = child
-    let buffer = ''
-    child.stdout.on('data', (d: Buffer) => {
-      buffer += d.toString('utf8')
-      const lines = buffer.split(/\r?\n/)
-      buffer = lines.pop() ?? ''
-      for (const raw of lines) {
-        const line = raw.trim()
-        const m = /\[download\]\s+([\d.]+)%/.exec(line)
-        if (m) sender.send('youtube:progress', { phase: 'download', progress: Number(m[1]) / 100, text: line.replace('[download]', '').trim() })
-        else if (/^\[(ExtractAudio|Merger|VideoConvertor|FixupM3u8)\]/.test(line)) sender.send('youtube:progress', { phase: 'convert', progress: 1, text: 'Converting…' })
-        else if (isAbsolute(line) && existsSync(line)) finalPath = line
+  const common = ['--no-playlist', '--quiet', '--progress', '--newline', '--no-mtime', '--windows-filenames', '--print', 'after_move:filepath']
+  const name = '%(title).110B [%(id)s]'
+  let result: { paths: string[]; error: string }
+  if (req.format === 'audio') {
+    // The original sound, not converted (M4A from most sites).
+    result = await runYtDlp(tool.path, [...common, '-f', 'ba[ext=m4a]/ba/b', '-o', join(req.folder, `${name}.%(ext)s`), req.url], sender)
+  } else {
+    const h = req.maxHeight > 0 ? `[height<=${req.maxHeight}]` : ''
+    // H.264 + AAC first: decoded in hardware everywhere and fine for WebCodecs.
+    result = await runYtDlp(
+      tool.path,
+      [...common, '-f', `(bv*${h}[vcodec^=avc1]/bv*${h}),(ba[ext=m4a]/ba)`, '-o', join(req.folder, `${name}.f%(format_id)s.%(ext)s`), req.url],
+      sender
+    )
+    if (result.paths.length === 2) {
+      sender.send('youtube:progress', { phase: 'convert', progress: 1, text: 'Joining video and sound…' })
+      const [videoPath, audioPath] = result.paths
+      const finalPath = await uniquePath(dirname(videoPath), basename(videoPath).replace(/\.f[^.]+\.[^.]+$/, ''), 'mp4')
+      try {
+        await mergeVideoAudio(videoPath, audioPath, finalPath)
+      } catch (err) {
+        await rm(finalPath, { force: true })
+        throw err
       }
-    })
-    child.stderr.on('data', (d: Buffer) => (log = (log + d.toString('utf8')).slice(-3000)))
-    child.on('error', () => resolvePromise(-1))
-    child.on('close', (exit) => {
-      const rest = buffer.trim()
-      if (rest && isAbsolute(rest) && existsSync(rest)) finalPath = rest
-      resolvePromise(exit ?? -1)
-    })
-  })
-  activeDownload = null
-  if (code !== 0 || !finalPath) {
-    const reason = log.split(/\r?\n/).reverse().find((l) => /ERROR/i.test(l))
-    throw new Error(reason?.replace(/^ERROR:\s*/, '') || 'Download failed (try "Update yt-dlp")')
+      await rm(videoPath, { force: true })
+      await rm(audioPath, { force: true })
+      result = { paths: [finalPath], error: '' }
+    } else if (result.paths.length === 0) {
+      // Only single files on this site (or one with sound already in it).
+      result = await runYtDlp(tool.path, [...common, '-f', `b${h}[ext=mp4]/b${h}/b`, '-o', join(req.folder, `${name}.%(ext)s`), req.url], sender)
+    }
   }
+  const finalPath = result.paths[result.paths.length - 1]
+  if (!finalPath) throw new Error(result.error || 'Download failed (try "Update yt-dlp")')
   allowMediaPaths([finalPath])
   return finalPath
 }
@@ -282,7 +301,7 @@ export function registerLibraryIpc(): void {
   /** Copying events replaces an older image on the system clipboard, so Ctrl+V pastes the events. */
   ipcMain.handle('clipboard:claim', () => clipboard.writeText('Boar events'))
 
-  ipcMain.handle('youtube:status', async () => ({ ytdlp: await findYtDlp(), ffmpeg: (await run('ffmpeg', ['-version'])).code === 0 }))
+  ipcMain.handle('youtube:status', async () => ({ ytdlp: await findYtDlp() }))
   ipcMain.handle('youtube:install', (event) => installYtDlp(event.sender))
   ipcMain.handle('youtube:update', async () => {
     const tool = await findYtDlp()

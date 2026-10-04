@@ -127,7 +127,7 @@ export function useGlobalShortcuts(): void {
       }
       if (isTyping(e.target)) return
       // Floating tool windows (Pan/Crop) keep transport keys; modal dialogs block everything.
-      const floating = dialog?.kind === 'panCrop' || dialog?.kind === 'text' || dialog?.kind === 'mask' || dialog?.kind === 'fx' || dialog?.kind === 'transition' || dialog?.kind === 'silence'
+      const floating = dialog?.kind === 'panCrop' || dialog?.kind === 'text' || dialog?.kind === 'mask' || dialog?.kind === 'fx' || dialog?.kind === 'transition' || dialog?.kind === 'silence' || dialog?.kind === 'youtube'
       if (dialog && !floating) return
       const allowed = full ? FULL_SCREEN_ALLOWED : floating ? FLOATING_ALLOWED : null
       // Sliders keep their arrow keys.

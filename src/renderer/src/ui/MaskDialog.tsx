@@ -23,7 +23,7 @@ import type { MediaItem, ProjectSettings, TimelineEvent } from '../core/types'
 import { imageCache } from '../media/cache'
 import { smartOutline, trackOutline } from '../engine/smartMask'
 import { BoarProgress } from './BoarProgress'
-import { KeyframeBar, useSourceFrame } from './KeyframeBar'
+import { KeyframeBar, canDraw, useSourceFrame } from './KeyframeBar'
 
 function Slider({
   label,
@@ -253,7 +253,7 @@ function CustomMaskEditor({
       ctx.restore()
     } else if (media) {
       const source: CanvasImageSource | null =
-        media.kind === 'image' ? (imageCache.get(media.id) ?? null) : video && video.readyState >= 2 ? video : null
+        media.kind === 'image' ? (imageCache.get(media.id) ?? null) : canDraw(video) ? video : null
       if (source) ctx.drawImage(source, ox, oy, sw * scale, sh * scale)
     }
 

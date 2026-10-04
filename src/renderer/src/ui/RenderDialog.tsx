@@ -6,12 +6,15 @@ import { formatTimecode, rateLabel } from '../core/time'
 import { projectEnd } from '../core/timeline'
 import {
   CODEC_LABELS,
+  type EncoderSupport,
   ExportCancelled,
+  type ExportAudioCodec,
   type ExportCodec,
   type ExportProgress,
   type ExportQuality,
-  exportProject,
-  supportedCodecs
+  audioSupport,
+  encoderSupport,
+  exportProject
 } from '../engine/export'
 import { chooseDestination } from '../engine/targets'
 import { LOUDNESS_TARGETS, type LoudnessResult, formatLufs } from '../engine/loudness'
@@ -29,6 +32,32 @@ const PHASES: Record<ExportProgress['phase'], string> = {
   finalizing: 'Finalizing file'
 }
 
+/** The graphics card's name and its video encoder technology, from the WebGL renderer string. */
+function graphicsCard(): { name: string; encoder: string } | null {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl')
+    const info = gl?.getExtension('WEBGL_debug_renderer_info')
+    const renderer = gl && info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)).replace(/\((R|TM)\)/g, '') : ''
+    if (!renderer) return null
+    // e.g. "ANGLE (Intel, Intel Arc A750 Graphics (0x000056A1) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    const angle = /^ANGLE \(([^,]+), (.+?)(?: \(0x[0-9a-f]+\))?(?: Direct3D| OpenGL| Vulkan|, |\)$)/i.exec(renderer)
+    const name = (angle ? angle[2] : renderer).replace(/^ANGLE Metal Renderer: /, '').replace(/\s+/g, ' ').trim()
+    const vendor = `${angle?.[1] ?? ''} ${name}`.toLowerCase()
+    const encoder = /nvidia/.test(vendor)
+      ? 'NVENC'
+      : /intel/.test(vendor)
+        ? 'Quick Sync'
+        : /amd|ati|radeon/.test(vendor)
+          ? 'AMF'
+          : /apple/.test(vendor)
+            ? 'VideoToolbox'
+            : 'hardware encoder'
+    return { name, encoder }
+  } catch {
+    return null
+  }
+}
+
 /** The phases as one run: mixing audio (when there is audio) is the first tenth. */
 function overallProgress({ phase, progress }: ExportProgress, withAudio: boolean): number {
   if (phase === 'audio') return progress * 0.1
@@ -44,25 +73,43 @@ export function RenderDialog(): React.JSX.Element {
   const { width, height, frameRate } = project.settings
   const range = selectionOnly && selection ? selection : { start: 0, end: projectEnd(project) }
   const end = range.end - range.start
-  const [codecs, setCodecs] = useState<ExportCodec[] | null>(null)
-  const [codec, setCodec] = useState<ExportCodec>('avc')
+  const [support, setSupport] = useState<Record<ExportCodec, EncoderSupport> | null>(null)
+  const [audioCodecs, setAudioCodecs] = useState<Record<ExportAudioCodec, boolean> | null>(null)
+  const [card] = useState(graphicsCard)
   const [quality, setQuality] = useState<ExportQuality>('high')
-  const [includeAudio, setIncludeAudio] = useState(true)
   const [name, setName] = useState('Boar render.mp4')
   const [state, setState] = useState<RenderState>({ kind: 'idle' })
   const cancelled = useRef(false)
+  const codec = options.renderCodec
+  const encoder = options.renderEncoder
+  const audio = options.renderAudio
+  const available = (c: ExportCodec): boolean => !!support && (support[c].gpu || support[c].cpu)
 
   useEffect(() => {
     let alive = true
-    void supportedCodecs(width, height).then((list) => {
+    void Promise.all([encoderSupport(width, height), audioSupport()]).then(([video, sound]) => {
       if (!alive) return
-      setCodecs(list)
-      if (list.length && !list.includes('avc')) setCodec(list[0])
+      setSupport(video)
+      setAudioCodecs(sound)
+      // A remembered choice this machine cannot do falls back to what it can.
+      const s = useEditor.getState().options
+      const codecOk = video[s.renderCodec].gpu || video[s.renderCodec].cpu
+      const next = codecOk ? s.renderCodec : ((['avc', 'hevc', 'av1', 'vp9'] as const).find((c) => video[c].gpu || video[c].cpu) ?? 'avc')
+      if (next !== s.renderCodec) A.setOption('renderCodec', next)
+      if ((s.renderEncoder === 'gpu' && !video[next].gpu) || (s.renderEncoder === 'cpu' && !video[next].cpu)) A.setOption('renderEncoder', 'auto')
+      if (s.renderAudio !== 'none' && !sound[s.renderAudio]) A.setOption('renderAudio', sound.aac ? 'aac' : sound.opus ? 'opus' : 'none')
     })
     return () => {
       alive = false
     }
   }, [width, height])
+
+  const chooseCodec = (c: ExportCodec): void => {
+    A.setOption('renderCodec', c)
+    if (support && ((encoder === 'gpu' && !support[c].gpu) || (encoder === 'cpu' && !support[c].cpu))) A.setOption('renderEncoder', 'auto')
+  }
+  /** What actually encodes: the graphics card when chosen or (automatic) when it can. */
+  const usesGpu = !!support && (encoder === 'gpu' || (encoder === 'auto' && support[codec].gpu))
 
   const running = state.kind === 'running'
 
@@ -81,7 +128,9 @@ export function RenderDialog(): React.JSX.Element {
         {
           codec,
           quality,
-          includeAudio,
+          encoder,
+          includeAudio: audio !== 'none',
+          audioCodec: audio === 'opus' ? 'opus' : 'aac',
           masterDb: options.masterDb,
           autoCrossfade: options.autoCrossfade,
           loudness: options.renderLoudness
@@ -136,15 +185,32 @@ export function RenderDialog(): React.JSX.Element {
             <select
               className="select"
               value={codec}
-              disabled={running || !codecs}
-              onChange={(e) => setCodec(e.target.value as ExportCodec)}
+              disabled={running || !support}
+              onChange={(e) => chooseCodec(e.target.value as ExportCodec)}
             >
               {(['avc', 'hevc', 'av1', 'vp9'] as const).map((c) => (
-                <option key={c} value={c} disabled={codecs ? !codecs.includes(c) : true}>
+                <option key={c} value={c} disabled={!available(c)}>
                   MP4 · {CODEC_LABELS[c]}
-                  {codecs && !codecs.includes(c) ? ' — not available' : ''}
+                  {support ? (support[c].gpu ? ' · graphics card' : support[c].cpu ? ' · processor only (slower)' : ' · not available') : ''}
                 </option>
               ))}
+            </select>
+            <label>Encoder</label>
+            <select
+              className="select"
+              value={encoder}
+              disabled={running || !support}
+              title="The graphics card encodes much faster; the processor works everywhere but is slower"
+              onChange={(e) => A.setOption('renderEncoder', e.target.value as 'auto' | 'gpu' | 'cpu')}
+            >
+              <option value="auto">Automatic (graphics card when it can)</option>
+              <option value="gpu" disabled={!support?.[codec].gpu}>
+                Graphics card{card ? `: ${card.name} (${card.encoder})` : ''}
+                {support && !support[codec].gpu ? ' · not for this format' : ''}
+              </option>
+              <option value="cpu" disabled={!support?.[codec].cpu}>
+                Processor (software, slower){support && !support[codec].cpu ? ' · not for this format' : ''}
+              </option>
             </select>
             <label>Quality</label>
             <select
@@ -158,20 +224,25 @@ export function RenderDialog(): React.JSX.Element {
               <option value="veryHigh">Very high (larger file)</option>
             </select>
             <label>Audio</label>
-            <label className="te-check">
-              <input
-                type="checkbox"
-                checked={includeAudio}
-                disabled={running}
-                onChange={(e) => setIncludeAudio(e.target.checked)}
-              />
-              Include audio (AAC)
-            </label>
+            <select
+              className="select"
+              value={audio}
+              disabled={running}
+              onChange={(e) => A.setOption('renderAudio', e.target.value as 'aac' | 'opus' | 'none')}
+            >
+              <option value="aac" disabled={audioCodecs ? !audioCodecs.aac : false}>
+                AAC (most compatible){audioCodecs && !audioCodecs.aac ? ' · not available here' : ''}
+              </option>
+              <option value="opus" disabled={audioCodecs ? !audioCodecs.opus : false}>
+                Opus (better at small sizes; some players skip it in MP4)
+              </option>
+              <option value="none">No audio</option>
+            </select>
             <label>Loudness</label>
             <select
               className="select"
               value={options.renderLoudness === null ? 'off' : String(options.renderLoudness)}
-              disabled={running || !includeAudio}
+              disabled={running || audio === 'none'}
               title="Integrated loudness of the rendered audio, with true peaks limited to −1 dBTP"
               onChange={(e) => A.setOption('renderLoudness', e.target.value === 'off' ? null : Number(e.target.value))}
             >
@@ -196,6 +267,7 @@ export function RenderDialog(): React.JSX.Element {
             <label>Output</label>
             <span className="dim">
               {width}x{height}, {rateLabel(frameRate)} fps, length {formatTimecode(end, frameRate)}
+              {support && (usesGpu ? ' · encoded by the graphics card' : ' · encoded by the processor')}
             </span>
           </div>
 
@@ -235,7 +307,7 @@ export function RenderDialog(): React.JSX.Element {
                 <button className="btn" onClick={A.closeDialog}>
                   Close
                 </button>
-                <button className="btn primary" disabled={end <= 0 || !codecs?.length} onClick={() => void start()}>
+                <button className="btn primary" disabled={end <= 0 || !support || !available(codec)} onClick={() => void start()}>
                   Render...
                 </button>
               </>

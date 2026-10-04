@@ -117,12 +117,12 @@ export interface LibraryEntry {
 
 export interface YoutubeStatus {
   ytdlp: { path: string; version: string } | null
-  ffmpeg: boolean
 }
 
 export interface YoutubeRequest {
   url: string
-  format: 'mp4' | 'mp3'
+  /** Video with sound (MP4), or the sound alone in its original format. */
+  format: 'mp4' | 'audio'
   maxHeight: number
   folder: string
 }
