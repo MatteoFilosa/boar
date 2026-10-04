@@ -3,6 +3,8 @@ name: Build
 # Every push: typecheck and smoke test on Windows, macOS and Linux.
 # Published releases (and manual runs): installers for the three systems,
 # checked by starting the packaged app; releases get them as assets.
+# The speech engine (whisper.cpp) is built once per version and system and
+# cached; every build gets it from the whisper job.
 
 on:
   push:
@@ -20,8 +22,45 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'release' }}
 
 jobs:
+  whisper:
+    name: whisper.cpp ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: resources/whisper
+          key: whisper-${{ runner.os }}-${{ hashFiles('scripts/build-whisper.sh') }}
+
+      - name: Vulkan SDK
+        if: steps.cache.outputs.cache-hit != 'true' && runner.os != 'macOS'
+        uses: jakoch/install-vulkan-sdk-action@v1.6.0
+        with:
+          cache: true
+          stripdown: true
+
+      - name: Build
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-whisper.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whisper-${{ runner.os }}
+          path: resources/whisper
+          if-no-files-found: error
+
   build:
     name: ${{ matrix.os }}
+    needs: whisper
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -41,6 +80,14 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: whisper-${{ runner.os }}
+          path: resources/whisper
+
+      # Artifacts lose the executable bit.
+      - run: chmod +x resources/whisper/whisper-cli* || true
 
       - run: npm run typecheck
 
@@ -70,6 +117,7 @@ jobs:
           else
             "$exe" --smoke
           fi
+          ls "$resources"/whisper/whisper-cli*
           # The MCP bridge runs with the app's own executable in Node mode.
           reply=$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' |
             BOAR_MCP_CONFIG=missing.json ELECTRON_RUN_AS_NODE=1 "$exe" "$resources/boar-mcp.mjs")

@@ -20,7 +20,8 @@
     "samples": "node scripts/make-samples.mjs",
     "icons": "node scripts/make-icons.mjs",
     "dist": "electron-vite build && electron-builder",
-    "dist:dir": "electron-vite build && electron-builder --dir"
+    "dist:dir": "electron-vite build && electron-builder --dir",
+    "whisper": "node scripts/get-whisper.mjs"
   },
   "devDependencies": {
     "@fontsource-variable/caveat": "^5.3.0",

@@ -83,7 +83,6 @@
 
 1. Download `Boar-Setup-x.y.z.exe` from the [Releases](https://github.com/MatteoFilosa/boar/releases) page and run it.
 2. The installer is not signed yet: if Windows SmartScreen shows "Windows protected your PC", click *More info › Run anyway*.
-3. For captions and Transcript, install FFmpeg 8 (see below).
 
 ### macOS (experimental)
 
@@ -99,17 +98,9 @@
 
 Boar looks for a new release when it starts and offers to install it: on Windows and with the AppImage it updates itself and starts again; on macOS and with the .deb it downloads the new file for you to install. *Help › Check for Updates* checks at any time, *Options › Check for Updates at Startup* turns the startup check off.
 
-### FFmpeg for captions and Transcript
+### Captions and Transcript
 
-Transcription uses the `whisper` filter of FFmpeg 8 or later. On Windows the easiest way is:
-
-```bash
-winget install Gyan.FFmpeg
-```
-
-Then reopen Boar. To check: `ffmpeg -filters | findstr whisper`. The Whisper model (148 MB for the lightest one) downloads from the app the first time. Everything else works without FFmpeg.
-
-On macOS and Linux, the FFmpeg from Homebrew and from most distributions does not include the `whisper` filter yet: you need a build configured with `--enable-whisper` (check with `ffmpeg -filters | grep whisper`). Transcription built into Boar, with no FFmpeg needed, is planned.
+Speech recognition ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)) is built into Boar: nothing else to install. The first time, the app downloads the Whisper model you pick (148 MB for the lightest one).
 
 ### From source
 
@@ -119,10 +110,11 @@ You need [Node.js](https://nodejs.org/) 22 or later.
 git clone https://github.com/MatteoFilosa/boar.git
 cd boar
 npm install
+npm run whisper
 npm run dev
 ```
 
-`npm run dist` builds the installer in `dist/`.
+`npm run whisper` puts the speech engine for your system into `resources/whisper`, taken from the latest CI build (it needs the [GitHub CLI](https://cli.github.com/), logged in). Without it, `bash scripts/build-whisper.sh` builds the engine (CMake, a C++ compiler and, on Windows and Linux, the Vulkan SDK). `npm run dist` builds the installer in `dist/`.
 
 ## Graphics cards
 
@@ -133,7 +125,7 @@ Boar works with **Intel, NVIDIA and AMD** GPUs: no code is tied to one vendor.
 | Export | The graphics card's hardware encoder through WebCodecs. *Render As* only lists the formats your GPU can encode: H.264 is always there, HEVC and AV1 depend on the card's generation. On macOS the hardware encoder covers H.264 and HEVC; on Linux export often runs on the CPU, slower. |
 | Preview and effects | WebGL2, the same on every recent GPU. |
 | Face, background and Smart Select (AI) | MediaPipe on the GPU, falling back to the CPU. |
-| Transcription | whisper.cpp inside FFmpeg: uses the GPU if your FFmpeg build supports it, otherwise the CPU. |
+| Transcription | whisper.cpp built into Boar: on the GPU through Vulkan (Windows, Linux) or Metal (macOS), otherwise on the CPU. |
 | Noise reduction | On the CPU, identical everywhere. |
 
 Up-to-date graphics drivers make everything work better, especially the hardware encoder.
@@ -182,6 +174,7 @@ On a Mac, use ⌘ instead of Ctrl and ⌥ instead of Alt. Full list in *Help ›
 | `npm run dev` | app with hot reload |
 | `npm run dev:web` | interface only, in the browser (http://localhost:5180) |
 | `npm run samples` | generates test media in `dev-samples/` (needs FFmpeg) |
+| `npm run whisper` | downloads the speech engine for your system from the latest CI build |
 | `npm run typecheck` | TypeScript check |
 | `npm run smoke` | build and hidden run: errors, hardware encoders, media protocol |
 | `npm run icons` | regenerates the icons from `resources/icon.svg` |

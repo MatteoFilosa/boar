@@ -12,6 +12,7 @@ import { sourceLength } from '../core/timeline'
 import type { TimelineEvent } from '../core/types'
 import { type CaptionProgress, type CaptionStatus, bridge } from '../platform'
 import { BoarProgress } from './BoarProgress'
+import { transcribeMedia } from '../engine/transcribe'
 
 const LANGUAGES = [
   ['auto', 'Detect automatically'],
@@ -73,22 +74,16 @@ export function CaptionsDialog(): React.JSX.Element {
 
   const generate = async (): Promise<void> => {
     if (!event || !media) return
-    if (!known && (!bridge || !media.path)) return
+    if (!known && !bridge) return
     setError('')
-    setBusy({ phase: 'transcribe', progress: 0 })
+    setBusy({ phase: 'prepare', progress: 0 })
     try {
       const look = CAPTION_STYLES.find((s) => s.id === style) ?? CAPTION_STYLES[0]
       let words
       if (known) {
         words = known.map((w) => ({ text: w.text, start: (w.start - event.start) / FLICKS_PER_SECOND, end: (w.end - event.start) / FLICKS_PER_SECOND }))
       } else {
-        const transcript = await bridge!.transcribe({
-          path: media.path,
-          start: flicksToSeconds(event.offset),
-          duration: flicksToSeconds(sourceLength(event)),
-          model,
-          language
-        })
+        const transcript = await transcribeMedia(media, flicksToSeconds(event.offset), flicksToSeconds(sourceLength(event)), model, language, setBusy)
         // Source seconds to event seconds (sped-up or slowed-down events).
         const r = event.rate
         words = alignWords(transcript).map((w) => ({ ...w, start: w.start / r, end: w.end / r }))
@@ -110,11 +105,8 @@ export function CaptionsDialog(): React.JSX.Element {
   let blocker = ''
   if (known) blocker = ''
   else if (!bridge) blocker = 'Captions run in the desktop app (npm run dev), not in the browser preview.'
-  else if (status && !status.ffmpeg) blocker = 'FFmpeg was not found in PATH.'
-  else if (status && !status.whisper)
-    blocker = 'Your FFmpeg has no "whisper" filter. Install an FFmpeg 8 build that includes it (see the README) and restart.'
+  else if (status && !status.engine) blocker = 'The speech engine is missing from this build of Boar.'
   else if (!event) blocker = 'Select an event with sound on the timeline.'
-  else if (!media?.path) blocker = 'This media has no file path (import it again in the desktop app).'
 
   return (
     <div className="modal-backdrop">
@@ -127,8 +119,8 @@ export function CaptionsDialog(): React.JSX.Element {
         </div>
         <div className="modal-body">
           <p className="dim">
-            Speech is transcribed on this PC with whisper.cpp (through FFmpeg); nothing is uploaded. Captions become
-            editable text events on a new "Captions" track.
+            Speech is transcribed on this PC with Whisper, on the graphics card when it can; nothing is uploaded.
+            Captions become editable text events on a new "Captions" track.
           </p>
           <div className="form">
             <label>Source</label>
@@ -166,13 +158,14 @@ export function CaptionsDialog(): React.JSX.Element {
                   {m.installed ? <span className="badge ok">installed</span> : <span className="badge">not downloaded</span>}
                 </label>
               ))}
-              {!status && bridge && <span className="dim">Checking FFmpeg…</span>}
+              {!status && bridge && <span className="dim">Checking the speech engine…</span>}
             </div>
           </div>
 
           {busy && (
             <BoarProgress value={busy.progress}>
-              {busy.phase === 'download' ? 'Downloading model' : 'Transcribing'} {Math.round(busy.progress * 100)}%
+              {busy.phase === 'download' ? 'Downloading model' : busy.phase === 'prepare' ? 'Reading the sound' : 'Transcribing'}{' '}
+              {Math.round(busy.progress * 100)}%
             </BoarProgress>
           )}
           {(blocker || error) && <div className="render-result error">{error || blocker}</div>}

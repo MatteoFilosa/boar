@@ -20,6 +20,7 @@ import { findHighlights, shortDuration } from '../core/shorts'
 import { uid } from '../core/ids'
 import { DEFAULT_SHORT_OPTIONS, type ShortFraming, backToLongVideo, makeShort } from '../engine/makeShort'
 import { bridge } from '../platform'
+import { transcribeMedia } from '../engine/transcribe'
 
 // MCP tools. Times are seconds on the timeline, tracks are numbered from 1 at
 // the top, and each editing tool is one undo step.
@@ -305,7 +306,7 @@ const TOOLS: Tool[] = [
       const id = speechTrack(a)
       const language = oneOf(a, 'language', ['auto', 'it', 'en', 'es', 'fr', 'de', 'pt'] as const, 'auto')
       const status = await bridge.captionsStatus()
-      if (!status.whisper) throw new ToolError('FFmpeg with the whisper filter is not installed (see the README)')
+      if (!status.engine) throw new ToolError('The speech engine is missing from this build of Boar')
       const model = ['large-v3-turbo', 'small', 'base'].find((m) => status.models.some((x) => x.id === m && x.installed))
       if (!model) throw new ToolError('No Whisper model downloaded yet: ask the user to open the Transcript tab and click "Get Whisper"')
       const { project, transcripts } = get()
@@ -313,9 +314,9 @@ const TOOLS: Tool[] = [
         .filter((m) => !transcripts[m])
         .map((m) => mediaById(m))
       for (const m of media) {
-        if (!m?.path) continue
+        if (!m) continue
         A.setStatus(`Transcribing ${m.name}…`)
-        const result = await bridge.transcribe({ path: m.path, start: 0, duration: m.duration / F, model, language })
+        const result = await transcribeMedia(m, 0, m.duration / F, model, language)
         A.setTranscript(m.id, { language, model, words: alignWords(result) })
       }
       return `Transcribed ${media.length} file(s) with Whisper ${model}. Read it with get_transcript.`

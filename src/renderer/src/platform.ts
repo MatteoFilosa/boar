@@ -16,8 +16,14 @@ export interface BoarBridge {
   openProject(): Promise<{ path: string; json: string } | null>
   captionsStatus(): Promise<CaptionStatus>
   downloadModel(id: string): Promise<void>
-  /** Phrases and token-level times of the speech in a media range (see core/captions.ts). */
-  transcribe(request: TranscribeRequest): Promise<Transcript>
+  /**
+   * The bundled speech engine: start it, stream 16-bit 16 kHz mono samples,
+   * then get phrases and token-level times (see engine/transcribe.ts).
+   */
+  startTranscription(request: TranscribeRequest): Promise<number>
+  sendTranscriptionAudio(id: number, data: Uint8Array): Promise<void>
+  finishTranscription(id: number): Promise<Transcript>
+  cancelTranscription(id: number): Promise<void>
   onCaptionProgress(callback: (progress: CaptionProgress) => void): () => void
   /** Bytes of a bundled file:// asset (packaged app). */
   readAsset(url: string): Promise<Uint8Array>
@@ -136,21 +142,21 @@ export interface WhisperModelInfo {
 }
 
 export interface CaptionStatus {
-  ffmpeg: boolean
-  whisper: boolean
+  /** The speech engine is bundled with this build. */
+  engine: boolean
   models: WhisperModelInfo[]
 }
 
 export interface TranscribeRequest {
-  path: string
-  start: number
-  duration: number
   model: string
   language: string
+  /** Number of samples that will be sent. */
+  samples: number
 }
 
 export interface CaptionProgress {
-  phase: 'download' | 'transcribe'
+  /** prepare: reading the sound; transcribe: the speech engine at work. */
+  phase: 'download' | 'prepare' | 'transcribe'
   progress: number
 }
 

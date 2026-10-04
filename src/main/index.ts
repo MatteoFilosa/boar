@@ -4,7 +4,7 @@ import { open, readFile, unlink, writeFile, type FileHandle } from 'node:fs/prom
 import { join, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { allowMediaPaths, handleMediaProtocol, registerMediaScheme } from './media-protocol'
-import { registerCaptionIpc } from './captions'
+import { registerCaptionIpc, whisperPath, whisperRuns } from './captions'
 import { registerLibraryIpc } from './library'
 import { registerMcp } from './mcp'
 import { extendToolPath } from './toolPath'
@@ -260,9 +260,13 @@ function runSmokeTest(win: BrowserWindow): void {
         .catch((err: unknown) => `failed: ${String(err)}`)
       console.log(`[smoke] media protocol: ${media}`)
     }
+    // The bundled speech engine must start (CI builds always include it).
+    const engine = existsSync(whisperPath()) ? ((await whisperRuns()) ? 'ok' : 'fails to start') : 'missing'
+    const engineOk = engine === 'ok' || (engine === 'missing' && !process.env.CI)
+    console.log(`[smoke] speech engine: ${engine}${engine === 'missing' ? ' (npm run whisper)' : ''}`)
     console.log(`[smoke] ready=${ready} bridge=${api} consoleErrors=${errors.length}`)
     for (const message of errors) console.log(`[smoke] error: ${message}`)
-    app.exit(ready && api && errors.length === 0 ? 0 : 1)
+    app.exit(ready && api && engineOk && errors.length === 0 ? 0 : 1)
   })
 }
 

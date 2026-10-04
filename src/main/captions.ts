@@ -1,45 +1,53 @@
 import { app, ipcMain, net, type WebContents } from 'electron'
-import { spawn } from 'node:child_process'
+import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { createWriteStream, existsSync } from 'node:fs'
-import { mkdir, readFile, rename, rm, stat } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
+import { mkdir, readFile, rename, rm } from 'node:fs/promises'
+import { availableParallelism } from 'node:os'
+import { join } from 'node:path'
 
-// Speech to text with FFmpeg's `whisper` filter (FFmpeg 8+ built with whisper.cpp).
+// Speech to text with whisper.cpp, bundled with the app (resources/whisper):
+// on the GPU through Vulkan (Windows, Linux) or Metal (macOS), on the CPU
+// otherwise. The renderer decodes the sound and streams it here as 16 kHz
+// mono WAV; nothing else needs to be installed.
 
 export interface WhisperModel {
   id: string
   file: string
   sizeMB: number
   note: string
+  /** Alignment heads for word timings (whisper.cpp's DTW presets). */
+  dtw: string
 }
 
 export const WHISPER_MODELS: WhisperModel[] = [
-  { id: 'base', file: 'ggml-base.bin', sizeMB: 148, note: 'Fast, decent quality' },
-  { id: 'small', file: 'ggml-small.bin', sizeMB: 488, note: 'Good balance' },
-  { id: 'large-v3-turbo', file: 'ggml-large-v3-turbo.bin', sizeMB: 1624, note: 'Best quality, slower on CPU' }
+  { id: 'base', file: 'ggml-base.bin', sizeMB: 148, note: 'Fast, decent quality', dtw: 'base' },
+  { id: 'small', file: 'ggml-small.bin', sizeMB: 488, note: 'Good balance', dtw: 'small' },
+  { id: 'large-v3-turbo', file: 'ggml-large-v3-turbo.bin', sizeMB: 1624, note: 'Best quality', dtw: 'large.v3.turbo' }
 ]
 
 const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/'
 
 const modelsDir = (): string => join(app.getPath('userData'), 'models')
 
-function run(cmd: string, args: string[]): Promise<{ code: number; out: string }> {
+/** The whisper.cpp tool: next to the app's resources when packaged, in resources/whisper while developing. */
+export function whisperPath(): string {
+  const dir = app.isPackaged ? join(process.resourcesPath, 'whisper') : join(app.getAppPath(), 'resources', 'whisper')
+  return join(dir, process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli')
+}
+
+/** True when the bundled tool starts (the smoke test checks it too). */
+export function whisperRuns(): Promise<boolean> {
   return new Promise((resolve) => {
-    let out = ''
-    const child = spawn(cmd, args, { windowsHide: true })
-    child.stdout.on('data', (d) => (out += d))
-    child.stderr.on('data', (d) => (out += d))
-    child.on('error', () => resolve({ code: -1, out }))
-    child.on('close', (code) => resolve({ code: code ?? -1, out }))
+    if (!existsSync(whisperPath())) return resolve(false)
+    const child = spawn(whisperPath(), ['--help'], { windowsHide: true })
+    child.on('error', () => resolve(false))
+    child.on('close', (code) => resolve(code === 0))
   })
 }
 
-async function status(): Promise<{ ffmpeg: boolean; whisper: boolean; models: (WhisperModel & { installed: boolean })[] }> {
-  const filters = await run('ffmpeg', ['-hide_banner', '-filters'])
-  const models = await Promise.all(
-    WHISPER_MODELS.map(async (m) => ({ ...m, installed: existsSync(join(modelsDir(), m.file)) }))
-  )
-  return { ffmpeg: filters.code === 0, whisper: /\bwhisper\b/.test(filters.out), models }
+async function status(): Promise<{ engine: boolean; models: (WhisperModel & { installed: boolean })[] }> {
+  const models = WHISPER_MODELS.map((m) => ({ ...m, installed: existsSync(join(modelsDir(), m.file)) }))
+  return { engine: existsSync(whisperPath()), models }
 }
 
 async function download(id: string, sender: WebContents): Promise<void> {
@@ -76,15 +84,13 @@ async function download(id: string, sender: WebContents): Promise<void> {
 }
 
 interface TranscribeRequest {
-  path: string
-  /** Seconds into the file where the event starts, and its length. */
-  start: number
-  duration: number
   model: string
   language: string
+  /** Number of 16 kHz mono samples the renderer will send. */
+  samples: number
 }
 
-/** A piece of transcript, times in seconds from the start of the transcribed range. */
+/** A piece of transcript, times in seconds from the start of the sent audio. */
 export interface TranscriptPiece {
   start: number
   end: number
@@ -98,103 +104,135 @@ export interface Transcript {
   tokens: TranscriptPiece[]
 }
 
-/** The whisper filter's JSON output: one {"start","end","text"} object per line, times in ms. */
-function parsePieces(json: string): TranscriptPiece[] {
-  const out: TranscriptPiece[] = []
-  for (const line of json.split(/\r?\n/)) {
-    if (!line.trim()) continue
-    try {
-      const p = JSON.parse(line) as { start: number; end: number; text: string }
-      if (typeof p.text === 'string' && p.text.trim()) out.push({ start: p.start / 1000, end: p.end / 1000, text: p.text.trim() })
-    } catch {
-      // Ignore a truncated line.
-    }
-  }
-  return out
+interface Job {
+  child: ChildProcessWithoutNullStreams
+  output: string
+  done: Promise<number>
+  log: string
 }
 
-/**
- * Transcribes a range of a media file. Two whisper passes share one FFmpeg run:
- * one gives phrases (correct word spacing), the other token-level times
- * (max_len=1); the renderer aligns them into per-word timings.
- */
-async function transcribe(req: TranscribeRequest, sender: WebContents): Promise<Transcript> {
+const jobs = new Map<number, Job>()
+let nextJob = 1
+
+/** 44-byte header of a 16-bit 16 kHz mono WAV holding `samples` samples. */
+function wavHeader(samples: number): Buffer {
+  const data = samples * 2
+  const h = Buffer.alloc(44)
+  h.write('RIFF', 0)
+  h.writeUInt32LE(36 + data, 4)
+  h.write('WAVE', 8)
+  h.write('fmt ', 12)
+  h.writeUInt32LE(16, 16)
+  h.writeUInt16LE(1, 20)
+  h.writeUInt16LE(1, 22)
+  h.writeUInt32LE(16000, 24)
+  h.writeUInt32LE(32000, 28)
+  h.writeUInt16LE(2, 32)
+  h.writeUInt16LE(16, 34)
+  h.write('data', 36)
+  h.writeUInt32LE(data, 40)
+  return h
+}
+
+/** Starts whisper.cpp reading WAV from stdin; the renderer then sends the audio. */
+async function start(req: TranscribeRequest, sender: WebContents): Promise<number> {
   const model = WHISPER_MODELS.find((m) => m.id === req.model)
   if (!model) throw new Error(`Unknown model ${req.model}`)
-  if (!isAbsolute(req.path) || !(await stat(req.path).catch(() => null))) throw new Error('Media file not found')
-  const dir = modelsDir()
-  if (!existsSync(join(dir, model.file))) throw new Error('Model not downloaded')
+  const modelFile = join(modelsDir(), model.file)
+  if (!existsSync(modelFile)) throw new Error('Model not downloaded')
+  if (!existsSync(whisperPath())) throw new Error('The speech engine is missing from this build of Boar')
   const language = /^[a-z]{2,3}$|^auto$/.test(req.language) ? req.language : 'auto'
-  // FFmpeg runs inside the models folder so filter options only contain plain
-  // file names (Windows paths would need filtergraph escaping).
-  const stamp = Date.now()
-  const segmentsFile = `captions-${stamp}-segments.json`
-  const tokensFile = `captions-${stamp}-tokens.json`
-  const whisper = (destination: string, maxLen: number): string =>
-    [`whisper=model=${model.file}`, `language=${language}`, 'queue=20', `destination=${destination}`, 'format=json', `max_len=${maxLen}`].join(':')
-  const graph = [
-    `[0:a]aresample=16000,aformat=channel_layouts=mono,asplit[a][b]`,
-    `[a]${whisper(segmentsFile, 0)}[outa]`,
-    `[b]${whisper(tokensFile, 1)}[outb]`
-  ].join(';')
-  const args = [
-    '-hide_banner',
-    '-nostats',
-    '-progress',
-    'pipe:1',
-    '-ss',
-    String(Math.max(0, req.start)),
-    '-t',
-    String(Math.max(0.1, req.duration)),
-    '-i',
-    req.path,
-    '-filter_complex',
-    graph,
-    '-map',
-    '[outa]',
-    '-f',
-    'null',
-    '-',
-    '-map',
-    '[outb]',
-    '-f',
-    'null',
-    '-'
-  ]
-  const code = await new Promise<number>((resolve) => {
-    const child = spawn('ffmpeg', args, { cwd: dir, windowsHide: true })
-    let log = ''
-    child.stdout.on('data', (data: Buffer) => {
-      const match = /out_time_us=(\d+)/.exec(data.toString())
-      if (match) {
-        sender.send('captions:progress', {
-          phase: 'transcribe',
-          progress: Math.min(1, Number(match[1]) / 1e6 / Math.max(0.1, req.duration))
-        })
-      }
+  const tmp = join(app.getPath('userData'), 'tmp')
+  await mkdir(tmp, { recursive: true })
+  const id = nextJob++
+  const output = join(tmp, `captions-${Date.now()}-${id}`)
+  const threads = Math.max(1, Math.min(8, availableParallelism() - 1))
+  const args = ['-m', modelFile, '-f', '-', '-l', language, '-t', String(threads), '-ojf', '-of', output, '-pp', '-np']
+  const child = spawn(whisperPath(), args, { windowsHide: true })
+  const job: Job = { child, output: `${output}.json`, log: '', done: Promise.resolve(0) }
+  job.done = new Promise<number>((resolve) => {
+    child.on('error', (err) => {
+      job.log += String(err)
+      resolve(-1)
     })
-    child.stderr.on('data', (data: Buffer) => (log = (log + data.toString()).slice(-4000)))
-    child.on('error', () => resolve(-1))
-    child.on('close', (exit) => {
-      if (exit !== 0) console.error(`[captions] ffmpeg failed:\n${log}`)
-      resolve(exit ?? -1)
-    })
+    child.on('close', (code) => resolve(code ?? -1))
   })
+  child.stderr.on('data', (data: Buffer) => {
+    const text = data.toString()
+    job.log = (job.log + text).slice(-4000)
+    const progress = /progress =\s*(\d+)%/g
+    let match: RegExpExecArray | null
+    let last = -1
+    while ((match = progress.exec(text))) last = Number(match[1])
+    if (last >= 0) sender.send('captions:progress', { phase: 'transcribe', progress: last / 100 })
+  })
+  // Results go to the JSON file; the console text is not needed.
+  child.stdout.resume()
+  child.stdin.on('error', () => undefined)
+  child.stdin.write(wavHeader(req.samples))
+  jobs.set(id, job)
+  return id
+}
+
+async function sendAudio(id: number, data: Uint8Array): Promise<void> {
+  const job = jobs.get(id)
+  if (!job) throw new Error('Transcription is not running')
+  if (!job.child.stdin.write(data)) await new Promise<void>((resolve) => job.child.stdin.once('drain', () => resolve()))
+}
+
+/** Special tokens ([_BEG_], [_TT_150], <|en|>) carry no text. */
+const isSpecial = (text: string): boolean => /^\s*(\[_[A-Z]+_?\d*\]|<\|.*\|>)\s*$/.test(text)
+
+interface WhisperJson {
+  transcription?: {
+    offsets: { from: number; to: number }
+    text: string
+    tokens?: { text: string; offsets: { from: number; to: number } }[]
+  }[]
+}
+
+async function finish(id: number): Promise<Transcript> {
+  const job = jobs.get(id)
+  if (!job) throw new Error('Transcription is not running')
+  job.child.stdin.end()
+  const code = await job.done
+  jobs.delete(id)
   try {
-    if (code !== 0) throw new Error('FFmpeg could not transcribe this media (see the console for details)')
-    const [segments, tokens] = await Promise.all([
-      readFile(join(dir, segmentsFile), 'utf8').then(parsePieces),
-      readFile(join(dir, tokensFile), 'utf8').then(parsePieces, () => [])
-    ])
+    if (code !== 0) {
+      console.error(`[captions] whisper.cpp failed (${code}):\n${job.log}`)
+      throw new Error('The speech engine could not transcribe this audio (see the console for details)')
+    }
+    const json = JSON.parse(await readFile(job.output, 'utf8')) as WhisperJson
+    const segments: TranscriptPiece[] = []
+    const tokens: TranscriptPiece[] = []
+    for (const s of json.transcription ?? []) {
+      const text = s.text.trim()
+      if (!text) continue
+      segments.push({ start: s.offsets.from / 1000, end: s.offsets.to / 1000, text })
+      for (const t of s.tokens ?? []) {
+        if (isSpecial(t.text) || !t.text.trim()) continue
+        tokens.push({ start: t.offsets.from / 1000, end: t.offsets.to / 1000, text: t.text.trim() })
+      }
+    }
     return { segments, tokens }
   } finally {
-    await rm(join(dir, segmentsFile), { force: true })
-    await rm(join(dir, tokensFile), { force: true })
+    await rm(job.output, { force: true })
   }
+}
+
+function cancel(id: number): void {
+  const job = jobs.get(id)
+  if (!job) return
+  jobs.delete(id)
+  job.child.kill()
+  void job.done.then(() => rm(job.output, { force: true }))
 }
 
 export function registerCaptionIpc(): void {
   ipcMain.handle('captions:status', () => status())
   ipcMain.handle('captions:download', (event, id: string) => download(id, event.sender))
-  ipcMain.handle('captions:transcribe', (event, req: TranscribeRequest) => transcribe(req, event.sender))
+  ipcMain.handle('captions:start', (event, req: TranscribeRequest) => start(req, event.sender))
+  ipcMain.handle('captions:audio', (_event, id: number, data: Uint8Array) => sendAudio(id, data))
+  ipcMain.handle('captions:finish', (_event, id: number) => finish(id))
+  ipcMain.handle('captions:cancel', (_event, id: number) => cancel(id))
 }

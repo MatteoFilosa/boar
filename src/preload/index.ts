@@ -22,7 +22,10 @@ contextBridge.exposeInMainWorld('boar', {
   openProject: (): Promise<{ path: string; json: string } | null> => ipcRenderer.invoke('project:open'),
   captionsStatus: (): Promise<unknown> => ipcRenderer.invoke('captions:status'),
   downloadModel: (id: string): Promise<void> => ipcRenderer.invoke('captions:download', id),
-  transcribe: (request: unknown): Promise<string> => ipcRenderer.invoke('captions:transcribe', request),
+  startTranscription: (request: unknown): Promise<number> => ipcRenderer.invoke('captions:start', request),
+  sendTranscriptionAudio: (id: number, data: Uint8Array): Promise<void> => ipcRenderer.invoke('captions:audio', id, data),
+  finishTranscription: (id: number): Promise<unknown> => ipcRenderer.invoke('captions:finish', id),
+  cancelTranscription: (id: number): Promise<void> => ipcRenderer.invoke('captions:cancel', id),
   onCaptionProgress(callback: (progress: unknown) => void): () => void {
     const listener = (_event: unknown, progress: unknown): void => callback(progress)
     ipcRenderer.on('captions:progress', listener)

@@ -8,3 +8,7 @@ dev-samples/
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
+
+# Speech engine (scripts/build-whisper.sh, npm run whisper)
+resources/whisper/
+.whisper-build/

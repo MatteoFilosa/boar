@@ -18,6 +18,9 @@ extraResources:
     to: boar-mcp.mjs
   - from: THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
+  # The speech engine (scripts/build-whisper.sh, or npm run whisper).
+  - from: resources/whisper
+    to: whisper
 npmRebuild: false
 win:
   target:

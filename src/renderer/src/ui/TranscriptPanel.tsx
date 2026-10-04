@@ -7,6 +7,7 @@ import { type TimelineWord, type WordFlag, defaultSpeechTrack, hasSpeech, longPa
 import { FLICKS_PER_SECOND, type Flicks, formatTimecode } from '../core/time'
 import type { MediaItem } from '../core/types'
 import { type CaptionProgress, type CaptionStatus, bridge } from '../platform'
+import { transcribeMedia } from '../engine/transcribe'
 import { BoarProgress } from './BoarProgress'
 
 const LANGUAGES = [
@@ -231,15 +232,10 @@ export function TranscriptPanel(): React.JSX.Element {
     setError('')
     try {
       for (const [n, media] of missing.entries()) {
-        if (!media.path) throw new Error(`${media.name} has no file path: import it again in the desktop app`)
-        setBusy({ phase: 'transcribe', progress: 0, label: `${media.name} (${n + 1}/${missing.length})` })
-        const result = await bridge.transcribe({
-          path: media.path,
-          start: 0,
-          duration: media.duration / FLICKS_PER_SECOND,
-          model,
-          language
-        })
+        setBusy({ phase: 'prepare', progress: 0, label: `${media.name} (${n + 1}/${missing.length})` })
+        const result = await transcribeMedia(media, 0, media.duration / FLICKS_PER_SECOND, model, language, (p) =>
+          setBusy((b) => (b ? { ...b, ...p } : b))
+        )
         A.setTranscript(media.id, { language, model, words: alignWords(result) })
       }
       A.setStatus('Transcript ready: select words and press Delete to cut them')
@@ -267,7 +263,7 @@ export function TranscriptPanel(): React.JSX.Element {
   let notice = ''
   if (!trackId) notice = 'Add a clip with speech to the timeline.'
   else if (missing.length > 0 && !bridge) notice = 'Transcription runs in the desktop app (npm run dev).'
-  else if (missing.length > 0 && status && !status.whisper) notice = 'FFmpeg with the "whisper" filter is needed (see README).'
+  else if (missing.length > 0 && status && !status.engine) notice = 'The speech engine is missing from this build of Boar.'
 
   return (
     <div className="transcript">
@@ -299,7 +295,7 @@ export function TranscriptPanel(): React.JSX.Element {
                 Transcribe {missing.length > 1 ? `${missing.length} files` : ''}
               </button>
             ) : (
-              <button className="btn small" disabled={busy !== null || !status?.whisper} onClick={() => void downloadBase()}>
+              <button className="btn small" disabled={busy !== null || !status?.engine} onClick={() => void downloadBase()}>
                 <Download size={13} /> Get Whisper (148 MB)
               </button>
             )}
@@ -329,7 +325,8 @@ export function TranscriptPanel(): React.JSX.Element {
       </div>
       {busy && (
         <BoarProgress value={busy.progress} className="tr-busy">
-          {busy.phase === 'download' ? 'Downloading' : 'Transcribing'} {busy.label} {Math.round(busy.progress * 100)}%
+          {busy.phase === 'download' ? 'Downloading' : busy.phase === 'prepare' ? 'Reading the sound of' : 'Transcribing'} {busy.label}{' '}
+          {Math.round(busy.progress * 100)}%
         </BoarProgress>
       )}
       {error && <div className="render-result error">{error}</div>}
