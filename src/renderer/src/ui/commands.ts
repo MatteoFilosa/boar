@@ -141,6 +141,7 @@ export const commands = {
   toggleUpdateCheck: (): void => A.toggleOption('checkUpdates'),
   toggleProxies: (): void => A.toggleOption('proxies'),
   toggleSpaceReturns: (): void => A.toggleOption('spaceReturns'),
+  themes: (): void => A.openDialog({ kind: 'themes' }),
   loadDemoMedia: (): void => void loadDemoMedia()
 }
 

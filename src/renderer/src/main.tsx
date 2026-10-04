@@ -3,7 +3,10 @@ import './noExternalRequests'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { startThemes } from './ui/themes'
 import './styles.css'
+
+startThemes()
 
 if (import.meta.env.DEV) void import('./devtools')
 

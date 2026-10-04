@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { setOption } from '../core/actions'
 import { useEditor } from '../core/store'
 import { getEngine } from '../engine/preview'
+import { themeColor } from './themes'
 
 const MIN_DB = -60
 const SCALE = [0, -6, -12, -18, -24, -36, -48]
@@ -42,14 +43,14 @@ export function MasterBus(): React.JSX.Element {
       ctx.textBaseline = 'middle'
       for (const db of SCALE) {
         const y = top + height * (1 - dbToFraction(db))
-        ctx.fillStyle = '#7b7e88'
+        ctx.fillStyle = themeColor('text-faint')
         ctx.fillText(String(db), left - 4, y)
         ctx.fillStyle = 'rgba(255,255,255,0.08)'
         ctx.fillRect(left, Math.round(y), barW * 2 + gap, 1)
       }
       for (let c = 0; c < 2; c++) {
         const x = left + c * (barW + gap)
-        ctx.fillStyle = '#121316'
+        ctx.fillStyle = themeColor('well')
         ctx.fillRect(x, top, barW, height)
         const db = toDb(meter[c])
         const fraction = dbToFraction(db)

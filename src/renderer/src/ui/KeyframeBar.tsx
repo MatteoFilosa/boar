@@ -5,6 +5,7 @@ import { type Flicks, type FrameRate, formatTimecode } from '../core/time'
 import type { MediaItem, TimelineEvent } from '../core/types'
 import { sourceLength, timelineTime } from '../core/timeline'
 import { previewUrl } from '../media/proxy'
+import { themeColor } from './themes'
 
 // Shared by the keyframed tool windows (Event Pan/Crop, Event Mask): the
 // source picture at the cursor and the keyframe bar under the workspace.
@@ -81,9 +82,9 @@ export function KeyframeBar({ event, keys, srcTime, here, local, frame, frameRat
     canvas.height = Math.round(h * dpr)
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.fillStyle = '#1b1c20'
+    ctx.fillStyle = themeColor('sunken')
     ctx.fillRect(0, 0, w, h)
-    ctx.fillStyle = '#2a2c33'
+    ctx.fillStyle = themeColor('line')
     ctx.fillRect(0, h / 2 - 1, w, 2)
     const toX = (t: Flicks): number => 8 + ((t - event.offset) / Math.max(1, srcLength)) * (w - 16)
     keys.forEach((time, i) => {

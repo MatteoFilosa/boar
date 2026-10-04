@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('boar', {
   saveProject: (json: string, currentPath: string | null, saveAs: boolean): Promise<string | null> =>
     ipcRenderer.invoke('project:save', json, currentPath, saveAs),
   openProject: (): Promise<{ path: string; json: string } | null> => ipcRenderer.invoke('project:open'),
+  saveTheme: (json: string, name: string): Promise<string | null> => ipcRenderer.invoke('theme:save', json, name),
   captionsStatus: (): Promise<unknown> => ipcRenderer.invoke('captions:status'),
   downloadModel: (id: string): Promise<void> => ipcRenderer.invoke('captions:download', id),
   startTranscription: (request: unknown): Promise<number> => ipcRenderer.invoke('captions:start', request),

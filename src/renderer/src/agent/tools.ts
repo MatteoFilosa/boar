@@ -21,6 +21,7 @@ import { uid } from '../core/ids'
 import { DEFAULT_SHORT_OPTIONS, type ShortFraming, backToLongVideo, makeShort } from '../engine/makeShort'
 import { bridge } from '../platform'
 import { transcribeMedia } from '../engine/transcribe'
+import { THEME_COLORS, addUserTheme, allThemes, parseTheme } from '../ui/themes'
 
 // MCP tools. Times are seconds on the timeline, tracks are numbered from 1 at
 // the top, and each editing tool is one undo step.
@@ -941,6 +942,35 @@ const TOOLS: Tool[] = [
       }
       backToLongVideo()
       return 'Back to the long video'
+    }
+  },
+  {
+    name: 'set_theme',
+    title: 'Set the interface theme',
+    description:
+      'Changes the colors of the editor (not the video). Pass "theme" with the name of an installed theme (call with no arguments to list them), ' +
+      `or "custom" with a new theme: {"name", "base": "dark"|"light", "colors": {token: CSS color}, "backdrop"?: {"gradient": CSS gradient, "stars": boolean}}. ` +
+      `Color tokens: ${THEME_COLORS.join(', ')}. Tokens left out come from the base. A custom theme is saved in the Themes window.`,
+    inputSchema: object({
+      theme: S.str('Name or id of an installed theme'),
+      custom: { type: 'object', description: 'A new theme to install and apply' }
+    }),
+    run: (a) => {
+      if (a.custom && typeof a.custom === 'object') {
+        const theme = addUserTheme(parseTheme(JSON.stringify({ boarTheme: 1, ...(a.custom as object) })))
+        A.setOption('theme', theme.id)
+        return `Theme "${theme.name}" installed and applied (${Object.keys(theme.colors).length} colors set)`
+      }
+      const themes = allThemes()
+      if (a.theme === undefined) {
+        const current = get().options.theme
+        return { current, themes: themes.map((t) => ({ id: t.id, name: t.name, base: t.base })) }
+      }
+      const wanted = str(a, 'theme').trim().toLowerCase()
+      const theme = themes.find((t) => t.id.toLowerCase() === wanted || t.name.toLowerCase() === wanted)
+      if (!theme) throw new ToolError(`No theme "${wanted}". Installed: ${themes.map((t) => t.name).join(', ')}`)
+      A.setOption('theme', theme.id)
+      return `Theme "${theme.name}" applied`
     }
   },
   {

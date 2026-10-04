@@ -140,6 +140,30 @@ Gli assistenti e gli agenti AI compatibili con MCP (app desktop, agenti di codin
 
 L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: ognuna si annulla con `Ctrl+Z` e la finestra mostra tutto quello che ha fatto. Video e audio restano sul tuo PC.
 
+## Temi
+
+*Options › Themes* passa tra **Dark**, **Light**, **Galaxy** ed **Ember** e carica temi fatti da chiunque. Un tema è un piccolo file JSON: ogni chiave di `colors` è un colore dell'interfaccia (qualsiasi colore CSS, anche `rgba()`), e quelli che ometti vengono da `base`. Un colore trasparente lascia vedere il gradiente di `backdrop` dietro i pannelli.
+
+```json
+{
+  "boarTheme": 1,
+  "name": "Sunset",
+  "author": "Il tuo nome",
+  "base": "dark",
+  "colors": {
+    "accent": "#ff6a3d",
+    "bg": "#1a1418",
+    "panel": "#241c21",
+    "timeline-bg": "#1c1619",
+    "track-a": "#2a2026",
+    "track-b": "#251c21"
+  },
+  "backdrop": { "gradient": "linear-gradient(160deg, #1a1418, #3a1f2b)", "stars": false }
+}
+```
+
+Il modo più veloce per crearne uno: scegli il tema più vicino a quello che vuoi, premi *Export Theme* (il file elenca tutti i colori con il loro nome), cambia quello che ti piace e caricalo con *Load Theme File* o trascinandolo sulla finestra. I file dei temi sono solo dati: non possono caricare immagini, font o altro da internet. Anche un agente AI collegato via MCP può crearne uno per te con il tool `set_theme`.
+
 ## Funzioni opzionali
 
 **Download da link (yt-dlp).** Spento di default: si attiva da *Options*. Scarica video o audio dai siti supportati da [yt-dlp](https://github.com/yt-dlp/yt-dlp), che non è incluso in Boar e viene scaricato al primo uso. La finestra resta aperta accanto alla timeline: *Download and Add to Timeline* mette il file al cursore, oppure lo trascini dalla finestra. Dalla maggior parte dei siti video e audio arrivano separati e Boar li unisce da solo, quindi FFmpeg non serve. Scarica solo contenuti che hai il diritto di usare: i termini di molti siti vietano il download.

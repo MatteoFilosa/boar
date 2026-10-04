@@ -53,7 +53,8 @@ const KEYWORDS: Partial<Record<CommandId, string>> = {
   rotateCounterclockwise: 'turn left sideways portrait landscape phone orientation',
   resetRotation: 'turn upright straighten',
   toggleProxies: 'proxy preview scrubbing slow seek optimized media smooth',
-  toggleSpaceReturns: 'space bar pause stop playback start position'
+  toggleSpaceReturns: 'space bar pause stop playback start position',
+  themes: 'theme colors appearance look dark light galaxy skin palette mode white black'
 }
 
 /** Commands that have a shortcut or a button but no menu item. */

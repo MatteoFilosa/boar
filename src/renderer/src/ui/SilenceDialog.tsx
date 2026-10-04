@@ -7,6 +7,7 @@ import type { TimelineEvent } from '../core/types'
 import { HOP, type Interval, autoThreshold, eventLevels, findSilences, mediaLevels } from '../engine/analysis'
 import { BoarProgress } from './BoarProgress'
 import { FloatingWindow } from './FloatingWindow'
+import { themeColor } from './themes'
 
 /** The audio events that decide where the pauses are: selected audio, or the sound of selected videos. */
 function detectorEvents(events: TimelineEvent[], selection: string[]): TimelineEvent[] {
@@ -36,7 +37,7 @@ function LevelGraph({ analysis, threshold, silences }: { analysis: Analysis; thr
     canvas.height = Math.round(h * dpr)
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.fillStyle = '#17181b'
+    ctx.fillStyle = themeColor('sunken')
     ctx.fillRect(0, 0, w, h)
     const { levels } = analysis
     const total = levels.length * HOP

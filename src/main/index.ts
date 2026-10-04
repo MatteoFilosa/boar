@@ -163,6 +163,22 @@ function registerIpc(): void {
     return new Uint8Array(await readFile(path))
   })
 
+  // Theme files: written only where the user picks in the save dialog.
+  ipcMain.handle('theme:save', async (event, json: unknown, name: unknown) => {
+    if (typeof json !== 'string' || json.length > 200_000) throw new Error('Not a theme')
+    const safeName = (typeof name === 'string' ? name : 'Theme').replace(/[^\w\- ]+/g, '').trim() || 'Theme'
+    const options = {
+      title: 'Export Theme',
+      defaultPath: join(app.getPath('documents'), `${safeName}.boartheme.json`),
+      filters: [{ name: 'Boar theme', extensions: ['json'] }]
+    }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return null
+    await writeFile(result.filePath, json, 'utf8')
+    return result.filePath
+  })
+
   // Projects (.boar JSON). Saving without a dialog is only allowed to a
   // project path the user already picked or opened.
   const projectPaths = new Set<string>()

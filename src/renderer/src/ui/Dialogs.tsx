@@ -23,6 +23,7 @@ import { ReframeDialog } from './ReframeDialog'
 import { AutoZoomDialog } from './AutoZoomDialog'
 import { AgentDialog } from './AgentDialog'
 import { UpdateDialog } from './UpdateDialog'
+import { ThemesDialog } from './ThemesDialog'
 
 function Modal({ title, children, width = 460 }: { title: string; children: React.ReactNode; width?: number }): React.JSX.Element {
   return (
@@ -337,6 +338,8 @@ export function Dialogs(): React.JSX.Element | null {
       return <SaveSfxDialog eventId={dialog.eventId} />
     case 'silence':
       return <SilenceDialog />
+    case 'themes':
+      return <ThemesDialog />
     case 'ducking':
       return <DuckingDialog />
     case 'transition':

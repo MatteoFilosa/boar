@@ -24,6 +24,7 @@ import { imageCache } from '../media/cache'
 import { smartOutline, trackOutline } from '../engine/smartMask'
 import { BoarProgress } from './BoarProgress'
 import { KeyframeBar, canDraw, useSourceFrame } from './KeyframeBar'
+import { themeColor } from './themes'
 
 function Slider({
   label,
@@ -241,7 +242,7 @@ function CustomMaskEditor({
     const oy = (ch - sh * scale) / 2
     viewRef.current = { scale, ox, oy }
 
-    ctx.fillStyle = '#141518'
+    ctx.fillStyle = themeColor('workspace')
     ctx.fillRect(0, 0, cw, ch)
     ctx.fillStyle = '#000'
     ctx.fillRect(ox, oy, sw * scale, sh * scale)

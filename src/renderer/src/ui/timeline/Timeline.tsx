@@ -35,6 +35,7 @@ import { importFiles, importPaths } from '../../media/importer'
 import { registerMediaDrop, useMediaDrag } from '../mediaDrag'
 import { type MenuEntry, openContextMenu } from '../ContextMenu'
 import { fadeCurveIcon } from '../FadeCurveIcon'
+import { onThemeChange } from '../themes'
 import { isMac, MOD } from '../../platform'
 import type { Corner } from '../../core/layouts'
 import { TrackHeader, useTrackDrag } from './TrackHeader'
@@ -222,6 +223,7 @@ class TimelineCanvases {
       })
     )
     this.unsubscribe.push(onMediaCacheChange(() => (this.tracksDirty = true)))
+    this.unsubscribe.push(onThemeChange(() => (this.tracksDirty = this.overlayDirty = this.rulerDirty = true)))
     this.raf = requestAnimationFrame(this.loop)
   }
 

@@ -140,6 +140,30 @@ AI assistants and agents that support MCP (desktop apps, coding agents, AI edito
 
 The agent reads the timeline and the transcripts, looks at frames and makes the edits: each one can be undone with `Ctrl+Z`, and the window shows everything it did. Video and audio stay on your PC.
 
+## Themes
+
+*Options › Themes* switches between **Dark**, **Light**, **Galaxy** and **Ember**, and loads themes made by anyone. A theme is a small JSON file: every key in `colors` is one color of the interface (any CSS color, `rgba()` included), and the ones you leave out come from `base`. A see-through color lets the `backdrop` gradient show behind the panels.
+
+```json
+{
+  "boarTheme": 1,
+  "name": "Sunset",
+  "author": "Your name",
+  "base": "dark",
+  "colors": {
+    "accent": "#ff6a3d",
+    "bg": "#1a1418",
+    "panel": "#241c21",
+    "timeline-bg": "#1c1619",
+    "track-a": "#2a2026",
+    "track-b": "#251c21"
+  },
+  "backdrop": { "gradient": "linear-gradient(160deg, #1a1418, #3a1f2b)", "stars": false }
+}
+```
+
+The quickest way to make one: pick the theme closest to what you want, press *Export Theme* (the file lists every color with its name), change what you like and load it with *Load Theme File* or by dropping it on the window. Theme files are plain data: they cannot load images, fonts or anything from the internet. An AI agent connected through MCP can also make one for you with the `set_theme` tool.
+
 ## Optional features
 
 **Download from Link (yt-dlp).** Off by default: turn it on in *Options*. It downloads video or audio from the sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp), which is not included in Boar and is downloaded on first use. The window stays open beside the timeline: *Download and Add to Timeline* puts the file at the cursor, or drag it from the window. Video and sound come as separate streams from most sites and Boar joins them itself, so FFmpeg is not needed. Only download content you have the right to use: the terms of many sites forbid downloading.

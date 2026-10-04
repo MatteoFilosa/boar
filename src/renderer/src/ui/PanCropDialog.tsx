@@ -18,6 +18,7 @@ import { sourceTime } from '../core/timeline'
 import { imageCache } from '../media/cache'
 import { rotateCursor, snapAngle } from './rotateCursor'
 import { KeyframeBar, canDraw, useSourceFrame } from './KeyframeBar'
+import { themeColor } from './themes'
 
 type Corners = [number, number][]
 
@@ -211,7 +212,7 @@ function PanCropWindow({
     const sx = (x: number): number => ox + x * scale
     const sy = (y: number): number => oy + y * scale
 
-    ctx.fillStyle = '#141518'
+    ctx.fillStyle = themeColor('workspace')
     ctx.fillRect(0, 0, cw, ch)
     const source: CanvasImageSource | null =
       media.kind === 'image' ? (imageCache.get(media.id) ?? null) : canDraw(video) ? video : null

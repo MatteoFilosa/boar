@@ -15,6 +15,7 @@ import {
   timeToX,
   xToTime
 } from './geometry'
+import { onThemeChange, themeColor } from '../themes'
 
 const FONT = '11px "Segoe UI", system-ui, sans-serif'
 
@@ -35,8 +36,36 @@ const C = {
   marker: '#ff9f1a',
   cursor: '#f2f2f2',
   cursorPlaying: '#ff6161',
-  snap: '#40d4ff'
+  snap: '#40d4ff',
+  // From the theme (see syncTheme).
+  rulerTop: '#17181b',
+  ruler: '#25262b',
+  rulerTick: '#8d909a',
+  rulerTickMinor: '#5b5e66',
+  rulerText: '#b9bcc6',
+  loop: '#4f9cff',
+  hint: '#6b6f79'
 }
+
+/** Reads the canvas colors from the theme. */
+function syncTheme(): void {
+  C.background = themeColor('timeline-bg')
+  C.rowA = themeColor('track-a')
+  C.rowB = themeColor('track-b')
+  C.rowSelected = themeColor('track-selected')
+  C.rowLine = themeColor('track-line')
+  C.grid = themeColor('grid')
+  C.cursor = themeColor('cursor')
+  C.rulerTop = themeColor('sunken')
+  C.ruler = themeColor('ruler')
+  C.rulerTick = themeColor('ruler-tick')
+  C.rulerTickMinor = themeColor('ruler-tick-minor')
+  C.rulerText = themeColor('ruler-text')
+  C.loop = themeColor('accent')
+  C.hint = themeColor('text-faint')
+}
+syncTheme()
+onThemeChange(syncTheme)
 
 export interface Rect {
   x0: number
@@ -82,11 +111,11 @@ export function drawRuler(
   const { view, project, cursor } = s
   const rate = project.settings.frameRate
   ctx.clearRect(0, 0, width, height)
-  ctx.fillStyle = '#18191c'
+  ctx.fillStyle = C.rulerTop
   ctx.fillRect(0, 0, width, MARKER_BAR_H)
-  ctx.fillStyle = '#25262b'
+  ctx.fillStyle = C.ruler
   ctx.fillRect(0, MARKER_BAR_H, width, height - MARKER_BAR_H)
-  ctx.fillStyle = 'rgba(0,0,0,0.6)'
+  ctx.fillStyle = C.rowLine
   ctx.fillRect(0, MARKER_BAR_H - 1, width, 1)
   ctx.fillRect(0, height - 1, width, 1)
 
@@ -98,7 +127,7 @@ export function drawRuler(
     if (x1 > -2 && x0 < width + 2) {
       ctx.fillStyle = 'rgba(110,160,255,0.16)'
       ctx.fillRect(x0, 0, x1 - x0, height)
-      ctx.fillStyle = s.options.loop ? '#4f9cff' : '#8a93a6'
+      ctx.fillStyle = s.options.loop ? C.loop : '#8a93a6'
       ctx.fillRect(x0, 0, x1 - x0, 5)
       ctx.beginPath()
       ctx.moveTo(x0, 0)
@@ -125,11 +154,11 @@ export function drawRuler(
     const x = Math.round(sec * view.pxPerSecond - view.scrollX) + 0.5
     const ratio = sec / major
     const isMajor = Math.abs(ratio - Math.round(ratio)) < 1e-6
-    ctx.fillStyle = isMajor ? '#8d909a' : '#5b5e66'
+    ctx.fillStyle = isMajor ? C.rulerTick : C.rulerTickMinor
     const tick = isMajor ? 10 : 5
     ctx.fillRect(x - 0.5, height - tick, 1, tick)
     if (isMajor) {
-      ctx.fillStyle = '#b9bcc6'
+      ctx.fillStyle = C.rulerText
       ctx.fillText(formatTimecode(secondsToFlicks(sec), rate), x + 3, MARKER_BAR_H + 3)
     }
   }
@@ -220,7 +249,7 @@ export function drawTracks(
   ctx.restore()
 
   if (project.tracks.length === 0) {
-    ctx.fillStyle = '#6d707a'
+    ctx.fillStyle = C.hint
     ctx.font = '13px "Segoe UI", system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'

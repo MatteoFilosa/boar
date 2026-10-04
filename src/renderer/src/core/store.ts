@@ -45,6 +45,8 @@ export interface EditorOptions {
   proxies: boolean
   /** Space stops and goes back to where playback started (off: it pauses where it is). */
   spaceReturns: boolean
+  /** Interface theme: a built-in id ('dark', 'light'...) or a loaded file ('user:...'). */
+  theme: string
 }
 
 const DEFAULT_OPTIONS: EditorOptions = {
@@ -64,7 +66,8 @@ const DEFAULT_OPTIONS: EditorOptions = {
   linkDownloads: false,
   checkUpdates: true,
   proxies: true,
-  spaceReturns: false
+  spaceReturns: false,
+  theme: 'dark'
 }
 
 const OPTIONS_KEY = 'boar.options'
@@ -96,6 +99,7 @@ export type Dialog =
   | { kind: 'fx'; eventId: string; focus?: string }
   | { kind: 'youtube' }
   | { kind: 'silence' }
+  | { kind: 'themes' }
   | { kind: 'transition'; eventId: string }
   | { kind: 'ducking' }
   | { kind: 'reframe' }

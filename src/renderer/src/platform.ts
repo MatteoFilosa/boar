@@ -14,6 +14,8 @@ export interface BoarBridge {
   /** Writes a project, asking for a path when there is none (or saveAs). Null if cancelled. */
   saveProject(json: string, currentPath: string | null, saveAs: boolean): Promise<string | null>
   openProject(): Promise<{ path: string; json: string } | null>
+  /** Writes a theme file where the user picks. Null if cancelled. */
+  saveTheme(json: string, name: string): Promise<string | null>
   captionsStatus(): Promise<CaptionStatus>
   downloadModel(id: string): Promise<void>
   /**
