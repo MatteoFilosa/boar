@@ -29,11 +29,15 @@ const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/'
 
 const modelsDir = (): string => join(app.getPath('userData'), 'models')
 
+const engineDir = (): string => (app.isPackaged ? join(process.resourcesPath, 'whisper') : join(app.getAppPath(), 'resources', 'whisper'))
+
 /** The whisper.cpp tool: next to the app's resources when packaged, in resources/whisper while developing. */
 export function whisperPath(): string {
-  const dir = app.isPackaged ? join(process.resourcesPath, 'whisper') : join(app.getAppPath(), 'resources', 'whisper')
-  return join(dir, process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli')
+  return join(engineDir(), process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli')
 }
+
+/** Voice activity detection model shipped with the engine (see scripts/build-whisper.sh). */
+const vadModel = (): string => join(engineDir(), 'ggml-silero-v6.2.0.bin')
 
 /** True when the bundled tool starts (the smoke test checks it too). */
 export function whisperRuns(): Promise<boolean> {
@@ -148,6 +152,8 @@ async function start(req: TranscribeRequest, sender: WebContents): Promise<numbe
   const output = join(tmp, `captions-${Date.now()}-${id}`)
   const threads = Math.max(1, Math.min(8, availableParallelism() - 1))
   const args = ['-m', modelFile, '-f', '-', '-l', language, '-t', String(threads), '-ojf', '-of', output, '-pp', '-np']
+  // Only the parts with speech are transcribed: no made-up text over music or silence, and faster.
+  if (existsSync(vadModel())) args.push('--vad', '-vm', vadModel())
   const child = spawn(whisperPath(), args, { windowsHide: true })
   const job: Job = { child, output: `${output}.json`, log: '', done: Promise.resolve(0) }
   job.done = new Promise<number>((resolve) => {

@@ -67,6 +67,14 @@ case "$(uname -s)" in
   *) cp "$bin"/whisper-cli.exe "$bin"/*.dll "$out/" ;;
 esac
 cp "$work/src/LICENSE" "$out/LICENSE-whisper.cpp.txt"
+
+# Voice activity detection (Silero VAD, MIT): Whisper only hears the parts
+# with speech, which avoids made-up text over music and silence.
+VAD=ggml-silero-v6.2.0.bin
+VAD_SHA256=2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987
+curl -sSfL -o "$out/$VAD" "https://huggingface.co/ggml-org/whisper-vad/resolve/main/$VAD"
+sum=$( (command -v sha256sum >/dev/null && sha256sum "$out/$VAD" || shasum -a 256 "$out/$VAD") | cut -d' ' -f1)
+[ "$sum" = "$VAD_SHA256" ] || { echo "VAD model checksum mismatch" >&2; exit 1; }
 echo "$VERSION" > "$out/VERSION"
 rm -rf "$work"
 ls -la "$out"
