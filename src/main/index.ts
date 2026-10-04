@@ -9,12 +9,14 @@ import { registerLibraryIpc } from './library'
 import { registerMcp } from './mcp'
 import { extendToolPath } from './toolPath'
 import { registerUpdateIpc } from './updates'
+import { blockExternalRequests, disableBackgroundNetworking } from './privacy'
 
 // `--smoke`: load the UI hidden, report renderer errors, exit. Used to verify builds.
 const smoke = process.argv.includes('--smoke')
 
 registerMediaScheme()
 extendToolPath()
+disableBackgroundNetworking()
 // Own taskbar identity on Windows (icon and grouping), instead of Electron's.
 if (process.platform === 'win32') app.setAppUserModelId('io.github.matteofilosa.boar')
 
@@ -38,6 +40,8 @@ function createWindow(): void {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      // The spellchecker would download dictionaries from Google.
+      spellcheck: false,
       autoplayPolicy: 'no-user-gesture-required'
     }
   })
@@ -267,6 +271,7 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin') {
     Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }]))
   }
+  blockExternalRequests()
   handleMediaProtocol()
   registerIpc()
   registerCaptionIpc()
