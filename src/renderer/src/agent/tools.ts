@@ -1,11 +1,14 @@
 import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
 import { FLICKS_PER_SECOND, type Flicks, fps, secondsToFlicks } from '../core/time'
-import { eventEnd, projectEnd } from '../core/timeline'
+import { eventEnd, projectEnd, sourceTime } from '../core/timeline'
 import type { TimelineEvent } from '../core/types'
 import { CAPTION_STYLES, alignWords, chunkWords } from '../core/captions'
 import { type TimelineWord, defaultSpeechTrack, hasSpeech, speechTracks, wordFlag, wordsOnTimeline } from '../core/transcript'
 import { TEXT_PRESETS } from '../core/text'
+import { normalizeAngle, panCropAt, sourceToOutput } from '../core/pancrop'
+import { DEFAULT_MASK, type EventMask, type MaskPoint } from '../core/mask'
+import { smartOutline, trackOutline } from '../engine/smartMask'
 import { AUDIO_FX, VIDEO_FX } from '../core/fx'
 import type { Corner } from '../core/layouts'
 import { renderStill } from '../engine/export'
@@ -90,6 +93,13 @@ function ranges(a: Args, key = 'ranges'): { start: Flicks; end: Flicks }[] {
   })
 }
 
+function framePoints(a: Args, key: string): MaskPoint[] {
+  const v = a[key]
+  if (v === undefined) return []
+  if (!Array.isArray(v)) throw new ToolError(`"${key}" must be an array of {x, y}`)
+  return v.map((p) => [num(p as Args, 'x', { min: 0, max: 1 }), num(p as Args, 'y', { min: 0, max: 1 })])
+}
+
 /** Event ids that exist; when absent, `fallback` (e.g. the selection). */
 function eventIds(a: Args, fallback: () => string[] = () => []): string[] {
   const v = a.event_ids
@@ -119,6 +129,15 @@ const S = {
   str: (description: string, values?: readonly string[]) => (values ? { type: 'string', description, enum: values } : { type: 'string', description }),
   bool: (description: string) => ({ type: 'boolean', description }),
   ids: (description = 'Event ids from get_project') => ({ type: 'array', items: { type: 'string' }, description }),
+  points: (description: string) => ({
+    type: 'array',
+    description,
+    items: {
+      type: 'object',
+      properties: { x: { type: 'number', description: '0 = left, 1 = right' }, y: { type: 'number', description: '0 = top, 1 = bottom' } },
+      required: ['x', 'y']
+    }
+  }),
   ranges: (description: string) => ({
     type: 'array',
     description,
@@ -153,6 +172,9 @@ function describeEvent(e: TimelineEvent, trackIndex: Map<string, number>): Recor
   if (e.fadeOut) out.fadeOut = sec(e.fadeOut)
   if (e.fx.length) out.fx = e.fx.map((f) => f.type)
   if (e.panCrop.length) out.panCrop = e.panCrop.length === 1 ? `zoom ${e.panCrop[0].zoom.toFixed(2)}` : `${e.panCrop.length} keyframes`
+  // Clockwise on screen (a Pan/Crop rotation turns the frame, so the picture the other way).
+  const rotation = e.text ? e.text.rotation : e.panCrop.length === 1 ? normalizeAngle(-e.panCrop[0].rotation) : 0
+  if (rotation) out.rotation = Math.round(rotation * 10) / 10
   if (e.groupId) out.group = e.groupId
   return out
 }
@@ -451,7 +473,8 @@ const TOOLS: Tool[] = [
         start: S.num('Seconds'),
         duration: S.num('Seconds (default 4)'),
         preset: S.str('Look', TEXT_PRESETS.map((p) => p.id)),
-        y: S.num('Vertical position, 0 = top, 1 = bottom (default: from the preset)')
+        y: S.num('Vertical position, 0 = top, 1 = bottom (default: from the preset)'),
+        rotation: S.num('Degrees, clockwise (default 0)')
       },
       ['text', 'start']
     ),
@@ -463,6 +486,7 @@ const TOOLS: Tool[] = [
       A.closeDialog()
       const patch: Record<string, unknown> = { text: str(a, 'text') }
       if (a.y !== undefined) patch.y = num(a, 'y', { min: 0, max: 1 })
+      if (a.rotation !== undefined) patch.rotation = normalizeAngle(num(a, 'rotation', { min: -3600, max: 3600 }))
       A.updateText(id, patch)
       if (a.duration !== undefined) {
         const length = secondsToFlicks(num(a, 'duration', { min: 0.1, max: 3600 }))
@@ -602,6 +626,94 @@ const TOOLS: Tool[] = [
       }
       A.setPanCropForEvents(keys)
       return `Zoom applied to ${keys.size} clip(s)`
+    }
+  },
+  {
+    name: 'rotate',
+    title: 'Rotate clips, images or text',
+    description:
+      'Turns video clips, images or text events clockwise on screen (negative degrees = counterclockwise). 90 or -90 fixes sideways phone footage: a clip that fitted or filled the frame still does. reset=true makes them upright again.',
+    inputSchema: object({ event_ids: S.ids(), degrees: S.num('Clockwise degrees, e.g. 90, -90, 180, 12'), reset: S.bool('Upright again (degrees is ignored)') }, [
+      'event_ids'
+    ]),
+    run: (a) => {
+      const turn = bool(a, 'reset', false) ? 'reset' : num(a, 'degrees', { min: -3600, max: 3600 })
+      if (!A.rotateEvents(eventIds(a), turn)) throw new ToolError(get().status)
+      return get().status
+    }
+  },
+  {
+    name: 'set_mask',
+    title: 'Mask or cut out an event',
+    description:
+      'Makes part of a video, image or text event transparent (lower tracks show through). shape "smart" cuts out the object under the include points with a local AI, minus what the exclude points touch; points are fractions of the frame as get_frame shows it at `time`, and track follows the object through a video clip. "ellipse" and "rectangle" use cx, cy, w, h (fractions of the frame). "none" removes the mask.',
+    inputSchema: object(
+      {
+        event_id: S.str('Event id'),
+        shape: S.str('Mask shape', ['smart', 'ellipse', 'rectangle', 'none']),
+        include: S.points('Smart: points on the object to keep'),
+        exclude: S.points('Smart: points on parts to leave out'),
+        time: S.num('Smart: seconds on the timeline where the points were picked (default: the cursor)'),
+        track: S.bool('Smart: follow the object through the clip (default true for video)'),
+        cx: S.num('Ellipse/rectangle center, 0-1'),
+        cy: S.num('Ellipse/rectangle center, 0-1'),
+        w: S.num('Ellipse/rectangle width, fraction of the frame'),
+        h: S.num('Ellipse/rectangle height, fraction of the frame'),
+        feather: S.num('Edge softness in px at 1080p (default 40, smart 6)'),
+        invert: S.bool('Keep the outside instead (default false)')
+      },
+      ['event_id', 'shape']
+    ),
+    run: async (a) => {
+      const id = str(a, 'event_id')
+      const event = get().project.events.find((e) => e.id === id)
+      if (!event) throw new ToolError(`Unknown event ${id}`)
+      if (event.kind !== 'video') throw new ToolError('Masks apply to video, image and text events')
+      const shape = oneOf(a, 'shape', ['smart', 'ellipse', 'rectangle', 'none'] as const, 'smart')
+      if (shape === 'none') {
+        A.replaceMask(id, null)
+        return 'Mask removed'
+      }
+      const base: EventMask = { ...DEFAULT_MASK, ...event.mask, invert: bool(a, 'invert', event.mask?.invert ?? false) }
+      if (shape !== 'smart') {
+        A.replaceMask(id, {
+          ...base,
+          shape,
+          cx: num(a, 'cx', { min: -1, max: 2, def: base.cx }),
+          cy: num(a, 'cy', { min: -1, max: 2, def: base.cy }),
+          w: num(a, 'w', { min: 0.01, max: 3, def: base.w }),
+          h: num(a, 'h', { min: 0.01, max: 3, def: base.h }),
+          feather: num(a, 'feather', { min: 0, max: 400, def: base.feather })
+        })
+        return `${shape} mask set`
+      }
+      const media = mediaById(event.mediaId)
+      if (event.text || !media?.width || !media.height) throw new ToolError('Smart masks work on video and image events')
+      const t = a.time === undefined ? get().cursor : secondsToFlicks(num(a, 'time', { min: 0 }))
+      if (t < event.start || t >= eventEnd(event)) throw new ToolError('`time` must be inside the event')
+      const srcTime = sourceTime(event, t)
+      // Frame fractions as the agent sees them, to fractions of the source picture.
+      const { width, height } = get().project.settings
+      const { inverse } = sourceToOutput(panCropAt(event.panCrop, srcTime), media.width, media.height, width, height)
+      const toSource = ([x, y]: MaskPoint): MaskPoint => {
+        const [sx, sy] = inverse(x * width, y * height)
+        return [sx / media.width, sy / media.height]
+      }
+      const include = framePoints(a, 'include').map(toSource)
+      const exclude = framePoints(a, 'exclude').map(toSource)
+      if (include.length === 0) throw new ToolError('Smart masks need at least one include point on the object')
+      const seeds = { time: srcTime, include, exclude }
+      const feather = num(a, 'feather', { min: 0, max: 400, def: 6 })
+      if (media.kind === 'video' && bool(a, 'track', true)) {
+        const path = await trackOutline(event, media, seeds, () => undefined, () => false)
+        if (path.length === 0) throw new ToolError('Nothing found under the include points')
+        A.replaceMask(id, { ...base, shape: 'custom', feather, path, smart: seeds })
+        return `Object cut out and tracked: ${path.length} keyframe(s)`
+      }
+      const points = await smartOutline(media, seeds)
+      if (!points) throw new ToolError('Nothing found under the include points')
+      A.replaceMask(id, { ...base, shape: 'custom', feather, path: [{ time: srcTime, points }], smart: seeds })
+      return 'Object cut out'
     }
   },
   {

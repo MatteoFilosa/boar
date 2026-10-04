@@ -7,6 +7,7 @@ import {
   BookmarkPlus,
   CircleDashed,
   Crop,
+  RotateCw,
   Gauge,
   LayoutTemplate,
   Locate,
@@ -607,6 +608,21 @@ function layoutEntry(): MenuEntry {
   }
 }
 
+/** Rotate submenu for video, image and text events (the preview also rotates from just outside a corner). */
+function rotateEntry(): MenuEntry {
+  return {
+    label: 'Rotate',
+    icon: RotateCw,
+    submenu: [
+      { label: '90° Clockwise', command: 'rotateClockwise' },
+      { label: '90° Counterclockwise', command: 'rotateCounterclockwise' },
+      { label: 'Reset Rotation', command: 'resetRotation' },
+      'separator',
+      { label: 'Tip: drag just outside a corner in the preview', disabled: true }
+    ]
+  }
+}
+
 /** The fade whose region (from the event edge to the fade handle) contains timeline time `at`. */
 function fadeSideAt(ev: TimelineEvent, at: Flicks): 'in' | 'out' | null {
   if (ev.fadeIn > 0 && at - ev.start <= ev.fadeIn) return 'in'
@@ -684,6 +700,7 @@ function contextEntries(hit: Hit, at: Flicks): MenuEntry[] {
     if (ev.kind === 'video' && !ev.text) {
       entries.push({ label: 'Fill Frame', command: 'fillFrame' }, { label: 'Fit Frame', command: 'fitFrame' }, layoutEntry())
     }
+    if (ev.kind === 'video') entries.push(rotateEntry())
     if (A.canStretch(ev)) entries.push(playbackRateEntry(ev))
     entries.push('separator')
     if (!fadeSide && ev.fadeIn > 0) entries.push(fadeTypeEntry(ev, 'in', 'Fade In Type'))

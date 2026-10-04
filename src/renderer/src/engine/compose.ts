@@ -1,11 +1,11 @@
 import { mediaById } from '../core/store'
-import { drawPanCropped, panCropAt } from '../core/pancrop'
+import { drawPanCropped, panCropAt, sourceToOutput } from '../core/pancrop'
 import { drawText } from '../core/text'
 import { type Flicks, flicksToSeconds, frameFlicks } from '../core/time'
 import { eventsOnTrack, sourceTime, videoAlpha } from '../core/timeline'
 import type { Project, TimelineEvent } from '../core/types'
 import { imageCache } from '../media/cache'
-import { maskCanvas } from '../core/mask'
+import { type EventMask, type MaskPoint, maskCanvas, pathAt } from '../core/mask'
 import { activeFx } from '../core/fx'
 import { applyTransition, applyVideoFx } from './videoFx'
 import { personMask } from './vision'
@@ -127,7 +127,8 @@ function drawEvent(
       s.drawImage(processed, 0, 0)
     }
     s.globalCompositeOperation = 'destination-in'
-    s.drawImage(maskCanvas(ev.mask, width, height), 0, 0)
+    const points = ev.mask.shape === 'custom' ? customMaskPoints(ev, ev.mask, t, width, height) : undefined
+    s.drawImage(maskCanvas(ev.mask, width, height, points), 0, 0)
     s.globalCompositeOperation = 'source-over'
     out = scratch
   }
@@ -135,6 +136,18 @@ function drawEvent(
   ctx.drawImage(out, 0, 0)
   ctx.globalAlpha = 1
   return true
+}
+
+/** A custom mask's shape at t, placed in the output frame (pixels) through the event's Pan/Crop. */
+function customMaskPoints(ev: TimelineEvent, mask: EventMask, t: Flicks, width: number, height: number): MaskPoint[] {
+  const time = sourceTime(ev, t)
+  const points = pathAt(mask.path, time)
+  // Text has no source picture: its shape is drawn over the frame itself.
+  if (ev.text) return points.map(([x, y]) => [x * width, y * height])
+  const media = mediaById(ev.mediaId)
+  if (!media?.width || !media.height) return []
+  const { map } = sourceToOutput(panCropAt(ev.panCrop, time), media.width, media.height, width, height)
+  return points.map(([x, y]) => map(x * media.width, y * media.height))
 }
 
 function drawEventContent(

@@ -26,7 +26,8 @@
 
 ## Why Boar
 
-- **Everything runs locally.** Transcription, face tracking, background removal and noise reduction run on your PC. No account, no subscription, nothing uploaded.
+- **Everything runs locally.** Transcription, face tracking, background removal, object cutouts and noise reduction run on your PC. No account, no subscription, nothing uploaded.
+- **No data collection.** No analytics, no usage logs, no telemetry, not even from the libraries inside it: Boar blocks every connection except the downloads you ask for (updates, speech models, yt-dlp). The update check can be turned off in *Options*.
 - **Made for today's videos.** Vertical format, animated word-by-word captions, hook titles, zoom on cuts, from a long video to Shorts.
 - **Real editing.** Multitrack timeline with events, fades and crossfades, time selection, ripple, keyframes, effects and transitions.
 - **Fast on your hardware.** Export with your graphics card's hardware encoder (Intel, NVIDIA or AMD), effects on the GPU.
@@ -59,7 +60,7 @@
 - **Text-based editing** (*Transcript* tab): speech becomes text; select words, press `Delete` and the video is cut. One button selects ums, uhs and repeated words; another shortens long pauses.
 - Highlighted keywords (`*word*` in the text, or automatic) and emoji on matching words.
 - 21 text presets, including a hook title at the top and a progress bar; more than 30 bundled fonts; in and out animations.
-- Handles right in the preview to move and scale text, images and video.
+- Handles right in the preview to move, scale and rotate text, images and video (drag just outside a corner to rotate, Shift for 15° steps).
 
 ### Audio
 
@@ -72,7 +73,8 @@
 
 - 24 GPU video effects: ready-made color looks, color correction, chroma key, blur, glow, vignette, grain, VHS, glitch and more. AI **background removal**, no green screen needed.
 - Transitions: zoom, whip pan, spin, glitch, flash, dip to black, blur, pixelate.
-- Ellipse and rectangle masks, Event Pan/Crop with keyframes.
+- Masks: ellipse, rectangle or a custom shape drawn with points and animated with keyframes. **Smart Select** cuts out an object with a click (more clicks add or leave out parts) and *Track Motion* follows it through the clip.
+- Event Pan/Crop with keyframes.
 - **Render As** MP4 (H.264, HEVC, AV1, VP9) with the GPU's hardware encoder. Preview and export use the same engine: what you see is what you export.
 
 ## Installation
@@ -130,7 +132,7 @@ Boar works with **Intel, NVIDIA and AMD** GPUs: no code is tied to one vendor.
 | --- | --- |
 | Export | The graphics card's hardware encoder through WebCodecs. *Render As* only lists the formats your GPU can encode: H.264 is always there, HEVC and AV1 depend on the card's generation. On macOS the hardware encoder covers H.264 and HEVC; on Linux export often runs on the CPU, slower. |
 | Preview and effects | WebGL2, the same on every recent GPU. |
-| Face and background (AI) | MediaPipe on the GPU, falling back to the CPU. |
+| Face, background and Smart Select (AI) | MediaPipe on the GPU, falling back to the CPU. |
 | Transcription | whisper.cpp inside FFmpeg: uses the GPU if your FFmpeg build supports it, otherwise the CPU. |
 | Noise reduction | On the CPU, identical everywhere. |
 
@@ -166,6 +168,7 @@ The agent reads the timeline and the transcripts, looks at frames and makes the 
 | `Ctrl+S` / `Ctrl+O` | save / open project (`.boar`) |
 | `Ctrl+M` | Render As |
 | `Ctrl+F` | search commands, options and effects |
+| `Ctrl+R` / `Ctrl+Shift+R` | rotate the selected video, image or text 90° clockwise / counterclockwise |
 | `M`, `G` / `U`, `F8`, `Q` | marker, group / ungroup, snapping, loop |
 | `←` `→` / `↑` `↓` | previous and next frame / zoom |
 | `Esc` | clear the time selection |

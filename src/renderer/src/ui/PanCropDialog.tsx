@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Diamond, Minus, Plus } from 'lucide-react'
 import { FloatingWindow } from './FloatingWindow'
 import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
@@ -7,16 +6,18 @@ import {
   type Ease,
   type PanCropKey,
   type PanCropState,
-  fillZoom,
   fitFrame,
   frameRect,
+  framingZoom,
   panCropAt,
   upsertKey
 } from '../core/pancrop'
-import { type Flicks, flicksToSeconds, formatTimecode, frameFlicks } from '../core/time'
+import { type Flicks, flicksToSeconds, frameFlicks } from '../core/time'
 import type { MediaItem, TimelineEvent } from '../core/types'
-import { sourceLength, sourceTime, timelineTime } from '../core/timeline'
+import { sourceTime } from '../core/timeline'
 import { imageCache } from '../media/cache'
+import { rotateCursor, snapAngle } from './rotateCursor'
+import { KeyframeBar, useSourceFrame } from './KeyframeBar'
 
 type Corners = [number, number][]
 
@@ -42,34 +43,38 @@ interface ViewMap {
   oy: number
 }
 
-/** Keeps a muted video element on the frame the dialog is showing. */
-function useSourceFrame(media: MediaItem | undefined, seconds: number, onFrame: () => void): HTMLVideoElement | null {
-  const [video, setVideo] = useState<HTMLVideoElement | null>(null)
-  useEffect(() => {
-    if (!media || media.kind !== 'video') return
-    const el = document.createElement('video')
-    el.muted = true
-    el.preload = 'auto'
-    el.src = media.url
-    setVideo(el)
-    return () => {
-      el.removeAttribute('src')
-      el.load()
-      setVideo(null)
+type DragMode = 'move' | 'scale' | 'rotate'
+
+/** Screen pixels around a corner that scale (on it) or rotate (just outside the frame). */
+const SCALE_RADIUS = 10
+const ROTATE_RADIUS = 28
+
+/**
+ * What a press at source point (x, y) does: on a corner it scales, just outside
+ * a corner it rotates, elsewhere it moves. `corner` is the index of the nearest corner.
+ */
+function hitMode(
+  f: { cx: number; cy: number; w: number; h: number; rotation: number },
+  x: number,
+  y: number,
+  viewScale: number
+): { mode: DragMode; corner: number } {
+  const pts = corners(f)
+  let corner = 0
+  let best = Infinity
+  pts.forEach(([px, py], i) => {
+    const d = Math.hypot(px - x, py - y) * viewScale
+    if (d < best) {
+      best = d
+      corner = i
     }
-  }, [media])
-  useEffect(() => {
-    if (!video) return
-    const done = (): void => onFrame()
-    video.addEventListener('seeked', done)
-    video.addEventListener('loadeddata', done)
-    if (Math.abs(video.currentTime - seconds) > 0.001) video.currentTime = seconds + 0.001
-    return () => {
-      video.removeEventListener('seeked', done)
-      video.removeEventListener('loadeddata', done)
-    }
-  }, [video, seconds, onFrame])
-  return video
+  })
+  if (best < SCALE_RADIUS) return { mode: 'scale', corner }
+  const a = (-f.rotation * Math.PI) / 180
+  const lx = (x - f.cx) * Math.cos(a) - (y - f.cy) * Math.sin(a)
+  const ly = (x - f.cx) * Math.sin(a) + (y - f.cy) * Math.cos(a)
+  const outside = Math.abs(lx) > f.w / 2 || Math.abs(ly) > f.h / 2
+  return { mode: outside && best < ROTATE_RADIUS ? 'rotate' : 'move', corner }
 }
 
 function NumberField({
@@ -133,9 +138,17 @@ function PanCropWindow({
   cursor: Flicks
 }): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const barRef = useRef<HTMLCanvasElement>(null)
   const viewRef = useRef<ViewMap>({ scale: 1, ox: 0, oy: 0 })
-  const dragRef = useRef<{ mode: 'move' | 'scale'; x: number; y: number; start: PanCropState; dist: number } | null>(null)
+  const dragRef = useRef<{
+    mode: DragMode
+    x: number
+    y: number
+    start: PanCropState
+    dist: number
+    /** Rotation: last pointer angle around the frame center and the unwrapped turn so far (radians). */
+    angle: number
+    turned: number
+  } | null>(null)
   const [, setTick] = useState(0)
   const redraw = useRef(() => setTick((n) => n + 1)).current
 
@@ -151,7 +164,6 @@ function PanCropWindow({
   const frame = frameFlicks(settings.frameRate)
   const local = Math.min(Math.max(0, cursor - event.start), Math.max(0, event.length - frame))
   const srcTime = sourceTime(event, event.start + local)
-  const srcLength = sourceLength(event)
   const state = panCropAt(event.panCrop, srcTime)
   const keyHere = event.panCrop.find((k) => Math.abs(k.time - srcTime) < frame / 2)
   const sw = media.width || 1
@@ -239,40 +251,6 @@ function PanCropWindow({
     ctx.restore()
   })
 
-  // Keyframe bar
-  useEffect(() => {
-    const canvas = barRef.current
-    if (!canvas) return
-    const dpr = window.devicePixelRatio || 1
-    const w = canvas.clientWidth
-    const h = canvas.clientHeight
-    canvas.width = Math.round(w * dpr)
-    canvas.height = Math.round(h * dpr)
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.fillStyle = '#1b1c20'
-    ctx.fillRect(0, 0, w, h)
-    ctx.fillStyle = '#2a2c33'
-    ctx.fillRect(0, h / 2 - 1, w, 2)
-    const toX = (t: Flicks): number => 8 + ((t - event.offset) / Math.max(1, srcLength)) * (w - 16)
-    for (const k of event.panCrop) {
-      if (k.time < event.offset - frame || k.time > event.offset + srcLength + frame) continue
-      const x = toX(k.time)
-      ctx.save()
-      ctx.translate(x, h / 2)
-      ctx.rotate(Math.PI / 4)
-      ctx.fillStyle = k === keyHere ? '#ffcf70' : '#9fb8e8'
-      ctx.fillRect(-5, -5, 10, 10)
-      ctx.restore()
-    }
-    const cx = Math.round(toX(srcTime)) + 0.5
-    ctx.strokeStyle = '#ff6161'
-    ctx.beginPath()
-    ctx.moveTo(cx, 0)
-    ctx.lineTo(cx, h)
-    ctx.stroke()
-  })
-
   const toSource = (e: { clientX: number; clientY: number }): [number, number] => {
     const r = canvasRef.current!.getBoundingClientRect()
     const { scale, ox, oy } = viewRef.current
@@ -284,14 +262,15 @@ function PanCropWindow({
     e.currentTarget.setPointerCapture(e.pointerId)
     const [x, y] = toSource(e)
     const f = frameRect(state, sw, sh, outW, outH)
-    const nearCorner = corners(f).some(([px, py]) => Math.hypot(px - x, py - y) * viewRef.current.scale < 10)
     A.beginGesture()
     dragRef.current = {
-      mode: nearCorner ? 'scale' : 'move',
+      mode: hitMode(f, x, y, viewRef.current.scale).mode,
       x,
       y,
       start: { ...state },
-      dist: Math.max(1, Math.hypot(x - f.cx, y - f.cy))
+      dist: Math.max(1, Math.hypot(x - f.cx, y - f.cy)),
+      angle: Math.atan2(y - f.cy, x - f.cx),
+      turned: 0
     }
   }
 
@@ -300,11 +279,22 @@ function PanCropWindow({
     const [x, y] = toSource(e)
     if (!drag) {
       const f = frameRect(state, sw, sh, outW, outH)
-      const nearCorner = corners(f).some(([px, py]) => Math.hypot(px - x, py - y) * viewRef.current.scale < 10)
-      e.currentTarget.style.cursor = nearCorner ? 'nwse-resize' : 'move'
+      const hit = hitMode(f, x, y, viewRef.current.scale)
+      // Corners are listed clockwise from the top left, like the cursor's base angles.
+      e.currentTarget.style.cursor =
+        hit.mode === 'rotate' ? rotateCursor(hit.corner * 90 + f.rotation) : hit.mode === 'scale' ? 'nwse-resize' : 'move'
       return
     }
-    if (drag.mode === 'move') {
+    if (drag.mode === 'rotate') {
+      const startFrame = frameRect(drag.start, sw, sh, outW, outH)
+      const a = Math.atan2(y - startFrame.cy, x - startFrame.cx)
+      let step = a - drag.angle
+      if (step > Math.PI) step -= Math.PI * 2
+      if (step < -Math.PI) step += Math.PI * 2
+      drag.turned += step
+      drag.angle = a
+      edit({ rotation: snapAngle(drag.start.rotation + (drag.turned * 180) / Math.PI, e) })
+    } else if (drag.mode === 'move') {
       edit({ cx: drag.start.cx + (x - drag.x) / sw, cy: drag.start.cy + (y - drag.y) / sh })
     } else {
       const startFrame = frameRect(drag.start, sw, sh, outW, outH)
@@ -319,21 +309,9 @@ function PanCropWindow({
     A.endGesture()
   }
 
-  const seekBar = (e: React.PointerEvent<HTMLCanvasElement>): void => {
-    const r = e.currentTarget.getBoundingClientRect()
-    const fraction = Math.min(1, Math.max(0, (e.clientX - r.left - 8) / (r.width - 16)))
-    A.setCursor(event.start + Math.round(fraction * event.length))
-  }
-
-  const jumpKey = (direction: 1 | -1): void => {
-    const keys = event.panCrop.filter((k) => k.time >= event.offset && k.time <= event.offset + srcLength)
-    const target =
-      direction > 0 ? keys.find((k) => k.time > srcTime + frame / 2) : [...keys].reverse().find((k) => k.time < srcTime - frame / 2)
-    if (target) A.setCursor(timelineTime(event, target.time))
-  }
-
   const f = frameRect(state, sw, sh, outW, outH)
-  const fill = fillZoom(sw, sh, outW, outH)
+  const fill = framingZoom('fill', state.rotation, sw, sh, outW, outH)
+  const fit = framingZoom('fit', state.rotation, sw, sh, outW, outH)
   const fitW = fitFrame(sw, sh, outW, outH).w
 
   return (
@@ -350,7 +328,7 @@ function PanCropWindow({
             <button className="btn small" onClick={() => edit({ zoom: fill })} title="Crop so the source covers the whole frame">
               Fill frame
             </button>
-            <button className="btn small" onClick={() => edit({ zoom: 1, cx: 0.5, cy: 0.5, rotation: 0 })} title="Whole source visible">
+            <button className="btn small" onClick={() => edit({ zoom: fit, cx: 0.5, cy: 0.5 })} title="Whole source visible (keeps the rotation)">
               Fit
             </button>
             <button className="btn small" onClick={() => edit({ cx: 0.5, cy: 0.5 })}>
@@ -387,43 +365,17 @@ function PanCropWindow({
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
           />
-          <div className="pc-keys">
-            <button className="tool-btn" title="Previous keyframe" onClick={() => jumpKey(-1)}>
-              <ChevronLeft size={14} />
-            </button>
-            <button
-              className="tool-btn"
-              title="Add keyframe at cursor"
-              onClick={() =>
-                A.setPanCropKeys(event.id, upsertKey(event.panCrop, { ...state, time: srcTime, ease: keyHere?.ease ?? 'smooth' }))
-              }
-            >
-              <Plus size={13} />
-              <Diamond size={11} />
-            </button>
-            <button
-              className="tool-btn"
-              title="Delete keyframe at cursor"
-              disabled={!keyHere}
-              onClick={() => A.setPanCropKeys(event.id, event.panCrop.filter((k) => k !== keyHere))}
-            >
-              <Minus size={13} />
-              <Diamond size={11} />
-            </button>
-            <button className="tool-btn" title="Next keyframe" onClick={() => jumpKey(1)}>
-              <ChevronRight size={14} />
-            </button>
-            <canvas
-              ref={barRef}
-              className="pc-bar"
-              onPointerDown={(e) => {
-                e.currentTarget.setPointerCapture(e.pointerId)
-                seekBar(e)
-              }}
-              onPointerMove={(e) => e.buttons === 1 && seekBar(e)}
-            />
-            <span className="pc-time">{formatTimecode(local, settings.frameRate)}</span>
-          </div>
+          <KeyframeBar
+            event={event}
+            keys={event.panCrop.map((k) => k.time)}
+            srcTime={srcTime}
+            here={keyHere ? event.panCrop.indexOf(keyHere) : -1}
+            local={local}
+            frame={frame}
+            frameRate={settings.frameRate}
+            onAdd={() => A.setPanCropKeys(event.id, upsertKey(event.panCrop, { ...state, time: srcTime, ease: keyHere?.ease ?? 'smooth' }))}
+            onDelete={() => A.setPanCropKeys(event.id, event.panCrop.filter((k) => k !== keyHere))}
+          />
         </div>
       </div>
     </FloatingWindow>

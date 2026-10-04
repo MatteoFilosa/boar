@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { AlignCenter, AlignLeft, AlignRight, Bold, CaseUpper, Italic } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, Bold, CaseUpper, Italic, RotateCcw } from 'lucide-react'
 import { FloatingWindow } from './FloatingWindow'
 import * as A from '../core/actions'
 import { useEditor } from '../core/store'
@@ -16,6 +16,7 @@ import {
   drawText
 } from '../core/text'
 import { loadFont } from '../core/fonts'
+import { normalizeAngle } from '../core/pancrop'
 import { FontPicker } from './FontPicker'
 
 /** Draws a text preset on a small canvas (redrawn once its font is loaded). */
@@ -279,6 +280,33 @@ export function TextEditor({ eventId }: { eventId: string }): React.JSX.Element 
             <span className="te-dim">Y</span>
             <input type="range" min={0} max={1} step={0.005} value={t.y} onChange={(e) => update({ y: Number(e.target.value) }, 'y')} />
             <span className="te-dim" title="You can also drag the text in the preview">(or drag in the preview)</span>
+          </Field>
+          <Field label="Rotation">
+            <input
+              type="range"
+              min={-180}
+              max={180}
+              step={1}
+              value={t.rotation}
+              title={`Rotation: ${t.rotation.toFixed(1)}°`}
+              onChange={(e) => update({ rotation: Number(e.target.value) }, 'rotation')}
+            />
+            <input
+              className="input te-num"
+              type="number"
+              min={-180}
+              max={180}
+              step={1}
+              value={Math.round(t.rotation * 10) / 10}
+              title="Degrees, clockwise"
+              onChange={(e) => update({ rotation: normalizeAngle(Number(e.target.value) || 0) }, 'rotation')}
+            />
+            <button className="tool-btn" title="Upright (0°)" disabled={t.rotation === 0} onClick={() => update({ rotation: 0 }, 'rotationReset')}>
+              <RotateCcw size={13} />
+            </button>
+            <span className="te-dim" title="In the preview, drag just outside a corner of the text (Shift: 15° steps)">
+              (or drag a corner in the preview)
+            </span>
           </Field>
         </div>
       </div>

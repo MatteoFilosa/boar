@@ -43,6 +43,8 @@ export interface TextContent {
   y: number
   /** Wrap width as a fraction of the frame width. */
   maxWidth: number
+  /** Degrees, clockwise, around the center of the block. */
+  rotation: number
   /** Word timings from speech recognition (null for normal titles). */
   words: CaptionWord[] | null
   wordStyle: WordStyle
@@ -77,6 +79,7 @@ const BASE: TextContent = {
   x: 0.5,
   y: 0.45,
   maxWidth: 0.85,
+  rotation: 0,
   words: null,
   wordStyle: 'none',
   highlightColor: '#ffe135',
@@ -502,6 +505,7 @@ const measureCanvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanv
 
 /** Frame-space rectangle covered by a text event (handles in the preview). */
 export function textBounds(c: TextContent, width: number, height: number): { left: number; top: number; width: number; height: number } {
+  if (c.progressBar) return progressBarRect(c, width, height)
   const ctx = measureCanvas?.getContext('2d')
   if (!ctx) return { left: 0, top: 0, width: 0, height: 0 }
   const { box, size } = layoutText(ctx, c, width, height)
@@ -606,17 +610,28 @@ function blockMotion(c: TextContent, clock: TextClock | undefined, size: number,
   return m
 }
 
-/** Progress bar text events: a track and a fill that grows from left to right over the event. */
-function drawProgressBar(ctx: Ctx, c: TextContent, width: number, height: number, alpha: number, clock?: TextClock): void {
+/** Frame-space rectangle of a progress bar. */
+function progressBarRect(c: TextContent, width: number, height: number): { left: number; top: number; width: number; height: number } {
   const scale = Math.min(width, height) / 1080
   const thickness = Math.max(2, c.size * scale * 0.4)
   const barWidth = c.maxWidth * width
   const left = c.align === 'left' ? c.x * width : c.align === 'right' ? c.x * width - barWidth : c.x * width - barWidth / 2
   const top = Math.min(height - thickness, Math.max(0, c.y * height - thickness / 2))
+  return { left, top, width: barWidth, height: thickness }
+}
+
+/** Progress bar text events: a track and a fill that grows from left to right over the event. */
+function drawProgressBar(ctx: Ctx, c: TextContent, width: number, height: number, alpha: number, clock?: TextClock): void {
+  const { left, top, width: barWidth, height: thickness } = progressBarRect(c, width, height)
   const progress = clock ? clamp01(clock.t / Math.max(0.001, clock.length)) : 0.6
   const radius = c.maxWidth >= 0.999 ? 0 : thickness / 2
   ctx.save()
   ctx.globalAlpha = alpha
+  if (c.rotation) {
+    ctx.translate(left + barWidth / 2, top + thickness / 2)
+    ctx.rotate((c.rotation * Math.PI) / 180)
+    ctx.translate(-(left + barWidth / 2), -(top + thickness / 2))
+  }
   if (c.boxColor) {
     ctx.fillStyle = rgba(c.boxColor, c.boxOpacity)
     roundRect(ctx, left, top, barWidth, thickness, radius)
@@ -656,10 +671,11 @@ export function drawText(ctx: Ctx, c: TextContent, width: number, height: number
     ctx.restore()
     return
   }
-  // Block transform around its center (pop, zoom, slides).
+  // Block transform around its center (rotation, pop, zoom, slides).
   const cx = box.left + box.width / 2
   const cy = box.top + box.height / 2
   ctx.translate(cx + motion.dx, cy + motion.dy)
+  if (c.rotation) ctx.rotate((c.rotation * Math.PI) / 180)
   ctx.scale(motion.scale, motion.scale)
   ctx.translate(-cx, -cy)
 

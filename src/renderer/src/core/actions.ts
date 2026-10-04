@@ -26,7 +26,7 @@ import {
 } from './time'
 import { editPoints, eventEnd, projectEnd, sourceLength, sourceTime } from './timeline'
 import { DEFAULT_FADE_CURVE, type FadeCurve, clampRate, formatRate } from './fades'
-import { type PanCropKey, fillZoom } from './pancrop'
+import { type PanCropKey, DEFAULT_PANCROP, framingZoom, normalizeAngle, turnState } from './pancrop'
 import { type TextContent, presetById, retimeWords } from './text'
 import type { CaptionChunk } from './captions'
 import type { EventMask } from './mask'
@@ -995,6 +995,7 @@ export function setPanCropForEvents(keys: Map<string, PanCropKey[]>): void {
 /**
  * Reframes video events to the project frame: `fill` crops so there are no
  * black bars (16:9 footage in a 9:16 project), `fit` restores the default.
+ * Both keep a rotation (a quarter turn fits or fills the turned picture).
  * Applies to the selected events, or to every video event when none is selected.
  */
 export function reframeVideoEvents(mode: 'fill' | 'fit'): void {
@@ -1011,21 +1012,70 @@ export function reframeVideoEvents(mode: 'fill' | 'fit'): void {
   commit((d) => {
     for (const event of d.events) {
       if (!targets.has(event.id)) continue
-      if (mode === 'fit') {
+      if (mode === 'fit' && event.panCrop.every((k) => k.rotation === 0)) {
         event.panCrop = []
         continue
       }
       const media = mediaById(event.mediaId)
       if (!media || !media.width || !media.height) continue
-      const zoom = fillZoom(media.width, media.height, width, height)
+      const zoomFor = (rotation: number): number => framingZoom(mode, rotation, media.width, media.height, width, height)
       if (event.panCrop.length === 0) {
-        event.panCrop = [{ time: event.offset, cx: 0.5, cy: 0.5, zoom, rotation: 0, ease: 'smooth' }]
-      } else {
-        for (const key of event.panCrop) key.zoom = zoom
+        event.panCrop = [{ time: event.offset, cx: 0.5, cy: 0.5, zoom: zoomFor(0), rotation: 0, ease: 'smooth' }]
+        continue
+      }
+      for (const key of event.panCrop) {
+        key.zoom = zoomFor(key.rotation)
+        if (mode === 'fit') {
+          key.cx = 0.5
+          key.cy = 0.5
+        }
       }
     }
   })
   setStatus(mode === 'fill' ? `Filled frame on ${targets.size} event(s)` : `Reset framing on ${targets.size} event(s)`)
+}
+
+/**
+ * Turns video, image and text events clockwise on screen by `degrees`, or back
+ * upright with 'reset'. Media events turn every Pan/Crop keyframe around the
+ * picture's center, so an animation keeps its motion. Returns the count.
+ */
+export function rotateEvents(ids: readonly string[], degrees: number | 'reset'): number {
+  const { project } = get()
+  const { width, height } = project.settings
+  const wanted = new Set(ids)
+  const targets = new Set(
+    project.events
+      .filter((e) => wanted.has(e.id) && e.kind === 'video')
+      .filter((e) => e.text || (mediaById(e.mediaId)?.width ?? 0) > 0)
+      .map((e) => e.id)
+  )
+  if (targets.size === 0) {
+    setStatus('Select a video, image or text event to rotate')
+    return 0
+  }
+  commit((d) => {
+    for (const event of d.events) {
+      if (!targets.has(event.id)) continue
+      if (event.text) {
+        event.text.rotation = degrees === 'reset' ? 0 : normalizeAngle(event.text.rotation + degrees)
+        continue
+      }
+      const media = mediaById(event.mediaId) as MediaItem
+      if (degrees === 'reset' && event.panCrop.every((k) => k.rotation === 0)) continue
+      const keys = event.panCrop.length > 0 ? event.panCrop : [{ time: event.offset, ...DEFAULT_PANCROP, ease: 'smooth' as const }]
+      const turned = keys.map((k) => ({
+        ...k,
+        ...turnState(k, degrees === 'reset' ? k.rotation : degrees, media.width, media.height, width, height)
+      }))
+      // Whole turns off the first keyframe, the same for all so the interpolation keeps its direction.
+      const turns = Math.round(turned[0].rotation / 360) * 360
+      event.panCrop = turned.map((k) => ({ ...k, rotation: k.rotation - turns }))
+    }
+  })
+  const label = degrees === 'reset' ? 'upright' : `${degrees > 0 ? '+' : ''}${degrees}°`
+  setStatus(`Rotated ${targets.size} event(s) ${label}`)
+  return targets.size
 }
 
 // Text
@@ -1194,6 +1244,14 @@ export function setMask(eventId: string, mask: EventMask | null, field = 'mask')
   commitCoalesced(`mask:${eventId}:${field}`, (d) => {
     const event = d.events.find((e) => e.id === eventId)
     if (event) event.mask = mask ? { ...mask } : null
+  })
+}
+
+/** Replaces an event's mask in one undo step (custom shape edits, Smart Select, tracking). */
+export function replaceMask(eventId: string, mask: EventMask | null): void {
+  commit((d) => {
+    const event = d.events.find((e) => e.id === eventId)
+    if (event) event.mask = mask
   })
 }
 

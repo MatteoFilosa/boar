@@ -1387,6 +1387,36 @@ body.moving-window * {
   font-variant-numeric: tabular-nums;
 }
 
+/* Event Mask (custom shape) */
+
+.mask-shapes,
+.mask-tools,
+.mask-row {
+  flex-wrap: wrap;
+}
+
+.mask-row {
+  display: flex;
+  gap: 4px 12px;
+}
+
+.pc-props .te-field {
+  grid-template-columns: 52px 1fr;
+}
+
+.mask-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mask-busy {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
 /* Text */
 
 .generators {
@@ -2261,7 +2291,6 @@ body.dragging-track * {
 .xf-overlay {
   position: absolute;
   inset: 0;
-  overflow: hidden;
 }
 
 .xf-box {
@@ -2314,6 +2343,43 @@ body.dragging-track * {
   top: 50%;
   border-radius: 5px;
   cursor: ew-resize;
+}
+
+/* Rotation zones: just outside each corner, under the scale handle. */
+.xf-rotate {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+}
+.xf-rotate.nw {
+  left: -7px;
+  top: -7px;
+}
+.xf-rotate.ne {
+  left: calc(100% + 7px);
+  top: -7px;
+}
+.xf-rotate.sw {
+  left: -7px;
+  top: calc(100% + 7px);
+}
+.xf-rotate.se {
+  left: calc(100% + 7px);
+  top: calc(100% + 7px);
+}
+
+.xf-angle {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(10, 11, 13, 0.82);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .xf-guide {

@@ -81,6 +81,106 @@ export function frameRect(
   return { cx: state.cx * srcW, cy: state.cy * srcH, w: fit.w / state.zoom, h: fit.h / state.zoom, rotation: state.rotation }
 }
 
+/** Where the source center lands in the output (pixels) and its displayed scale (output px per source px). */
+export function sourcePlacement(
+  state: PanCropState,
+  srcW: number,
+  srcH: number,
+  outW: number,
+  outH: number
+): { x: number; y: number; scale: number } {
+  const scale = (outW * state.zoom) / fitFrame(srcW, srcH, outW, outH).w
+  const a = (-state.rotation * Math.PI) / 180
+  // Source center relative to the output center, before and after the frame rotation.
+  const vx = (0.5 - state.cx) * srcW * scale
+  const vy = (0.5 - state.cy) * srcH * scale
+  return { x: outW / 2 + vx * Math.cos(a) - vy * Math.sin(a), y: outH / 2 + vx * Math.sin(a) + vy * Math.cos(a), scale }
+}
+
+/** Maps source pixels to output pixels through a state (and back with `inverse`). */
+export function sourceToOutput(
+  state: PanCropState,
+  srcW: number,
+  srcH: number,
+  outW: number,
+  outH: number
+): { map: (x: number, y: number) => [number, number]; inverse: (x: number, y: number) => [number, number] } {
+  const scale = (outW * state.zoom) / fitFrame(srcW, srcH, outW, outH).w
+  const a = (-state.rotation * Math.PI) / 180
+  const cos = Math.cos(a)
+  const sin = Math.sin(a)
+  const fx = state.cx * srcW
+  const fy = state.cy * srcH
+  return {
+    map: (x, y) => {
+      const dx = (x - fx) * scale
+      const dy = (y - fy) * scale
+      return [outW / 2 + dx * cos - dy * sin, outH / 2 + dx * sin + dy * cos]
+    },
+    inverse: (x, y) => {
+      const dx = x - outW / 2
+      const dy = y - outH / 2
+      return [fx + (dx * cos + dy * sin) / scale, fy + (-dx * sin + dy * cos) / scale]
+    }
+  }
+}
+
+/** State that puts the source center at (x, y) in the output with the given zoom and rotation. */
+export function placeSource(
+  x: number,
+  y: number,
+  zoom: number,
+  rotation: number,
+  srcW: number,
+  srcH: number,
+  outW: number,
+  outH: number
+): PanCropState {
+  const scale = (outW * zoom) / fitFrame(srcW, srcH, outW, outH).w
+  const a = (-rotation * Math.PI) / 180
+  const dx = x - outW / 2
+  const dy = y - outH / 2
+  const vx = dx * Math.cos(a) + dy * Math.sin(a)
+  const vy = -dx * Math.sin(a) + dy * Math.cos(a)
+  return { cx: 0.5 - vx / (srcW * scale), cy: 0.5 - vy / (srcH * scale), zoom, rotation }
+}
+
+/**
+ * Zoom at which the source, turned by `rotation` (to the nearest quarter
+ * turn), fits inside the output or covers it.
+ */
+export function framingZoom(mode: 'fit' | 'fill', rotation: number, srcW: number, srcH: number, outW: number, outH: number): number {
+  const sideways = Math.abs(Math.round(rotation / 90)) % 2 === 1
+  const w = sideways ? srcH : srcW
+  const h = sideways ? srcW : srcH
+  const scale = mode === 'fit' ? Math.min(outW / w, outH / h) : Math.max(outW / w, outH / h)
+  return (scale * fitFrame(srcW, srcH, outW, outH).w) / outW
+}
+
+/**
+ * The state turned by `degrees` clockwise on screen around the source center,
+ * which stays in place. A source that fitted or filled the frame still does
+ * (a quarter turn of sideways footage fills a frame of the other orientation).
+ */
+export function turnState(state: PanCropState, degrees: number, srcW: number, srcH: number, outW: number, outH: number): PanCropState {
+  const rotation = state.rotation - degrees
+  const at = sourcePlacement(state, srcW, srcH, outW, outH)
+  let zoom = state.zoom
+  // Fit wins when both match (source and frame of the same shape).
+  for (const mode of ['fill', 'fit'] as const) {
+    if (Math.abs(state.zoom / framingZoom(mode, state.rotation, srcW, srcH, outW, outH) - 1) < 0.005) {
+      zoom = framingZoom(mode, rotation, srcW, srcH, outW, outH)
+    }
+  }
+  return placeSource(at.x, at.y, zoom, rotation, srcW, srcH, outW, outH)
+}
+
+/** Degrees in (-180, 180]. */
+export function normalizeAngle(degrees: number): number {
+  const d = (((degrees % 360) + 540) % 360) - 180
+  return d === -180 ? 180 : d
+}
+
 /** Draws a source into an output-sized context through the pan/crop frame. */
 export function drawPanCropped(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,

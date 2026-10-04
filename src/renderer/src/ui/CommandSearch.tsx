@@ -29,7 +29,7 @@ const KEYWORDS: Partial<Record<CommandId, string>> = {
   panCrop: 'zoom crop position scale move rotate keyframes',
   editText: 'title font caption',
   insertText: 'title font caption',
-  mask: 'shape matte',
+  mask: 'shape matte cut out rotoscope track object smart select ai points',
   captions: 'subtitles transcribe transcription speech whisper words',
   removeSilences: 'jump cuts pauses',
   autoDucking: 'music volume lower voice',
@@ -48,7 +48,10 @@ const KEYWORDS: Partial<Record<CommandId, string>> = {
   checkForUpdates: 'version update new',
   blurredBackground: 'vertical layout',
   splitScreen: 'layout two',
-  pictureInPicture: 'pip layout overlay corner'
+  pictureInPicture: 'pip layout overlay corner',
+  rotateClockwise: 'turn right sideways portrait landscape phone orientation',
+  rotateCounterclockwise: 'turn left sideways portrait landscape phone orientation',
+  resetRotation: 'turn upright straighten'
 }
 
 /** Commands that have a shortcut or a button but no menu item. */

@@ -26,7 +26,8 @@
 
 ## Perché Boar
 
-- **Tutto in locale.** Trascrizione, riconoscimento del volto, rimozione dello sfondo e riduzione del rumore girano sul tuo PC. Niente account, niente abbonamenti, niente caricato online.
+- **Tutto in locale.** Trascrizione, riconoscimento del volto, rimozione dello sfondo, scontorno degli oggetti e riduzione del rumore girano sul tuo PC. Niente account, niente abbonamenti, niente caricato online.
+- **Nessuna raccolta di dati.** Niente statistiche, log d'uso o telemetria, nemmeno dalle librerie che usa: Boar blocca ogni connessione tranne i download che chiedi tu (aggiornamenti, modelli vocali, yt-dlp). Il controllo degli aggiornamenti si spegne in *Options*.
 - **Pensato per i video di oggi.** Formato verticale, sottotitoli animati parola per parola, titoli d'aggancio, zoom sui tagli, dal video lungo agli Shorts.
 - **Montaggio vero.** Timeline multitraccia con eventi, fade e dissolvenze, selezione temporale, ripple, keyframe, effetti e transizioni.
 - **Veloce sul tuo hardware.** Export con l'encoder hardware della scheda video (Intel, NVIDIA o AMD), effetti sulla GPU.
@@ -59,7 +60,7 @@
 - **Montaggio dal testo** (tab *Transcript*): il parlato diventa testo; selezioni le parole, premi `Canc` e il video si taglia. Un pulsante seleziona ehm, uhm e parole ripetute; un altro accorcia le pause lunghe.
 - Parole chiave evidenziate (`*parola*` nel testo, o in automatico) ed emoji sulle parole a tema.
 - 21 preset di testo, tra cui titolo d'aggancio in alto e progress bar; oltre 30 font inclusi; animazioni di entrata e uscita.
-- Maniglie direttamente nell'anteprima per spostare e scalare testi, immagini e video.
+- Maniglie direttamente nell'anteprima per spostare, scalare e ruotare testi, immagini e video (per ruotare trascina appena fuori da un angolo, Shift per scatti di 15°).
 
 ### Audio
 
@@ -72,7 +73,8 @@
 
 - 24 effetti video sulla GPU: look colore pronti, correzione colore, chroma key, sfocatura, glow, vignettatura, grana, VHS, glitch e altri. **Rimozione dello sfondo** con AI, senza green screen.
 - Transizioni: zoom, whip pan, spin, glitch, flash, dissolvenza al nero, blur, pixel.
-- Maschere a ellisse e rettangolo, Event Pan/Crop con keyframe.
+- Maschere: ellisse, rettangolo o forma custom disegnata a punti e animata con i keyframe. **Smart Select** scontorna un oggetto con un clic (altri clic aggiungono o tolgono parti) e *Track Motion* lo segue per tutta la clip.
+- Event Pan/Crop con keyframe.
 - **Render As** in MP4 (H.264, HEVC, AV1, VP9) con l'encoder hardware della GPU. L'anteprima e l'export usano lo stesso motore: quello che vedi è quello che esporti.
 
 ## Installazione
@@ -130,7 +132,7 @@ Boar funziona con GPU **Intel, NVIDIA e AMD**: non c'è codice legato a un produ
 | --- | --- |
 | Export | Encoder hardware della scheda video tramite WebCodecs. *Render As* mostra solo i formati che la tua GPU sa codificare: H.264 c'è sempre, HEVC e AV1 dipendono dalla generazione della scheda. Su macOS l'encoder hardware copre H.264 e HEVC; su Linux spesso l'export usa il processore, più lento. |
 | Anteprima ed effetti | WebGL2, uguale su tutte le GPU recenti. |
-| Volto e sfondo (AI) | MediaPipe sulla GPU, con ripiego sul processore. |
+| Volto, sfondo e Smart Select (AI) | MediaPipe sulla GPU, con ripiego sul processore. |
 | Trascrizione | whisper.cpp dentro FFmpeg: usa la GPU se la tua build di FFmpeg la supporta, altrimenti il processore. |
 | Riduzione del rumore | Sul processore, identica ovunque. |
 
@@ -166,6 +168,7 @@ L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: 
 | `Ctrl+S` / `Ctrl+O` | salva / apri progetto (`.boar`) |
 | `Ctrl+M` | Render As |
 | `Ctrl+F` | cerca comandi, opzioni ed effetti |
+| `Ctrl+R` / `Ctrl+Shift+R` | ruota video, immagine o testo selezionato di 90° in senso orario / antiorario |
 | `M`, `G` / `U`, `F8`, `Q` | marker, raggruppa / separa, snapping, loop |
 | `←` `→` / `↑` `↓` | frame precedente e successivo / zoom |
 | `Esc` | togli la selezione temporale |

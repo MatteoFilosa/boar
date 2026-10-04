@@ -3,6 +3,7 @@ import type { MediaTranscript } from './transcript'
 import type { ShortCandidate } from './shorts'
 import { emptyProject } from './store'
 import { normalizeText } from './text'
+import { normalizeMask } from './mask'
 import { DEFAULT_FADE_CURVE, clampRate, isFadeCurve } from './fades'
 
 /** On-disk format of a .boar project. Media are referenced by absolute path. */
@@ -80,7 +81,7 @@ export function parseProject(json: string): {
         groupId: e.groupId ?? null,
         panCrop: e.panCrop ?? [],
         text: e.text ? normalizeText(e.text) : null,
-        mask: e.mask ?? null,
+        mask: e.mask ? normalizeMask(e.mask) : null,
         fx: Array.isArray(e.fx) ? e.fx : [],
         envelope: Array.isArray(e.envelope) ? e.envelope : [],
         transition: e.transition ?? null

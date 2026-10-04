@@ -1,12 +1,14 @@
-import { FaceDetector, ImageSegmenter } from '@mediapipe/tasks-vision'
+import { FaceDetector, ImageSegmenter, InteractiveSegmenterLegacy } from '@mediapipe/tasks-vision'
 import visionLoaderUrl from '@mediapipe/tasks-vision/vision_wasm_internal.js?url'
 import visionWasmUrl from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url'
 import faceModelUrl from '../assets/models/blaze_face_short_range.tflite?url'
 import selfieModelUrl from '../assets/models/selfie_segmenter.tflite?url'
+import magicTouchUrl from '../assets/models/magic_touch.tflite?url'
 import { assetBlobUrl, assetBytes } from '../media/assets'
 
-// MediaPipe face detection and person segmentation, on the GPU through WebGL
-// with a CPU fallback.
+// MediaPipe face detection, person segmentation and object segmentation from a
+// point (Smart Select), on the GPU through WebGL with a CPU fallback. The
+// tasks' usage logs to Google are refused by noExternalRequests.ts.
 
 type WasmFileset = Parameters<typeof FaceDetector.createFromOptions>[0]
 
@@ -144,4 +146,56 @@ export function personMask(image: TexImageSource, key: string, time: number): Pe
   } finally {
     result.close()
   }
+}
+
+// Object segmentation (MagicTouch): the object under a point.
+
+export interface ObjectMask {
+  /** Object confidence 0..1 per pixel, row 0 at the top, at the image's size. */
+  data: Float32Array
+  width: number
+  height: number
+}
+
+export interface ObjectSegmenter {
+  /** True when it runs on the GPU (fast enough for every frame). */
+  gpu: boolean
+  /** The object under (x, y), fractions of the image. */
+  segment(image: TexImageSource, x: number, y: number): ObjectMask | null
+}
+
+let objects: Promise<ObjectSegmenter> | null = null
+
+export function objectSegmenter(): Promise<ObjectSegmenter> {
+  objects ??= (async () => {
+    const files = await wasmFileset()
+    // This task does not take the model as a buffer: it gets a blob: URL.
+    const model = await assetBlobUrl(magicTouchUrl, 'application/octet-stream')
+    let gpu = true
+    const task = await withDelegate((delegate) => {
+      gpu = delegate === 'GPU'
+      return InteractiveSegmenterLegacy.createFromOptions(files, {
+        baseOptions: { modelAssetPath: model, delegate },
+        outputConfidenceMasks: true,
+        outputCategoryMask: false
+      })
+    })
+    return {
+      gpu,
+      segment(image, x, y) {
+        const result = task.segment(image, { keypoint: { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) } })
+        try {
+          const mask = result.confidenceMasks?.[0]
+          return mask ? { data: mask.getAsFloat32Array().slice(), width: mask.width, height: mask.height } : null
+        } finally {
+          result.close()
+        }
+      }
+    }
+  })()
+  objects.catch((err: unknown) => {
+    objects = null
+    console.error('[vision] cannot load the object segmenter', err)
+  })
+  return objects
 }

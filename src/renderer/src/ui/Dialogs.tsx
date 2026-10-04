@@ -244,6 +244,8 @@ const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
   fullScreenPreview: 'Full screen preview (Esc to exit)',
+  rotateClockwise: 'Rotate selected video, image or text 90° clockwise',
+  rotateCounterclockwise: 'Rotate selected video, image or text 90° counterclockwise',
   searchCommands: 'Search commands, options and effects'
 }
 
@@ -258,6 +260,7 @@ const MOUSE = [
   ['Drag event top corner', 'Fade in / fade out'],
   ['Overlap two events', 'Automatic crossfade'],
   ['Drag on empty area', 'Select events in a rectangle'],
+  ['Preview: drag just outside a corner', 'Rotate (Shift: 15° steps)'],
   ['Right-click / Alt+click marker', 'Delete marker']
 ]
 
