@@ -118,4 +118,10 @@ export interface MediaItem {
   channels: number
   /** Small preview image URL for the media list. */
   poster: string
+  /** Light copy the preview plays instead (videos that are slow to seek), boar-media:// URL. */
+  proxyUrl?: string
+  /** 0..1 while the proxy is being made. */
+  proxyProgress?: number
+  /** Seeking decodes many frames (rare keyframes or a big picture): worth a proxy. */
+  slowSeek?: boolean
 }

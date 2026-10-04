@@ -30,7 +30,7 @@
 - **No data collection.** No analytics, no usage logs, no telemetry, not even from the libraries inside it: Boar blocks every connection except the downloads you ask for (updates, speech models, yt-dlp). The update check can be turned off in *Options*.
 - **Made for today's videos.** Vertical format, animated word-by-word captions, hook titles, zoom on cuts, from a long video to Shorts.
 - **Real editing.** Multitrack timeline with events, fades and crossfades, time selection, ripple, keyframes, effects and transitions.
-- **Fast on your hardware.** Export with your graphics card's hardware encoder (Intel, NVIDIA or AMD), effects on the GPU.
+- **Fast on your hardware.** Export with your graphics card's hardware encoder (Intel, NVIDIA or AMD), effects on the GPU. Videos that are slow to seek (screen recordings with keyframes seconds apart, 4K) get a light **proxy** in the background, so scrubbing stays instant; renders always use the original.
 - **Your AI agent can edit with you.** If you already use an AI assistant that supports MCP, it can cut, caption and make Shorts inside Boar with your own plan, with no API keys and no extra cost.
 
 ## Features
@@ -66,7 +66,7 @@
 
 - **Even loudness**: exports are normalized to −14 LUFS (or −16, −23), with a peak limiter.
 - **AI noise reduction**, locally; noise gate, 10-band equalizer, compressor, reverb, echo, pitch and more.
-- **Remove Silences** (jump cuts) and **Auto Ducking**: the music goes down when someone speaks.
+- **Remove Silences** (jump cuts): the pauses to cut show in red on the timeline while you adjust. **Auto Ducking**: the music goes down when someone speaks.
 - Mixer with volume, pan, mute and solo per track, master meters.
 
 ### Effects, transitions, export

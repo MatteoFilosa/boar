@@ -10,6 +10,7 @@ import { registerMcp } from './mcp'
 import { extendToolPath } from './toolPath'
 import { registerUpdateIpc } from './updates'
 import { blockExternalRequests, disableBackgroundNetworking } from './privacy'
+import { registerProxyIpc } from './proxies'
 
 // `--smoke`: load the UI hidden, report renderer errors, exit. Used to verify builds.
 const smoke = process.argv.includes('--smoke')
@@ -277,6 +278,7 @@ app.whenReady().then(() => {
   registerCaptionIpc()
   registerLibraryIpc()
   registerUpdateIpc()
+  registerProxyIpc()
   // AI agents (MCP): not in smoke runs, which may overlap a running editor.
   if (!smoke) void registerMcp(() => mainWindow)
   createWindow()

@@ -21,6 +21,13 @@ export interface BoarBridge {
   onCaptionProgress(callback: (progress: CaptionProgress) => void): () => void
   /** Bytes of a bundled file:// asset (packaged app). */
   readAsset(url: string): Promise<Uint8Array>
+  /** Proxies of slow-to-seek videos, kept by the main process (path of the source file). */
+  findProxy(source: string): Promise<string | null>
+  createProxy(source: string): Promise<number>
+  writeProxy(id: number, position: number, data: Uint8Array): Promise<void>
+  finishProxy(id: number): Promise<string>
+  abortProxy(id: number): Promise<void>
+  deleteProxy(source: string): Promise<void>
   /** Progress on the taskbar button: 0..1, above 1 indeterminate, below 0 hidden. */
   setProgress(value: number): void
   /** Media library folders picked by the user (Explorer tab). */

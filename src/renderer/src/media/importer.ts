@@ -14,6 +14,7 @@ import { secondsToFlicks } from '../core/time'
 import type { MediaItem, MediaKind } from '../core/types'
 import { bridge, mediaPathUrl } from '../platform'
 import { imageCache, notifyMediaCache, peakCache, thumbCache, type Peaks, type ThumbStrip } from './cache'
+import { isSlowToSeek, setUpProxy } from './proxy'
 
 const VIDEO_EXT = ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'mts', 'm2ts', 'ts', 'wmv', 'mpg', 'mpeg', '3gp']
 const AUDIO_EXT = ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus', 'wma', 'aif', 'aiff']
@@ -210,8 +211,19 @@ async function analyzeMedia(item: MediaItem): Promise<void> {
       channels: audio?.numberOfChannels ?? 0
     })
 
-    // Thumbnails and waveform keep loading in the background.
+    // Thumbnails and waveform keep loading in the background; videos that are
+    // slow to seek get a proxy for the preview.
     const jobs: Promise<void>[] = []
+    if (video && videoOk) {
+      jobs.push(
+        isSlowToSeek(video)
+          .catch(() => false)
+          .then((slow) => {
+            const ready = mediaById(item.id)
+            if (ready) void setUpProxy(ready, slow)
+          })
+      )
+    }
     if (video && videoOk) jobs.push(buildThumbnails(item.id, video, Math.max(0, first), seconds))
     if (audio && audioOk) jobs.push(buildPeaks(item.id, audio, Math.max(0, first), seconds))
     keepInput = true

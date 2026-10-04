@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Scissors, Wand, X } from 'lucide-react'
+import { Scissors, Wand } from 'lucide-react'
 import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
 import { FLICKS_PER_SECOND, formatDuration, secondsToFlicks } from '../core/time'
 import type { TimelineEvent } from '../core/types'
 import { HOP, type Interval, autoThreshold, eventLevels, findSilences, mediaLevels } from '../engine/analysis'
 import { BoarProgress } from './BoarProgress'
+import { FloatingWindow } from './FloatingWindow'
 
 /** The audio events that decide where the pauses are: selected audio, or the sound of selected videos. */
 function detectorEvents(events: TimelineEvent[], selection: string[]): TimelineEvent[] {
@@ -106,15 +107,43 @@ export function SilenceDialog(): React.JSX.Element {
     () => (analyses ?? []).map((a) => findSilences(a.levels, threshold, minSilence, padding)),
     [analyses, threshold, minSilence, padding]
   )
+  const ranges = useMemo(
+    () =>
+      (analyses ?? []).flatMap((a, i) =>
+        silences[i].map((s) => ({ start: a.event.start + secondsToFlicks(s.start), end: a.event.start + secondsToFlicks(s.end) }))
+      ),
+    [analyses, silences]
+  )
+
+  // The pauses show in red on the timeline while the settings change.
+  useEffect(() => {
+    if (!analyses) return
+    const project = useEditor.getState().project
+    const trackIds = new Set<string>()
+    for (const { event } of analyses) {
+      for (const e of project.events) if (e.id === event.id || (event.groupId && e.groupId === event.groupId)) trackIds.add(e.trackId)
+    }
+    useEditor.setState({ cutPreview: { trackIds: [...trackIds], ranges } })
+  }, [analyses, ranges])
+  useEffect(() => () => useEditor.setState({ cutPreview: null }), [])
+
   const removed = silences.reduce((n, list) => n + list.reduce((k, s) => k + s.end - s.start, 0), 0)
   const duration = (analyses ?? []).reduce((n, a) => n + a.levels.length * HOP, 0)
   const count = silences.reduce((n, list) => n + list.length, 0)
 
   const apply = (): void => {
     if (!analyses) return
-    const ranges = analyses.flatMap((a, i) =>
-      silences[i].map((s) => ({ start: a.event.start + secondsToFlicks(s.start), end: a.event.start + secondsToFlicks(s.end) }))
-    )
+    // The timeline stays editable while the window is open: the clip must still be where it was analysed.
+    const current = useEditor.getState().project.events
+    const moved = analyses.some(({ event }) => {
+      const now = current.find((e) => e.id === event.id)
+      return !now || now.start !== event.start || now.length !== event.length || now.offset !== event.offset || now.rate !== event.rate
+    })
+    if (moved) {
+      A.setStatus('The clip changed while Remove Silences was open: open it again')
+      A.closeDialog()
+      return
+    }
     const cuts = A.cutRanges(
       analyses.map((a) => a.event.id),
       ranges,
@@ -125,79 +154,71 @@ export function SilenceDialog(): React.JSX.Element {
   }
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal" style={{ width: 600 }} role="dialog" aria-label="Remove silences">
-        <div className="modal-title">
-          <span>Remove Silences (jump cuts)</span>
-          <button className="tool-btn" title="Close (Esc)" onClick={A.closeDialog}>
-            <X size={14} />
+    <FloatingWindow id="silence" className="silence-window" title="Remove Silences (jump cuts)">
+      <div className="modal-body">
+        {detectors.length === 0 ? (
+          <div className="render-result error">Select the talking clip (its video or its audio event) first.</div>
+        ) : !analyses ? (
+          error ? <p className="dim">{error}</p> : <BoarProgress value={null}>Analyzing the sound…</BoarProgress>
+        ) : (
+          <>
+            <p className="dim">
+              Pauses (red, here and on the timeline) are cut from the selected clip and the following events on the same tracks move left. Other
+              tracks are not touched: remove the silences before generating captions.
+            </p>
+            {analyses.map((a, i) => (
+              <LevelGraph key={a.event.id} analysis={a} threshold={threshold} silences={silences[i]} />
+            ))}
+            <div className="form">
+              <label>Silence below</label>
+              <div className="te-control">
+                <input type="range" min={-70} max={-10} step={1} value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
+                <span className="te-val">{threshold} dB</span>
+                <button
+                  className="btn small"
+                  title="Pick a threshold from the noise floor and the voice level"
+                  onClick={() => setThreshold(autoThreshold(analyses.length === 1 ? analyses[0].levels : new Float32Array(analyses.flatMap((a) => Array.from(a.levels)))))}
+                >
+                  <Wand size={12} /> Auto
+                </button>
+              </div>
+              <label>Shortest pause</label>
+              <div className="te-control">
+                <input type="range" min={0.1} max={2} step={0.05} value={minSilence} onChange={(e) => setMinSilence(Number(e.target.value))} />
+                <span className="te-val">{minSilence.toFixed(2)} s</span>
+              </div>
+              <label>Keep around words</label>
+              <div className="te-control">
+                <input type="range" min={0} max={0.4} step={0.01} value={padding} onChange={(e) => setPadding(Number(e.target.value))} />
+                <span className="te-val">{padding.toFixed(2)} s</span>
+              </div>
+              <label>Action</label>
+              <div className="te-control">
+                <label className="te-check">
+                  <input type="radio" name="silence-mode" checked={mode === 'remove'} onChange={() => setMode('remove')} />
+                  Cut and close the gaps
+                </label>
+                <label className="te-check">
+                  <input type="radio" name="silence-mode" checked={mode === 'split'} onChange={() => setMode('split')} />
+                  Only split (review the pauses)
+                </label>
+              </div>
+            </div>
+            <div className="render-result">
+              {count} pause{count === 1 ? '' : 's'} · −{removed.toFixed(1)} s ({formatDuration(secondsToFlicks(duration))} →{' '}
+              {formatDuration(secondsToFlicks(Math.max(0, duration - removed)))})
+            </div>
+          </>
+        )}
+        <div className="modal-actions">
+          <button className="btn" onClick={A.closeDialog}>
+            Cancel
+          </button>
+          <button className="btn primary" disabled={!analyses || count === 0} onClick={apply}>
+            <Scissors size={13} /> {mode === 'remove' ? 'Remove pauses' : 'Split'}
           </button>
         </div>
-        <div className="modal-body">
-          {detectors.length === 0 ? (
-            <div className="render-result error">Select the talking clip (its video or its audio event) first.</div>
-          ) : !analyses ? (
-            error ? <p className="dim">{error}</p> : <BoarProgress value={null}>Analyzing the sound…</BoarProgress>
-          ) : (
-            <>
-              <p className="dim">
-                Pauses (red) are cut from the selected clip and the following events on the same tracks move left. Other
-                tracks are not touched: remove the silences before generating captions.
-              </p>
-              {analyses.map((a, i) => (
-                <LevelGraph key={a.event.id} analysis={a} threshold={threshold} silences={silences[i]} />
-              ))}
-              <div className="form">
-                <label>Silence below</label>
-                <div className="te-control">
-                  <input type="range" min={-70} max={-10} step={1} value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
-                  <span className="te-val">{threshold} dB</span>
-                  <button
-                    className="btn small"
-                    title="Pick a threshold from the noise floor and the voice level"
-                    onClick={() => setThreshold(autoThreshold(analyses.length === 1 ? analyses[0].levels : new Float32Array(analyses.flatMap((a) => Array.from(a.levels)))))}
-                  >
-                    <Wand size={12} /> Auto
-                  </button>
-                </div>
-                <label>Shortest pause</label>
-                <div className="te-control">
-                  <input type="range" min={0.1} max={2} step={0.05} value={minSilence} onChange={(e) => setMinSilence(Number(e.target.value))} />
-                  <span className="te-val">{minSilence.toFixed(2)} s</span>
-                </div>
-                <label>Keep around words</label>
-                <div className="te-control">
-                  <input type="range" min={0} max={0.4} step={0.01} value={padding} onChange={(e) => setPadding(Number(e.target.value))} />
-                  <span className="te-val">{padding.toFixed(2)} s</span>
-                </div>
-                <label>Action</label>
-                <div className="te-control">
-                  <label className="te-check">
-                    <input type="radio" name="silence-mode" checked={mode === 'remove'} onChange={() => setMode('remove')} />
-                    Cut and close the gaps
-                  </label>
-                  <label className="te-check">
-                    <input type="radio" name="silence-mode" checked={mode === 'split'} onChange={() => setMode('split')} />
-                    Only split (review the pauses)
-                  </label>
-                </div>
-              </div>
-              <div className="render-result">
-                {count} pause{count === 1 ? '' : 's'} · −{removed.toFixed(1)} s ({formatDuration(secondsToFlicks(duration))} →{' '}
-                {formatDuration(secondsToFlicks(Math.max(0, duration - removed)))})
-              </div>
-            </>
-          )}
-          <div className="modal-actions">
-            <button className="btn" onClick={A.closeDialog}>
-              Cancel
-            </button>
-            <button className="btn primary" disabled={!analyses || count === 0} onClick={apply}>
-              <Scissors size={13} /> {mode === 'remove' ? 'Remove pauses' : 'Split'}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </FloatingWindow>
   )
 }

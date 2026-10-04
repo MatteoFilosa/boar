@@ -140,6 +140,7 @@ function useMenus(): Menu[] {
         { label: 'AI Agents (MCP)...', command: 'aiAgents' },
         { label: 'Download from Link (yt-dlp, optional)', command: 'toggleLinkDownloads', checked: options.linkDownloads },
         { label: 'Check for Updates at Startup', command: 'toggleUpdateCheck', checked: options.checkUpdates },
+        { label: 'Proxies for Videos Slow to Seek', command: 'toggleProxies', checked: options.proxies },
         'separator',
         { label: 'Auto Ripple', command: 'toggleRipple', checked: options.autoRipple },
         ...(['tracks', 'tracksMarkers', 'all'] as const).map(

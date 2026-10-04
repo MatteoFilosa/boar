@@ -30,7 +30,7 @@
 - **Nessuna raccolta di dati.** Niente statistiche, log d'uso o telemetria, nemmeno dalle librerie che usa: Boar blocca ogni connessione tranne i download che chiedi tu (aggiornamenti, modelli vocali, yt-dlp). Il controllo degli aggiornamenti si spegne in *Options*.
 - **Pensato per i video di oggi.** Formato verticale, sottotitoli animati parola per parola, titoli d'aggancio, zoom sui tagli, dal video lungo agli Shorts.
 - **Montaggio vero.** Timeline multitraccia con eventi, fade e dissolvenze, selezione temporale, ripple, keyframe, effetti e transizioni.
-- **Veloce sul tuo hardware.** Export con l'encoder hardware della scheda video (Intel, NVIDIA o AMD), effetti sulla GPU.
+- **Veloce sul tuo hardware.** Export con l'encoder hardware della scheda video (Intel, NVIDIA o AMD), effetti sulla GPU. I video lenti da scorrere (registrazioni dello schermo con keyframe distanti secondi, 4K) ricevono in background un **proxy** leggero, così l'anteprima resta istantanea; il render usa sempre l'originale.
 - **Il tuo agente AI può montare con te.** Se usi già un assistente AI compatibile con MCP, può tagliare, sottotitolare e fare Shorts dentro Boar con il tuo piano, senza chiavi o costi in più.
 
 ## Funzioni
@@ -66,7 +66,7 @@
 
 - **Volume uniforme**: l'export è normalizzato a −14 LUFS (o −16, −23), con limiter sui picchi.
 - **Riduzione del rumore con AI** in locale, noise gate, equalizzatore a 10 bande, compressore, riverbero, eco, pitch e altri effetti.
-- **Rimozione silenzi** (jump cut) e **Auto Ducking**: la musica si abbassa quando qualcuno parla.
+- **Rimozione silenzi** (jump cut): le pause da tagliare compaiono in rosso sulla timeline mentre regoli. **Auto Ducking**: la musica si abbassa quando qualcuno parla.
 - Mixer con volume, pan, mute e solo per traccia, meter master.
 
 ### Effetti, transizioni, export

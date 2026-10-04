@@ -29,6 +29,12 @@ contextBridge.exposeInMainWorld('boar', {
     return () => ipcRenderer.removeListener('captions:progress', listener)
   },
   readAsset: (url: string): Promise<Uint8Array> => ipcRenderer.invoke('app:readAsset', url),
+  findProxy: (source: string): Promise<string | null> => ipcRenderer.invoke('proxy:find', source),
+  createProxy: (source: string): Promise<number> => ipcRenderer.invoke('proxy:create', source),
+  writeProxy: (id: number, position: number, data: Uint8Array): Promise<void> => ipcRenderer.invoke('proxy:write', id, position, data),
+  finishProxy: (id: number): Promise<string> => ipcRenderer.invoke('proxy:finish', id),
+  abortProxy: (id: number): Promise<void> => ipcRenderer.invoke('proxy:abort', id),
+  deleteProxy: (source: string): Promise<void> => ipcRenderer.invoke('proxy:delete', source),
   setProgress: (value: number): void => ipcRenderer.send('app:progress', value),
   libraryFolders: (): Promise<unknown> => ipcRenderer.invoke('library:folders'),
   addLibraryFolder: (): Promise<string | null> => ipcRenderer.invoke('library:addFolder'),

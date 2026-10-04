@@ -138,6 +138,7 @@ export const commands = {
   about: (): void => A.openDialog({ kind: 'about' }),
   checkForUpdates: (): void => void checkForUpdates(true),
   toggleUpdateCheck: (): void => A.toggleOption('checkUpdates'),
+  toggleProxies: (): void => A.toggleOption('proxies'),
   loadDemoMedia: (): void => void loadDemoMedia()
 }
 

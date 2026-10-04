@@ -213,7 +213,8 @@ class TimelineCanvases {
           s.cursor !== p.cursor ||
           s.playing !== p.playing ||
           s.snapLine !== p.snapLine ||
-          s.timeSelection !== p.timeSelection
+          s.timeSelection !== p.timeSelection ||
+          s.cutPreview !== p.cutPreview
         ) {
           this.overlayDirty = true
           this.rulerDirty = true
@@ -258,7 +259,7 @@ class TimelineCanvases {
     }
     if (this.overlayDirty) {
       this.overlayDirty = false
-      drawOverlay(this.context(this.overlay), this.width, this.height, s, this.drop, this.rubber)
+      drawOverlay(this.context(this.overlay), this.width, this.height, s, this.drop, this.rubber, layoutTracks(s.project.tracks))
     }
     if (this.rulerDirty) {
       this.rulerDirty = false

@@ -37,6 +37,8 @@ export interface EditorOptions {
   linkDownloads: boolean
   /** Look for a new release when Boar starts. */
   checkUpdates: boolean
+  /** Videos that are slow to seek get a light copy for the preview. */
+  proxies: boolean
 }
 
 const DEFAULT_OPTIONS: EditorOptions = {
@@ -51,7 +53,8 @@ const DEFAULT_OPTIONS: EditorOptions = {
   rippleMode: 'tracks',
   renderLoudness: -14,
   linkDownloads: false,
-  checkUpdates: true
+  checkUpdates: true,
+  proxies: true
 }
 
 const OPTIONS_KEY = 'boar.options'
@@ -111,6 +114,8 @@ export interface EditorState {
   snapLine: Flicks | null
   /** Time selection across all tracks (loop region), kept until cleared. */
   timeSelection: TimeRange | null
+  /** What a tool is about to cut (Remove Silences), shown in red on those tracks. */
+  cutPreview: { trackIds: string[]; ranges: TimeRange[] } | null
   /** A render is in progress (the Render As dialog cannot be closed). */
   exporting: boolean
   /** Path of the open .boar file (Electron), or its name in the browser. */
@@ -195,6 +200,7 @@ export const useEditor = create<EditorState>()(() => ({
   status: 'Ready',
   snapLine: null,
   timeSelection: null,
+  cutPreview: null,
   exporting: false,
   transcripts: noTranscripts,
   savedTranscripts: noTranscripts,

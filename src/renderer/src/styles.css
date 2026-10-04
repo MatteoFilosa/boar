@@ -591,6 +591,35 @@ body.resizing {
   color: var(--warn);
 }
 
+.media-proxy {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(10, 11, 13, 0.75);
+  color: #ffcf70;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.media-proxy-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.media-proxy-bar > div {
+  height: 100%;
+  background: #f28c28;
+}
+
 .media-name {
   margin-top: 4px;
   white-space: nowrap;
@@ -2569,6 +2598,12 @@ body.dragging-track * {
 .te-control.wrap {
   flex-wrap: wrap;
   gap: 4px 12px;
+}
+
+.silence-window {
+  top: 72px;
+  left: calc(50% - 300px);
+  width: min(600px, calc(100vw - 32px));
 }
 
 .silence-graph {

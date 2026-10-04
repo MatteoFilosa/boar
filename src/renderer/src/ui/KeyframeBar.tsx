@@ -4,6 +4,7 @@ import * as A from '../core/actions'
 import { type Flicks, type FrameRate, formatTimecode } from '../core/time'
 import type { MediaItem, TimelineEvent } from '../core/types'
 import { sourceLength, timelineTime } from '../core/timeline'
+import { previewUrl } from '../media/proxy'
 
 // Shared by the keyframed tool windows (Event Pan/Crop, Event Mask): the
 // source picture at the cursor and the keyframe bar under the workspace.
@@ -16,7 +17,7 @@ export function useSourceFrame(media: MediaItem | undefined, seconds: number, on
     const el = document.createElement('video')
     el.muted = true
     el.preload = 'auto'
-    el.src = media.url
+    el.src = previewUrl(media)
     setVideo(el)
     return () => {
       el.removeAttribute('src')

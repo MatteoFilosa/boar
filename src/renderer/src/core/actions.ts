@@ -179,7 +179,8 @@ const OPTION_LABELS = {
   quantize: 'Quantize to frames',
   loop: 'Loop playback',
   autoRipple: 'Auto Ripple',
-  checkUpdates: 'Check for updates at startup'
+  checkUpdates: 'Check for updates at startup',
+  proxies: 'Proxies for videos that are slow to seek'
 } as const
 
 export function toggleOption(key: keyof typeof OPTION_LABELS): void {

@@ -565,10 +565,27 @@ export function drawOverlay(
   height: number,
   s: EditorState,
   drop: DropPreview | null,
-  rubber: Rect | null
+  rubber: Rect | null,
+  layouts: TrackLayout[]
 ): void {
   const { view } = s
   ctx.clearRect(0, 0, width, height)
+
+  // What Remove Silences is about to cut, on the tracks it cuts.
+  const cuts = s.cutPreview
+  if (cuts) {
+    const rows = layouts.filter((l) => cuts.trackIds.includes(l.track.id))
+    ctx.fillStyle = 'rgba(232,52,52,0.45)'
+    for (const r of cuts.ranges) {
+      const x0 = timeToX(r.start, view)
+      const x1 = timeToX(r.end, view)
+      if (x1 < 0 || x0 > width) continue
+      for (const l of rows) {
+        const y = l.top - view.scrollY
+        if (y < height && y + l.height > 0) ctx.fillRect(x0, y + 1, Math.max(1, x1 - x0), l.height - 2)
+      }
+    }
+  }
 
   const sel = s.timeSelection
   if (sel) {

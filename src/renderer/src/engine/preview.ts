@@ -8,6 +8,7 @@ import { type AudioFxChain, audioFxKey, buildAudioFxChain, prepareAudioFx } from
 import type { EventFx } from '../core/fx'
 import { onFontLoaded } from '../core/fonts'
 import { onSegmenterReady } from './vision'
+import { previewUrl } from '../media/proxy'
 
 /**
  * Preview engine: hidden <video>/<audio> elements decode, frames are composited
@@ -24,8 +25,12 @@ export const QUALITY_SCALE: Record<PreviewQuality, number> = {
 interface VideoSlot {
   el: HTMLVideoElement
   mediaId: string
+  /** What the element plays: the media file or its proxy. */
+  url: string
   pendingSeek: number | null
   lastUsed: number
+  /** A frame was decoded once: while seeking the element still draws the last one. */
+  hasFrame: boolean
 }
 
 interface AudioSlot {
@@ -250,7 +255,8 @@ class PreviewEngine {
 
   private videoSlot(ev: TimelineEvent, media: MediaItem): VideoSlot {
     let slot = this.videos.get(ev.id)
-    if (slot && slot.mediaId !== media.id) {
+    const url = previewUrl(media)
+    if (slot && (slot.mediaId !== media.id || slot.url !== url)) {
       this.releaseVideo(ev.id)
       slot = undefined
     }
@@ -262,10 +268,14 @@ class PreviewEngine {
       el.disableRemotePlayback = true
       // Files read by path come from boar-media://: CORS keeps their frames usable by the canvas.
       el.crossOrigin = 'anonymous'
-      el.src = media.url
-      const created: VideoSlot = { el, mediaId: media.id, pendingSeek: null, lastUsed: 0 }
-      el.addEventListener('loadeddata', () => (this.dirty = true))
+      el.src = url
+      const created: VideoSlot = { el, mediaId: media.id, url, pendingSeek: null, lastUsed: 0, hasFrame: false }
+      el.addEventListener('loadeddata', () => {
+        created.hasFrame = true
+        this.dirty = true
+      })
       el.addEventListener('seeked', () => {
+        created.hasFrame = true
         const pending = created.pendingSeek
         created.pendingSeek = null
         if (pending !== null && Math.abs(el.currentTime - pending) > 0.001) el.currentTime = pending
@@ -478,7 +488,8 @@ class PreviewEngine {
     ctx.imageSmoothingQuality = options.previewQuality === 'best' ? 'high' : 'medium'
     composeFrame(ctx, this.layerCtx, project, options.autoCrossfade, t, width, height, (ev) => {
       const slot = this.videos.get(ev.id)
-      if (!slot || slot.el.readyState < 2) return null
+      // While a seek decodes (long keyframe intervals take a while) keep showing the last frame instead of black.
+      if (!slot || (slot.el.readyState < 2 && !slot.hasFrame)) return null
       return { source: slot.el, width: slot.el.videoWidth, height: slot.el.videoHeight }
     })
   }

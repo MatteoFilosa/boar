@@ -51,7 +51,8 @@ const KEYWORDS: Partial<Record<CommandId, string>> = {
   pictureInPicture: 'pip layout overlay corner',
   rotateClockwise: 'turn right sideways portrait landscape phone orientation',
   rotateCounterclockwise: 'turn left sideways portrait landscape phone orientation',
-  resetRotation: 'turn upright straighten'
+  resetRotation: 'turn upright straighten',
+  toggleProxies: 'proxy preview scrubbing slow seek optimized media smooth'
 }
 
 /** Commands that have a shortcut or a button but no menu item. */
