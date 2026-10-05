@@ -1,5 +1,5 @@
 import * as A from '../core/actions'
-import { mediaById, useEditor } from '../core/store'
+import { type EventAttribute, mediaById, useEditor } from '../core/store'
 import { FLICKS_PER_SECOND, type Flicks, fps, secondsToFlicks } from '../core/time'
 import { eventEnd, projectEnd, sourceTime } from '../core/timeline'
 import type { TimelineEvent } from '../core/types'
@@ -753,6 +753,33 @@ const TOOLS: Tool[] = [
       const type = str(a, 'fx')
       if (![...VIDEO_FX, ...AUDIO_FX].some((f) => f.type === type)) throw new ToolError(`Unknown effect "${type}"`)
       A.addFx(eventIds(a), type)
+      return get().status
+    }
+  },
+  {
+    name: 'copy_attributes',
+    title: 'Copy event attributes',
+    description:
+      'Gives other events the look of one event (like Paste Event Attributes): its effects (fx), Pan/Crop framing (panCrop), mask, ' +
+      'level or volume (gain) and, between text events, the text style and position (textStyle). Video goes to video, audio to audio; ' +
+      'keyframes keep their place from the start of each event. Use it after editing one piece of a split clip.',
+    inputSchema: object(
+      {
+        from_event_id: S.str('The event to copy from (get_project)'),
+        event_ids: S.ids('Events that get the attributes'),
+        attributes: { type: 'array', items: { type: 'string', enum: A.EVENT_ATTRIBUTES.map((x) => x.key) }, description: 'Default: all' }
+      },
+      ['from_event_id', 'event_ids']
+    ),
+    run: (a) => {
+      const source = get().project.events.find((e) => e.id === str(a, 'from_event_id'))
+      if (!source) throw new ToolError('Unknown from_event_id (see get_project)')
+      const keys = A.EVENT_ATTRIBUTES.map((x) => x.key)
+      const wanted = Array.isArray(a.attributes) ? (a.attributes as string[]) : keys
+      const unknown = wanted.filter((w) => !keys.includes(w as EventAttribute))
+      if (unknown.length) throw new ToolError(`Unknown attributes: ${unknown.join(', ')}. Use: ${keys.join(', ')}`)
+      const changed = A.pasteEventAttributes(wanted as EventAttribute[], eventIds(a), [structuredClone(source)])
+      if (changed === 0) throw new ToolError(get().status)
       return get().status
     }
   },

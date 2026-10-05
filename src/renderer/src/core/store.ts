@@ -19,6 +19,11 @@ export interface ViewState {
 /** Which events move to close (or open) a gap: the Auto Ripple modes. */
 export type RippleMode = 'tracks' | 'tracksMarkers' | 'all'
 
+/** Event properties that Paste Event Attributes copies from one event to others. */
+export type EventAttribute = 'fx' | 'panCrop' | 'mask' | 'gain' | 'textStyle'
+
+export type EditTool = 'normal' | 'select'
+
 export interface EditorOptions {
   snapping: boolean
   autoCrossfade: boolean
@@ -45,6 +50,8 @@ export interface EditorOptions {
   proxies: boolean
   /** Space stops and goes back to where playback started (off: it pauses where it is). */
   spaceReturns: boolean
+  /** What Selectively Paste Event Attributes pastes (remembered). */
+  pasteAttributes: EventAttribute[]
   /** Interface theme: a built-in id ('dark', 'light'...) or a loaded file ('user:...'). */
   theme: string
 }
@@ -67,6 +74,7 @@ const DEFAULT_OPTIONS: EditorOptions = {
   checkUpdates: true,
   proxies: true,
   spaceReturns: false,
+  pasteAttributes: ['fx', 'panCrop', 'mask', 'gain', 'textStyle'],
   theme: 'dark'
 }
 
@@ -100,6 +108,7 @@ export type Dialog =
   | { kind: 'youtube' }
   | { kind: 'silence' }
   | { kind: 'themes' }
+  | { kind: 'pasteAttributes' }
   | { kind: 'transition'; eventId: string }
   | { kind: 'ducking' }
   | { kind: 'reframe' }
@@ -126,6 +135,8 @@ export interface EditorState {
   status: string
   /** Timeline position highlighted while a drag snaps to it. */
   snapLine: Flicks | null
+  /** Timeline edit tool: normal (move, trim, fade) or selection (drag a rectangle anywhere to select). */
+  editTool: EditTool
   /** Time selection across all tracks (loop region), kept until cleared. */
   timeSelection: TimeRange | null
   /** What a tool is about to cut (Remove Silences), shown in red on those tracks. */
@@ -213,6 +224,7 @@ export const useEditor = create<EditorState>()(() => ({
   dialog: null,
   status: 'Ready',
   snapLine: null,
+  editTool: 'normal',
   timeSelection: null,
   cutPreview: null,
   exporting: false,

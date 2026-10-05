@@ -642,8 +642,10 @@ export function drawOverlay(
     const y = Math.min(rubber.y0, rubber.y1)
     ctx.fillStyle = 'rgba(120,170,255,0.12)'
     ctx.fillRect(x, y, Math.abs(rubber.x1 - rubber.x0), Math.abs(rubber.y1 - rubber.y0))
-    ctx.strokeStyle = 'rgba(140,185,255,0.8)'
+    ctx.strokeStyle = 'rgba(140,185,255,0.9)'
+    ctx.setLineDash([5, 4])
     ctx.strokeRect(x + 0.5, y + 0.5, Math.abs(rubber.x1 - rubber.x0), Math.abs(rubber.y1 - rubber.y0))
+    ctx.setLineDash([])
   }
 
   if (s.snapLine !== null) {

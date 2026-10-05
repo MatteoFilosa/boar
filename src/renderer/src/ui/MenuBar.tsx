@@ -27,6 +27,7 @@ export interface Menu {
 
 function useMenus(): Menu[] {
   const options = useEditor((s) => s.options)
+  const editTool = useEditor((s) => s.editTool)
   const canUndo = useEditor((s) => s.past.length > 0)
   const canRedo = useEditor((s) => s.future.length > 0)
   const hasSelection = useEditor((s) => s.selection.length > 0)
@@ -61,6 +62,11 @@ function useMenus(): Menu[] {
         { label: 'Cut', command: 'cut', disabled: !hasSelection },
         { label: 'Copy', command: 'copy', disabled: !hasSelection },
         { label: 'Paste', command: 'paste' },
+        { label: 'Paste Event Attributes', command: 'pasteAttributes', disabled: !hasSelection },
+        { label: 'Selectively Paste Event Attributes...', command: 'pasteAttributesSelective', disabled: !hasSelection },
+        'separator',
+        { label: 'Normal Edit Tool', command: 'normalTool', checked: editTool === 'normal' },
+        { label: 'Selection Edit Tool', command: 'selectionTool', checked: editTool === 'select' },
         'separator',
         { label: 'Split', command: 'split' },
         { label: 'Delete', command: 'deleteSelection', disabled: !hasSelection && !hasTimeSelection },

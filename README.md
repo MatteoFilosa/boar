@@ -42,6 +42,8 @@
 - **Time selection**: drag on the ruler to work on a portion: split, delete, trim, play and render just that part.
 - **Auto Ripple** (`Ctrl+L`): deleting, cutting or pasting closes the gaps by itself, on the affected tracks or on all of them.
 - **Speed**: `Ctrl` + drag an edge to speed up or slow down (0.25x–4x, audio keeps its pitch).
+- **Paste Event Attributes** (`Ctrl+Shift+V`): copy an event and give its look to the selected ones: Video and Audio FX, Pan/Crop, mask, level or volume and text style. *Selectively Paste Event Attributes* lets you choose which.
+- **Selection edit tool** (toolbar or `Ctrl+D`): drag a dashed rectangle anywhere, over events too, to select many at once without moving them (`Shift` adds, `Ctrl` toggles).
 - Split, groups, markers, snapping, frame quantization, context menus and 200 undo levels.
 - **Full screen preview** (`F`): review the edit without distractions, with a seek bar and markers on the fly (`M`).
 - **Command search** (`Ctrl+F`): type what you need ("export", "subtitles", "blur") to find and run any menu command, option, panel, effect or title.
@@ -181,6 +183,8 @@ The quickest way to make one: pick the theme closest to what you want, press *Ex
 | `Ctrl` + drag an edge | change speed |
 | `Ctrl+Z` / `Ctrl+Y` | undo / redo |
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copy / cut / paste (images from the clipboard too) |
+| `Ctrl+Shift+V` | paste the copied event's attributes (FX, Pan/Crop, mask, level, text style) onto the selected events |
+| `Ctrl+D` | switch between the normal edit tool and the selection tool |
 | `Ctrl+S` / `Ctrl+O` | save / open project (`.boar`; double-clicking a project file or dropping it on Boar opens it too) |
 | `Ctrl+M` | Render As |
 | `Ctrl+F` | search commands, options and effects |

@@ -30,6 +30,8 @@ export const BINDINGS: Binding[] = [
   { key: 'c', ctrl: true, command: 'copy' },
   { key: 'x', ctrl: true, command: 'cut' },
   { key: 'v', ctrl: true, command: 'paste' },
+  { key: 'v', ctrl: true, shift: true, command: 'pasteAttributes' },
+  { key: 'd', ctrl: true, command: 'cycleEditTool' },
   { key: 'Backspace', command: 'deleteSelection' },
   { key: 'z', ctrl: true, command: 'undo' },
   { key: 'y', ctrl: true, command: 'redo' },

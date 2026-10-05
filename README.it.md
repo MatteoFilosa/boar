@@ -42,6 +42,8 @@
 - **Selezione temporale**: trascina sul righello per lavorare su una porzione: split, elimina, trim, play e render solo di quella parte.
 - **Auto Ripple** (`Ctrl+L`): eliminando, tagliando o incollando i buchi si chiudono da soli, sulle tracce interessate o su tutte.
 - **Velocità**: `Ctrl` + trascina un bordo per accelerare o rallentare (0.25x–4x, l'audio mantiene l'intonazione).
+- **Paste Event Attributes** (`Ctrl+Shift+V`): copi un evento e dai il suo aspetto a quelli selezionati: Video e Audio FX, Pan/Crop, maschera, livello o volume e stile del testo. *Selectively Paste Event Attributes* ti fa scegliere cosa.
+- **Strumento di selezione** (toolbar o `Ctrl+D`): trascina un rettangolo tratteggiato ovunque, anche sopra gli eventi, per selezionarne tanti insieme senza spostarli (`Shift` aggiunge, `Ctrl` alterna).
 - Split, gruppi, marker, snapping, quantizzazione ai frame, menu contestuali e 200 livelli di annulla.
 - **Anteprima a schermo intero** (`F`): rivedi il montaggio senza distrazioni, con barra di avanzamento e marker al volo (`M`).
 - **Ricerca comandi** (`Ctrl+F`): scrivi quello che ti serve ("export", "subtitles", "blur") per trovare e lanciare qualsiasi comando dei menu, opzione, pannello, effetto o titolo.
@@ -181,6 +183,8 @@ Il modo più veloce per crearne uno: scegli il tema più vicino a quello che vuo
 | `Ctrl` + trascina un bordo | cambia velocità |
 | `Ctrl+Z` / `Ctrl+Y` | annulla / ripeti |
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copia / taglia / incolla (anche immagini dagli appunti) |
+| `Ctrl+Shift+V` | incolla gli attributi dell'evento copiato (FX, Pan/Crop, maschera, livello, stile del testo) sugli eventi selezionati |
+| `Ctrl+D` | passa dallo strumento normale a quello di selezione e viceversa |
 | `Ctrl+S` / `Ctrl+O` | salva / apri progetto (`.boar`; si apre anche con un doppio clic sul file o trascinandolo su Boar) |
 | `Ctrl+M` | Render As |
 | `Ctrl+F` | cerca comandi, opzioni ed effetti |

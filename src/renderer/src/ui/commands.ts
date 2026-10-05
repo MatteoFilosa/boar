@@ -142,6 +142,15 @@ export const commands = {
   toggleProxies: (): void => A.toggleOption('proxies'),
   toggleSpaceReturns: (): void => A.toggleOption('spaceReturns'),
   themes: (): void => A.openDialog({ kind: 'themes' }),
+  pasteAttributes: (): void => void A.pasteEventAttributes(),
+  pasteAttributesSelective: (): void => {
+    if (!A.hasCopiedEvents()) A.setStatus('Copy an event first (Ctrl+C), then select the events that get its attributes')
+    else if (useEditor.getState().selection.length === 0) A.setStatus('Select the events that get the copied attributes')
+    else A.openDialog({ kind: 'pasteAttributes' })
+  },
+  normalTool: (): void => A.setEditTool('normal'),
+  selectionTool: (): void => A.setEditTool('select'),
+  cycleEditTool: (): void => A.setEditTool(useEditor.getState().editTool === 'normal' ? 'select' : 'normal'),
   loadDemoMedia: (): void => void loadDemoMedia()
 }
 

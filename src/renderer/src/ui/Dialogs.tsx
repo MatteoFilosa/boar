@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import * as A from '../core/actions'
-import { mediaById, useEditor } from '../core/store'
+import { type EventAttribute, mediaById, useEditor } from '../core/store'
+import { fxDef } from '../core/fx'
 import { type FrameRate, STANDARD_RATES, nearestStandardRate, rateLabel } from '../core/time'
 import type { ProjectSettings } from '../core/types'
 import { PanCropDialog } from './PanCropDialog'
@@ -203,6 +204,82 @@ function MatchMediaDialog({ mediaId }: { mediaId: string }): React.JSX.Element {
   )
 }
 
+/** What the copied events would paste, per attribute. */
+function copiedSummary(key: EventAttribute): string {
+  const events = A.copiedEvents()
+  const media = events.filter((e) => !e.text)
+  switch (key) {
+    case 'fx': {
+      const names = [...new Set(events.flatMap((e) => e.fx.map((f) => fxDef(f.type)?.label ?? f.type)))]
+      return names.length ? names.join(', ') : 'none (removes the effects)'
+    }
+    case 'panCrop': {
+      const keys = media.find((e) => e.kind === 'video')?.panCrop.length ?? 0
+      return keys === 0 ? 'default framing' : keys === 1 ? 'one framing' : `${keys} keyframes`
+    }
+    case 'mask': {
+      const mask = events.find((e) => e.kind === 'video')?.mask
+      return mask ? (mask.shape === 'custom' ? 'custom shape' : mask.shape) : 'none (removes the masks)'
+    }
+    case 'gain':
+      return events.map((e) => `${e.kind === 'video' ? 'level' : 'volume'} ${Math.round(e.gain * 100)}%`).filter((v, i, a) => a.indexOf(v) === i).join(', ')
+    case 'textStyle': {
+      const text = events.find((e) => e.text)?.text
+      return text ? `${text.font}, ${text.size} px` : 'no text event copied'
+    }
+  }
+}
+
+/** Edit › Selectively Paste Event Attributes: choose what the copied event gives to the selected ones. */
+function PasteAttributesDialog(): React.JSX.Element {
+  const remembered = useEditor((s) => s.options.pasteAttributes)
+  const [chosen, setChosen] = useState<Set<EventAttribute>>(() => new Set(remembered))
+  const count = useEditor((s) => s.selection.length)
+  const paste = (): void => {
+    const list = A.EVENT_ATTRIBUTES.map((a) => a.key).filter((k) => chosen.has(k))
+    A.setOption('pasteAttributes', list)
+    A.closeDialog()
+    A.pasteEventAttributes(list)
+  }
+  return (
+    <Modal title="Selectively Paste Event Attributes" width={500}>
+      <p className="dim" style={{ marginTop: 0 }}>
+        From the copied event to the {count} selected event{count === 1 ? '' : 's'}. Keyframes keep their place from the start of each event.
+      </p>
+      <div className="paste-attrs">
+        {A.EVENT_ATTRIBUTES.map((a) => (
+          <label key={a.key} className="te-check">
+            <input
+              type="checkbox"
+              checked={chosen.has(a.key)}
+              onChange={(e) =>
+                setChosen((c) => {
+                  const next = new Set(c)
+                  if (e.target.checked) next.add(a.key)
+                  else next.delete(a.key)
+                  return next
+                })
+              }
+            />
+            <span>
+              {a.label}
+              <span className="dim"> · {copiedSummary(a.key)}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="modal-actions">
+        <button className="btn" onClick={A.closeDialog}>
+          Cancel
+        </button>
+        <button className="btn primary" disabled={chosen.size === 0 || count === 0} onClick={paste}>
+          Paste
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 function AboutDialog(): React.JSX.Element {
   return (
     <Modal title="About Boar">
@@ -247,6 +324,8 @@ export function Dialogs(): React.JSX.Element | null {
       return <SilenceDialog />
     case 'themes':
       return <ThemesDialog />
+    case 'pasteAttributes':
+      return <PasteAttributesDialog />
     case 'ducking':
       return <DuckingDialog />
     case 'transition':

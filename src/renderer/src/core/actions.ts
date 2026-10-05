@@ -8,6 +8,8 @@ import {
   type DockTab,
   type EditorOptions,
   type EditorState,
+  type EditTool,
+  type EventAttribute,
   type RippleMode,
   type TimeRange,
   type ViewState
@@ -564,6 +566,104 @@ export function copySelection(): number {
     void window.boar?.claimClipboard()
   }
   return clipboard.length
+}
+
+export const hasCopiedEvents = (): boolean => clipboard.length > 0
+
+/** The copied events (Selectively Paste Event Attributes shows what they carry). */
+export const copiedEvents = (): readonly TimelineEvent[] => clipboard
+
+export const EVENT_ATTRIBUTES: { key: EventAttribute; label: string; short: string }[] = [
+  { key: 'fx', label: 'Video FX / Audio FX', short: 'FX' },
+  { key: 'panCrop', label: 'Event Pan/Crop (framing, zoom, rotation)', short: 'Pan/Crop' },
+  { key: 'mask', label: 'Mask', short: 'mask' },
+  { key: 'gain', label: 'Level (video) / volume (audio)', short: 'level' },
+  { key: 'textStyle', label: 'Text style and position (text events)', short: 'text style' }
+]
+
+const ALL_ATTRIBUTES = EVENT_ATTRIBUTES.map((a) => a.key)
+
+/** Which copied event gives its attributes to `target`: same kind, a text event for text, media for media. */
+function attributeSource(target: TimelineEvent, sources: readonly TimelineEvent[]): TimelineEvent | undefined {
+  const sameKind = sources.filter((s) => s.kind === target.kind)
+  return sameKind.find((s) => !!s.text === !!target.text) ?? sameKind[0]
+}
+
+/** A source time of `from` moved to the same moment of `to`, counted from each in-point through each playback rate. */
+const mapSourceTime = (t: Flicks, from: TimelineEvent, to: TimelineEvent): Flicks =>
+  Math.round(to.offset + ((t - from.offset) / from.rate) * to.rate)
+
+/**
+ * Paste Event Attributes: the copied event's effects, framing, mask, level and
+ * text style go to the target events (one undo step). Keyframes keep their
+ * place counted from the start of each event. Returns how many events changed.
+ */
+export function pasteEventAttributes(
+  attributes: readonly EventAttribute[] = ALL_ATTRIBUTES,
+  targetIds: readonly string[] = get().selection,
+  sources: readonly TimelineEvent[] = clipboard
+): number {
+  if (sources.length === 0) {
+    setStatus('Copy an event first (Ctrl+C), then select the events that get its attributes')
+    return 0
+  }
+  if (targetIds.length === 0) {
+    setStatus('Select the events that get the copied attributes')
+    return 0
+  }
+  const want = new Set(attributes)
+  const ids = new Set(targetIds)
+  const pasted = new Set<EventAttribute>()
+  let changed = 0
+  commit((d) => {
+    for (const ev of d.events) {
+      if (!ids.has(ev.id)) continue
+      const src = attributeSource(ev, sources)
+      if (!src || src.id === ev.id) continue
+      const done: EventAttribute[] = []
+      if (want.has('fx')) {
+        ev.fx = cloneFx(src.fx).map((f) => ({ ...f, id: uid() }))
+        done.push('fx')
+      }
+      if (want.has('panCrop') && ev.kind === 'video' && !ev.text && !src.text) {
+        ev.panCrop = src.panCrop.map((k) => ({ ...k, time: mapSourceTime(k.time, src, ev) }))
+        done.push('panCrop')
+      }
+      if (want.has('mask') && ev.kind === 'video') {
+        const mask = src.mask ? structuredClone(src.mask) : null
+        if (mask) {
+          mask.path = mask.path.map((k) => ({ ...k, time: mapSourceTime(k.time, src, ev) }))
+          if (mask.smart) mask.smart.time = mapSourceTime(mask.smart.time, src, ev)
+        }
+        ev.mask = mask
+        done.push('mask')
+      }
+      if (want.has('gain')) {
+        ev.gain = src.gain
+        done.push('gain')
+      }
+      if (want.has('textStyle') && ev.text && src.text) {
+        // Everything but the words themselves (and their timing) and the progress bar mode.
+        ev.text = { ...structuredClone(src.text), text: ev.text.text, words: ev.text.words, progressBar: ev.text.progressBar }
+        done.push('textStyle')
+      }
+      for (const a of done) pasted.add(a)
+      if (done.length > 0) changed++
+    }
+  })
+  if (changed === 0) {
+    setStatus('The copied events have nothing to paste onto the selected ones (video goes to video, audio to audio)')
+    return 0
+  }
+  const names = EVENT_ATTRIBUTES.filter((a) => pasted.has(a.key)).map((a) => a.short)
+  setStatus(`Pasted ${names.join(', ')} onto ${changed} event${changed > 1 ? 's' : ''}`)
+  return changed
+}
+
+/** Normal edit tool or selection tool (Ctrl+D switches). */
+export function setEditTool(tool: EditTool): void {
+  set({ editTool: tool })
+  setStatus(tool === 'select' ? 'Selection tool: drag a rectangle anywhere to select events (Ctrl+D: back to the normal tool)' : 'Normal edit tool')
 }
 
 export function cutSelection(): void {

@@ -11,6 +11,7 @@ import {
   Scissors,
   Keyboard,
   Settings2,
+  SquareDashedMousePointer,
   Trash2,
   Undo2,
   type LucideIcon
@@ -47,6 +48,7 @@ export function ToolButton({ icon: Icon, title, command, active, disabled, tone 
 
 export function Toolbar(): React.JSX.Element {
   const options = useEditor((s) => s.options)
+  const editTool = useEditor((s) => s.editTool)
   const canUndo = useEditor((s) => s.past.length > 0)
   const canRedo = useEditor((s) => s.future.length > 0)
   const hasSelection = useEditor((s) => s.selection.length > 0)
@@ -61,7 +63,8 @@ export function Toolbar(): React.JSX.Element {
       <ToolButton icon={Undo2} title="Undo" command="undo" disabled={!canUndo} />
       <ToolButton icon={Redo2} title="Redo" command="redo" disabled={!canRedo} />
       <div className="tool-sep" />
-      <ToolButton icon={MousePointer2} title="Normal edit tool" active />
+      <ToolButton icon={MousePointer2} title="Normal edit tool" command="normalTool" active={editTool === 'normal'} />
+      <ToolButton icon={SquareDashedMousePointer} title="Selection edit tool: drag a rectangle anywhere" command="selectionTool" active={editTool === 'select'} />
       <ToolButton icon={Scissors} title="Split at cursor" command="split" />
       <ToolButton icon={Trash2} title="Delete selected events" command="deleteSelection" disabled={!hasSelection} />
       <div className="tool-sep" />

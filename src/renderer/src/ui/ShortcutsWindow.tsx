@@ -21,7 +21,8 @@ const GROUPS: { name: string; commands: CommandId[] }[] = [
     name: 'Editing',
     commands: [
       'split', 'deleteSelection', 'rippleDelete', 'trimToSelection', 'clearTimeSelection', 'copy', 'cut', 'paste',
-      'undo', 'redo', 'selectAll', 'group', 'ungroup', 'addMarker', 'rotateClockwise', 'rotateCounterclockwise'
+      'pasteAttributes', 'undo', 'redo', 'selectAll', 'cycleEditTool', 'group', 'ungroup', 'addMarker', 'rotateClockwise',
+      'rotateCounterclockwise'
     ]
   },
   {
@@ -49,6 +50,8 @@ const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
   copy: 'Copy events',
   cut: 'Cut events',
   paste: 'Paste events at the cursor',
+  pasteAttributes: 'Paste Event Attributes: the FX, Pan/Crop, mask, level and text style of the copied event onto the selected events',
+  cycleEditTool: 'Switch between the normal edit tool and the selection tool (drag a rectangle anywhere)',
   openProject: 'Open project',
   saveProject: 'Save project',
   saveProjectAs: 'Save project as',

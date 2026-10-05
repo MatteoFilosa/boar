@@ -1781,6 +1781,17 @@ body.moving-window * {
   font-variant-numeric: tabular-nums;
 }
 
+.paste-attrs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.paste-attrs .te-check {
+  align-items: flex-start;
+}
+
 .te-check {
   display: inline-flex;
   align-items: center;

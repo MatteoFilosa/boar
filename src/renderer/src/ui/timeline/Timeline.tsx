@@ -129,6 +129,8 @@ type Drag =
       moved: boolean
       clickTime: Flicks
       base: string[]
+      /** Selection tool: a click without dragging selects this event (null: empty space). */
+      click?: { eventId: string | null; mode: 'replace' | 'add' | 'toggle' }
     }
   | {
       /** Dragging out a time selection on empty track space. */
@@ -693,6 +695,8 @@ function contextEntries(hit: Hit, at: Flicks): MenuEntry[] {
       { label: 'Cut', command: 'cut' },
       { label: 'Copy', command: 'copy' },
       { label: 'Paste', command: 'paste' },
+      { label: 'Paste Event Attributes', command: 'pasteAttributes', disabled: !A.hasCopiedEvents() },
+      { label: 'Selectively Paste Event Attributes...', command: 'pasteAttributesSelective', disabled: !A.hasCopiedEvents() },
       'separator',
       { label: 'Split', command: 'split' },
       { label: 'Delete', command: 'deleteSelection' },
@@ -951,6 +955,23 @@ export function Timeline(): React.JSX.Element {
       A.openFxWindow(hit.event.kind, hit.event.id)
       return
     }
+    if (s.editTool === 'select') {
+      // Selection tool: a drag anywhere, events included, draws the selection
+      // rectangle; nothing moves or trims. Shift adds, Ctrl toggles.
+      A.selectTrack(null)
+      const mode = additive ? 'toggle' : e.shiftKey ? 'add' : 'replace'
+      dragRef.current = {
+        kind: 'rubber',
+        x0: x,
+        y0: y,
+        contentY0: y + s.view.scrollY,
+        moved: false,
+        clickTime,
+        base: mode === 'replace' ? [] : s.selection,
+        click: { eventId: hit.kind === 'event' ? hit.event.id : null, mode }
+      }
+      return
+    }
     if (hit.kind === 'event') {
       // Ctrl+drag on an edge: time stretch (the event plays faster or slower).
       const stretch = isStretch(hit, additive)
@@ -997,7 +1018,9 @@ export function Timeline(): React.JSX.Element {
     const drag = dragRef.current
     if (!drag) {
       hoverRef.current = { x, y }
-      e.currentTarget.style.cursor = hoverCursor(hitTest(x, y), e.ctrlKey || e.metaKey)
+      const hit = hitTest(x, y)
+      const button = hit.kind === 'event' && (hit.zone === 'panCrop' || hit.zone === 'fx')
+      e.currentTarget.style.cursor = get().editTool === 'select' && !button ? 'crosshair' : hoverCursor(hit, e.ctrlKey || e.metaKey)
       return
     }
     if (!drag.moved) {
@@ -1058,7 +1081,11 @@ export function Timeline(): React.JSX.Element {
         canvases.rubber = null
         canvases.overlayDirty = true
       }
-      if (!drag.moved && !cancelled) A.setCursor(drag.clickTime)
+      if (!drag.moved && !cancelled) {
+        if (drag.click?.eventId) A.selectEvents([drag.click.eventId], drag.click.mode)
+        else if (drag.click?.mode === 'replace') A.clearSelection()
+        A.setCursor(drag.clickTime)
+      }
       return
     }
     if (cancelled) A.cancelGesture()
