@@ -1,4 +1,5 @@
 import type { Flicks } from './time'
+import { type PanCropState, fitFrame, sourceToOutput } from './pancrop'
 
 /** A point of a custom mask, as fractions of the source picture (x, y). */
 export type MaskPoint = [number, number]
@@ -24,14 +25,19 @@ export interface SmartSeeds {
  * Shape mask on a video event. Outside the shape the event is transparent, so
  * lower tracks show through (or the inside, when inverted).
  *
- * Ellipse and rectangle are in output-frame coordinates (fractions of the
- * frame), applied after Pan/Crop. A custom shape is drawn over the source
- * picture (the frame itself for text events) with keyframes in source time
- * like Event Pan/Crop, so it stays on its subject when the framing changes
- * and trimming or splitting never touches it.
+ * Ellipse and rectangle are fractions of the source picture when `space` is
+ * 'picture' (they move, zoom and turn with Event Pan/Crop, so a masked image
+ * can be moved around whole), or of the output frame when it is 'frame' (a
+ * fixed window the picture moves behind; masks saved before 0.7.4). A custom
+ * shape is always drawn over the source picture (the frame itself for text
+ * events) with keyframes in source time like Event Pan/Crop, so it stays on
+ * its subject when the framing changes and trimming or splitting never
+ * touches it.
  */
 export interface EventMask {
   shape: 'rectangle' | 'ellipse' | 'custom'
+  /** Ellipse and rectangle: over the source picture or over the output frame. */
+  space: 'picture' | 'frame'
   cx: number
   cy: number
   w: number
@@ -48,6 +54,7 @@ export interface EventMask {
 
 export const DEFAULT_MASK: EventMask = {
   shape: 'ellipse',
+  space: 'picture',
   cx: 0.5,
   cy: 0.5,
   w: 0.6,
@@ -59,8 +66,61 @@ export const DEFAULT_MASK: EventMask = {
   smart: null
 }
 
-/** Fills fields added after a mask was saved. */
-export const normalizeMask = (m: Partial<EventMask>): EventMask => ({ ...DEFAULT_MASK, ...m, path: m.path ?? [], smart: m.smart ?? null })
+/** Fills fields added after a mask was saved (older ellipses and rectangles were over the frame). */
+export const normalizeMask = (m: Partial<EventMask>): EventMask => ({
+  ...DEFAULT_MASK,
+  ...m,
+  space: m.space ?? 'frame',
+  path: m.path ?? [],
+  smart: m.smart ?? null
+})
+
+// Ellipse and rectangle over the picture
+
+/** Points around an ellipse or rectangle (fractions), for drawing it through Pan/Crop. */
+export function shapeOutline(mask: EventMask): MaskPoint[] {
+  const { cx, cy } = mask
+  const rx = mask.w / 2
+  const ry = mask.h / 2
+  if (mask.shape === 'rectangle') {
+    return [
+      [cx - rx, cy - ry],
+      [cx + rx, cy - ry],
+      [cx + rx, cy + ry],
+      [cx - rx, cy + ry]
+    ]
+  }
+  return Array.from({ length: 72 }, (_, i): MaskPoint => {
+    const a = (i / 72) * Math.PI * 2
+    return [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]
+  })
+}
+
+/**
+ * The same ellipse or rectangle on the other space, as it looks with this
+ * framing (`state`): switching keeps the shape where it is on screen (exact
+ * without rotation).
+ */
+export function convertMaskSpace(
+  mask: EventMask,
+  to: EventMask['space'],
+  state: PanCropState,
+  srcW: number,
+  srcH: number,
+  outW: number,
+  outH: number
+): EventMask {
+  if (mask.space === to) return mask
+  const { map, inverse } = sourceToOutput(state, srcW, srcH, outW, outH)
+  // Output pixels per source pixel.
+  const scale = (outW * state.zoom) / fitFrame(srcW, srcH, outW, outH).w
+  if (to === 'picture') {
+    const [x, y] = inverse(mask.cx * outW, mask.cy * outH)
+    return { ...mask, space: to, cx: x / srcW, cy: y / srcH, w: (mask.w * outW) / scale / srcW, h: (mask.h * outH) / scale / srcH }
+  }
+  const [x, y] = map(mask.cx * srcW, mask.cy * srcH)
+  return { ...mask, space: to, cx: x / outW, cy: y / outH, w: (mask.w * srcW * scale) / outW, h: (mask.h * srcH * scale) / outH }
+}
 
 // Custom shape keyframes
 
@@ -165,12 +225,14 @@ const cache = new Map<string, OffscreenCanvas>()
 
 /**
  * White-on-transparent alpha mask, cached per parameters and size. A custom
- * shape needs its points already placed in the output frame (pixels).
+ * shape, and an ellipse or rectangle over the picture, need their outline
+ * already placed in the output frame (pixels).
  */
 export function maskCanvas(mask: EventMask, width: number, height: number, outputPoints: readonly MaskPoint[] = []): OffscreenCanvas {
-  const custom = mask.shape === 'custom'
+  const custom = mask.shape === 'custom' || (mask.space === 'picture' && outputPoints.length > 0)
+  const smooth = mask.shape === 'custom' && mask.smooth
   const shapeKey = custom
-    ? `${mask.smooth}:${outputPoints.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(';')}`
+    ? `${smooth}:${outputPoints.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(';')}`
     : `${mask.cx}:${mask.cy}:${mask.w}:${mask.h}`
   const key = `${width}x${height}:${mask.shape}:${shapeKey}:${mask.feather}:${mask.invert}`
   const hit = cache.get(key)
@@ -183,7 +245,7 @@ export function maskCanvas(mask: EventMask, width: number, height: number, outpu
   const shape = (): void => {
     ctx.beginPath()
     if (custom) {
-      tracePath(ctx, outputPoints, mask.smooth)
+      tracePath(ctx, outputPoints, smooth)
       return
     }
     const x = mask.cx * width

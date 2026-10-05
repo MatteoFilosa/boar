@@ -3,7 +3,7 @@ import { closeDialog } from '../core/actions'
 import { useEditor } from '../core/store'
 import { type CommandId, commands } from './commands'
 import { isPreviewFullScreen, toggleFullScreenPreview } from './fullScreen'
-import { isMac } from '../platform'
+import { bridge, isMac } from '../platform'
 
 export interface Binding {
   key: string
@@ -62,11 +62,31 @@ export const BINDINGS: Binding[] = [
   { key: 'End', command: 'goToEnd' },
   { key: 'ArrowLeft', command: 'previousFrame' },
   { key: 'ArrowRight', command: 'nextFrame' },
+  { key: 'ArrowLeft', shift: true, command: 'backOneSecond' },
+  { key: 'ArrowRight', shift: true, command: 'forwardOneSecond' },
   { key: 'ArrowLeft', ctrl: true, command: 'previousEditPoint' },
   { key: 'ArrowRight', ctrl: true, command: 'nextEditPoint' },
   { key: 'ArrowUp', command: 'zoomIn' },
-  { key: 'ArrowDown', command: 'zoomOut' }
+  { key: 'ArrowDown', command: 'zoomOut' },
+  { key: '=', ctrl: true, command: 'interfaceBigger' },
+  { key: '-', ctrl: true, command: 'interfaceSmaller' },
+  { key: '0', ctrl: true, command: 'interfaceReset' },
+  { key: '=', ctrl: true, shift: true, command: 'tallerTracks' },
+  { key: '-', ctrl: true, shift: true, command: 'shorterTracks' }
 ]
+
+/**
+ * The key as BINDINGS name it: letters lowercased, and the plus and minus keys
+ * as '=' and '-' on any layout, with or without Shift (Shift+= types '+' on a
+ * US keyboard, Shift++ types '*' on an Italian or German one), keypad included.
+ */
+export function bindingKey(e: KeyboardEvent): string {
+  if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd' || (e.key === '*' && e.code === 'BracketRight')) return '='
+  if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') return '-'
+  // Ctrl+0 where 0 needs Shift (French layout).
+  if ((e.ctrlKey || e.metaKey) && (e.code === 'Digit0' || e.code === 'Numpad0')) return '0'
+  return e.key.length === 1 ? e.key.toLowerCase() : e.key
+}
 
 export function shortcutLabel(command: CommandId): string {
   const binding = BINDINGS.find((b) => b.command === command)
@@ -80,7 +100,8 @@ export function bindingLabel(binding: Binding): string {
     ArrowLeft: '←',
     ArrowRight: '→',
     ArrowUp: '↑',
-    ArrowDown: '↓'
+    ArrowDown: '↓',
+    '=': '+'
   }
   const key = names[binding.key] ?? (binding.key.length === 1 ? binding.key.toUpperCase() : binding.key)
   if (isMac) return [binding.alt && '⌥', binding.shift && '⇧', binding.ctrl && '⌘', key].filter(Boolean).join('')
@@ -94,6 +115,8 @@ const FLOATING_ALLOWED = new Set<CommandId>([
   'pause',
   'previousFrame',
   'nextFrame',
+  'backOneSecond',
+  'forwardOneSecond',
   'undo',
   'redo',
   'fullScreenPreview'
@@ -102,7 +125,6 @@ const FLOATING_ALLOWED = new Set<CommandId>([
 /** The full screen preview is for watching: playback, navigation and markers only. */
 const FULL_SCREEN_ALLOWED = new Set<CommandId>([
   ...FLOATING_ALLOWED,
-  'backOneSecond',
   'previousEditPoint',
   'nextEditPoint',
   'goToStart',
@@ -110,6 +132,8 @@ const FULL_SCREEN_ALLOWED = new Set<CommandId>([
   'toggleLoop',
   'addMarker'
 ])
+
+const INTERFACE_SIZE = new Set<CommandId>(['interfaceBigger', 'interfaceSmaller', 'interfaceReset'])
 
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -140,16 +164,33 @@ export function useGlobalShortcuts(): void {
       const allowed = full ? FULL_SCREEN_ALLOWED : floating && dialog?.kind !== 'shortcuts' ? FLOATING_ALLOWED : null
       // Sliders keep their arrow keys.
       if (e.target instanceof HTMLInputElement && e.key.startsWith('Arrow')) return
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
+      const key = bindingKey(e)
       const ctrl = e.ctrlKey || e.metaKey
       const binding = BINDINGS.find(
         (b) => b.key === key && !!b.ctrl === ctrl && !!b.shift === e.shiftKey && !!b.alt === e.altKey
       )
       if (!binding || (allowed && !allowed.has(binding.command))) return
+      // In a plain browser the page zoom does it.
+      if (!bridge && INTERFACE_SIZE.has(binding.command)) return
       e.preventDefault()
       commands[binding.command]()
     }
+    // A list or slider used with the mouse gives the keyboard back to the
+    // shortcuts: otherwise arrows and Space keep changing it.
+    const onChange = (e: Event): void => {
+      if (e.target instanceof HTMLSelectElement) e.target.blur()
+    }
+    const onPointerUp = (): void => {
+      const active = document.activeElement
+      if (active instanceof HTMLInputElement && active.type === 'range') active.blur()
+    }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('change', onChange, true)
+    window.addEventListener('pointerup', onPointerUp, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('change', onChange, true)
+      window.removeEventListener('pointerup', onPointerUp, true)
+    }
   }, [])
 }

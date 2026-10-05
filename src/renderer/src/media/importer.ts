@@ -39,6 +39,46 @@ export function kindOfName(name: string): MediaKind | null {
   return null
 }
 
+const MIME_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/avif': 'avif',
+  'image/bmp': 'bmp',
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/quicktime': 'mov',
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+  'audio/ogg': 'ogg',
+  'audio/mp4': 'm4a'
+}
+
+/** Larger files without a path stay in memory only (they are rare: web pages give images). */
+const KEEP_LIMIT = 1024 * 1024 * 1024
+
+/**
+ * A file without a path on disk (an image dragged out of a web page) lives
+ * only in memory: a copy goes to the app's media folder so the project finds
+ * it again after closing. Desktop app only.
+ */
+async function keepCopy(id: string, file: File): Promise<void> {
+  if (!bridge || file.size === 0) return
+  if (file.size > KEEP_LIMIT) {
+    setStatus(`${file.name} is not a file on disk: save it to a folder and import it from there to keep it in the project`)
+    return
+  }
+  const known = kindOfName(file.name) !== null
+  const name = known ? file.name : `${file.name.replace(/\.[^.]*$/, '') || 'Dropped'}.${MIME_EXT[file.type] ?? 'bin'}`
+  try {
+    const path = await bridge.keepMediaFile(name, new Uint8Array(await file.arrayBuffer()))
+    if (mediaById(id)?.file === file) updateMedia(id, { path })
+  } catch (err) {
+    setStatus(`Cannot keep a copy of ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 /** Resolves when a media item finished analyzing (null if it failed or was removed). */
 function whenReady(id: string): Promise<MediaItem | null> {
   return new Promise((resolve) => {
@@ -120,8 +160,10 @@ export function importFiles(files: Iterable<File>): Promise<MediaItem | null>[] 
     const missing = useEditor
       .getState()
       .media.find((m) => !canRead(m) && m.name === file.name && (m.size === 0 || m.size === file.size))
+    const path = bridge?.pathForFile(file) ?? ''
     if (missing) {
-      updateMedia(missing.id, { file, url, size: file.size, status: 'analyzing', error: '', path: bridge?.pathForFile(file) ?? '' })
+      updateMedia(missing.id, { file, url, size: file.size, status: 'analyzing', error: '', path })
+      if (!path) void keepCopy(missing.id, file)
       pending.push(track(mediaById(missing.id) as MediaItem))
       continue
     }
@@ -131,7 +173,7 @@ export function importFiles(files: Iterable<File>): Promise<MediaItem | null>[] 
       kind,
       file,
       url,
-      path: bridge?.pathForFile(file) ?? '',
+      path,
       size: file.size,
       status: 'analyzing',
       error: '',
@@ -148,6 +190,7 @@ export function importFiles(files: Iterable<File>): Promise<MediaItem | null>[] 
       poster: kind === 'image' ? url : ''
     }
     addMediaItem(item)
+    if (!path) void keepCopy(item.id, file)
     pending.push(track(item))
   }
   return pending

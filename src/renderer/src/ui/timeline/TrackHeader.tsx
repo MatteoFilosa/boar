@@ -146,7 +146,7 @@ export function TrackHeader({ track, index }: { track: Track; index: number }): 
             const startHeight = track.height
             A.beginGesture()
             const move = (ev: PointerEvent): void => {
-              const height = Math.round(Math.min(260, Math.max(44, startHeight + ev.clientY - startY)))
+              const height = Math.round(Math.min(A.MAX_TRACK_HEIGHT, Math.max(A.MIN_TRACK_HEIGHT, startHeight + ev.clientY - startY)))
               A.updateTrack(track.id, { height })
             }
             const up = (): void => {

@@ -4,6 +4,8 @@ import type { Transcript } from './core/captions'
 export interface BoarBridge {
   platform: string
   pathForFile(file: File): string
+  /** Zoom of the whole interface (1 = 100%). */
+  setZoomFactor(factor: number): void
   /** Shows a save dialog; only paths returned here can be written. */
   pickExportPath(suggestedName: string): Promise<string | null>
   openFile(path: string): Promise<number>
@@ -54,6 +56,8 @@ export interface BoarBridge {
   saveToLibrary(dir: string, name: string, ext: string, data: Uint8Array): Promise<string>
   /** Saves the clipboard image as a PNG file; null when the clipboard has no image. */
   clipboardImage(): Promise<string | null>
+  /** Writes a dropped file that has no path (dragged out of a web page) to the app's media folder; returns its path. */
+  keepMediaFile(name: string, data: Uint8Array): Promise<string>
   claimClipboard(): Promise<void>
   youtubeStatus(): Promise<YoutubeStatus>
   installYtDlp(): Promise<void>

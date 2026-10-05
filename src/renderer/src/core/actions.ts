@@ -39,6 +39,7 @@ import { addEmoji, emphasizeKeywords } from './captionStyle'
 import type { ShortCandidate } from './shorts'
 import { type Corner, cornerFrame, coverFrame, halfFrame } from './layouts'
 import { dropMediaCache } from '../media/cache'
+import { followClips } from './linkedCaptions'
 
 const HISTORY_LIMIT = 200
 const get = useEditor.getState
@@ -60,11 +61,21 @@ function validSelection(project: Project, selection: string[]): string[] {
   return selection.filter((id) => ids.has(id))
 }
 
+/**
+ * Every undoable change goes through here: with Captions Follow Clip Edits on,
+ * captions made from a transcript move with the clips the change edited.
+ */
+function change(base: Project, recipe: (draft: Draft<Project>) => void): Project {
+  const next = produce(base, recipe)
+  const { options, transcripts } = get()
+  return options.linkedCaptions ? followClips(base, next, transcripts, options.quantize) : next
+}
+
 /** Applies an undoable change to the project. */
 export function commit(recipe: (draft: Draft<Project>) => void): boolean {
   lastCoalesced = null
   const { project } = get()
-  const next = produce(project, recipe)
+  const next = change(project, recipe)
   if (next === project) return false
   set(withHistory(project, next))
   return true
@@ -81,7 +92,7 @@ export function commitCoalesced(key: string, recipe: (draft: Draft<Project>) => 
   const previous = lastCoalesced
   if (previous && previous.key === key && now - previous.at < 1200 && get().past.length > 0) {
     const { project } = get()
-    const next = produce(project, recipe)
+    const next = change(project, recipe)
     if (next !== project) set({ project: next, future: [] })
   } else {
     commit(recipe)
@@ -101,7 +112,7 @@ export function beginGesture(): void {
 
 export function updateGesture(recipe: (draft: Draft<Project>) => void): void {
   if (!gestureBase) return
-  set({ project: produce(gestureBase, recipe) })
+  set({ project: change(gestureBase, recipe) })
 }
 
 export function endGesture(): void {
@@ -183,7 +194,8 @@ const OPTION_LABELS = {
   autoRipple: 'Auto Ripple',
   checkUpdates: 'Check for updates at startup',
   proxies: 'Proxies for videos that are slow to seek',
-  spaceReturns: 'Space returns to the start position'
+  spaceReturns: 'Space returns to the start position',
+  linkedCaptions: 'Captions follow clip edits'
 } as const
 
 export function toggleOption(key: keyof typeof OPTION_LABELS): void {
@@ -244,6 +256,21 @@ export function setCursor(t: Flicks): void {
 export function stepFrames(count: number): void {
   const { cursor, project } = get()
   setCursor(cursor + count * frameFlicks(project.settings.frameRate))
+}
+
+/** How far the Left / Right arrows jump while playing, where a single frame would go unnoticed. */
+export const PLAYING_ARROW_JUMP = 5
+
+/** Moves the cursor by `seconds`, never past the end of the project. */
+export function jumpSeconds(seconds: number): void {
+  const { cursor, project } = get()
+  setCursor(Math.min(Math.max(cursor, projectEnd(project)), cursor + secondsToFlicks(seconds)))
+}
+
+/** Left / Right arrow: one frame when stopped, a few seconds while playing. */
+export function arrowStep(direction: 1 | -1): void {
+  if (get().playing) jumpSeconds(direction * PLAYING_ARROW_JUMP)
+  else stepFrames(direction)
 }
 
 export function jumpToEditPoint(direction: 1 | -1): void {
@@ -372,6 +399,25 @@ export function updateTrack(trackId: string, patch: Partial<Track>): void {
   }
   if (gestureBase) updateGesture(apply)
   else commit(apply)
+}
+
+export const MIN_TRACK_HEIGHT = 44
+export const MAX_TRACK_HEIGHT = 260
+
+/** Ctrl+Shift++ / Ctrl+Shift+-: every track taller or shorter (repeated presses are one undo step). */
+export function resizeTracks(direction: 1 | -1): void {
+  const { tracks } = get().project
+  if (tracks.length === 0) return
+  const factor = direction > 0 ? 1.25 : 0.8
+  const atLimit = tracks.every((t) => (direction > 0 ? t.height >= MAX_TRACK_HEIGHT : t.height <= MIN_TRACK_HEIGHT))
+  if (atLimit) {
+    setStatus(direction > 0 ? 'Tracks are as tall as they get' : 'Tracks are as short as they get')
+    return
+  }
+  commitCoalesced('trackHeights', (d) => {
+    for (const t of d.tracks) t.height = Math.round(Math.min(MAX_TRACK_HEIGHT, Math.max(MIN_TRACK_HEIGHT, t.height * factor)))
+  })
+  setStatus(direction > 0 ? 'Taller tracks' : 'Shorter tracks')
 }
 
 export const selectTrack = (trackId: string | null): void => set({ selectedTrackId: trackId })
@@ -1333,7 +1379,9 @@ export function addCaptionEvents(captions: CaptionChunk[], origin: Flicks, prese
         text: {
           ...preset.content,
           text: c.text,
-          words: c.words.length ? c.words.map((w) => ({ text: w.text, start: toEvent(w.start), end: toEvent(w.end) })) : null
+          words: c.words.length
+            ? c.words.map((w) => ({ text: w.text, start: toEvent(w.start), end: toEvent(w.end), ...(w.src ? { src: w.src } : {}) }))
+            : null
         },
         mask: null,
         fx: [],
@@ -1382,12 +1430,14 @@ export function setMask(eventId: string, mask: EventMask | null, field = 'mask')
   })
 }
 
-/** Replaces an event's mask in one undo step (custom shape edits, Smart Select, tracking). */
+/** Replaces an event's mask in one undo step (custom shape edits, Smart Select, tracking); part of a gesture while one runs. */
 export function replaceMask(eventId: string, mask: EventMask | null): void {
-  commit((d) => {
+  const apply = (d: Draft<Project>): void => {
     const event = d.events.find((e) => e.id === eventId)
     if (event) event.mask = mask
-  })
+  }
+  if (gestureBase) updateGesture(apply)
+  else commit(apply)
 }
 
 export function openMaskEditor(eventId?: string): void {

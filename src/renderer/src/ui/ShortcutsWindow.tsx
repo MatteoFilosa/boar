@@ -3,7 +3,7 @@ import { Search } from 'lucide-react'
 import { ALT, MOD, isMac } from '../platform'
 import type { CommandId } from './commands'
 import { FloatingWindow } from './FloatingWindow'
-import { BINDINGS, type Binding, bindingLabel } from './shortcuts'
+import { BINDINGS, type Binding, bindingKey, bindingLabel } from './shortcuts'
 
 // Help › Keyboard Shortcuts (F1): every key binding, grouped and searchable,
 // on a keyboard you can explore. It stays open while you edit, and the keys
@@ -13,7 +13,7 @@ const GROUPS: { name: string; commands: CommandId[] }[] = [
   {
     name: 'Playback and navigation',
     commands: [
-      'playStop', 'playPause', 'play', 'pause', 'backOneSecond', 'previousFrame', 'nextFrame',
+      'playStop', 'playPause', 'play', 'pause', 'backOneSecond', 'forwardOneSecond', 'previousFrame', 'nextFrame',
       'previousEditPoint', 'nextEditPoint', 'goToStart', 'goToEnd', 'toggleLoop'
     ]
   },
@@ -27,13 +27,13 @@ const GROUPS: { name: string; commands: CommandId[] }[] = [
   },
   {
     name: 'Timeline',
-    commands: ['zoomIn', 'zoomOut', 'toggleSnapping', 'toggleQuantize', 'toggleCrossfades', 'toggleRipple', 'addVideoTrack', 'addAudioTrack']
+    commands: ['zoomIn', 'zoomOut', 'tallerTracks', 'shorterTracks', 'toggleSnapping', 'toggleQuantize', 'toggleCrossfades', 'toggleRipple', 'addVideoTrack', 'addAudioTrack']
   },
   {
     name: 'Project',
     commands: ['newProject', 'openProject', 'saveProject', 'saveProjectAs', 'importMedia', 'render', 'properties']
   },
-  { name: 'View and help', commands: ['fullScreenPreview', 'searchCommands', 'shortcuts'] }
+  { name: 'View and help', commands: ['fullScreenPreview', 'interfaceBigger', 'interfaceSmaller', 'interfaceReset', 'searchCommands', 'shortcuts'] }
 ]
 
 const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
@@ -74,12 +74,18 @@ const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
   properties: 'Project properties',
   goToStart: 'Go to start',
   goToEnd: 'Go to end',
-  previousFrame: 'Previous frame',
-  nextFrame: 'Next frame',
+  previousFrame: 'Previous frame (while playing: back 5 seconds)',
+  nextFrame: 'Next frame (while playing: forward 5 seconds)',
+  forwardOneSecond: 'Forward one second',
   previousEditPoint: 'Previous edit point',
   nextEditPoint: 'Next edit point',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
+  tallerTracks: 'Taller tracks',
+  shorterTracks: 'Shorter tracks',
+  interfaceBigger: 'Bigger interface (menus, panels, timeline)',
+  interfaceSmaller: 'Smaller interface',
+  interfaceReset: 'Interface back to 100%',
   fullScreenPreview: 'Full screen preview (Esc to exit)',
   rotateClockwise: 'Rotate selected video, image or text 90° clockwise',
   rotateCounterclockwise: 'Rotate selected video, image or text 90° counterclockwise',
@@ -90,12 +96,13 @@ const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
 export const describeCommand = (command: CommandId): string => DESCRIPTIONS[command] ?? command
 
 const MOUSE: [string, string][] = [
-  ['Wheel', 'Zoom the timeline at the mouse'],
+  ['Wheel', 'Zoom the timeline around the cursor (at the mouse when the cursor is out of view)'],
   [`${MOD}+Wheel`, 'Scroll left / right'],
   ['Shift+Wheel', 'Scroll tracks up / down'],
-  ['Drag event', 'Move (also to another track of the same kind)'],
+  ['Drag event', 'Move (also to another track of the same kind); with Auto Ripple what follows moves too'],
+  ['Drag near the left or right edge', 'The timeline scrolls (events, media from Project Media, files)'],
   [`${ALT} while dragging`, 'Ignore snapping'],
-  ['Drag event edge', 'Trim'],
+  ['Drag event edge', 'Trim (with Auto Ripple the later events follow)'],
   [`${MOD}+drag event edge`, 'Change speed'],
   ['Drag event top corner', 'Fade in / fade out'],
   ['Overlap two events', 'Automatic crossfade'],
@@ -103,7 +110,8 @@ const MOUSE: [string, string][] = [
   ['Drag on the ruler', 'Time selection (loop region)'],
   ['Preview: drag a handle', 'Move or resize the selected video, image or text'],
   ['Preview: drag just outside a corner', 'Rotate (Shift: 15° steps)'],
-  ['Right-click / Alt+click marker', 'Delete marker']
+  ['Right-click / Alt+click marker', 'Delete marker'],
+  [`Keyframe bar: click / ${MOD}+click / Shift+click`, `Select keyframes (Pan/Crop, Mask); drag moves them, Del deletes, ${MOD}+C / ${MOD}+V copy and paste at the cursor`]
 ]
 
 // Keyboard map. Key ids are KeyboardEvent.key values (letters lowercase); w = width in key units.
@@ -231,7 +239,7 @@ export function ShortcutsWindow(): React.JSX.Element {
     const down = (e: KeyboardEvent): void => {
       sync(e)
       if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
+      const key = bindingKey(e)
       const ctrl = e.ctrlKey || e.metaKey
       setFlash(key)
       setLast(BINDINGS.find((b) => b.key === key && !!b.ctrl === ctrl && !!b.shift === e.shiftKey && !!b.alt === e.altKey))

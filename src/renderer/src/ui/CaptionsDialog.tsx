@@ -3,7 +3,7 @@ import { Download, X } from 'lucide-react'
 import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
 import { CAPTION_STYLES, alignWords, chunkWords } from '../core/captions'
-import { defaultSpeechTrack, hasSpeech, speechTracks, wordsOnTimeline } from '../core/transcript'
+import { defaultSpeechTrack, hasSpeech, speechTracks, timedWord, wordsOnTimeline } from '../core/transcript'
 import { FLICKS_PER_SECOND } from '../core/time'
 import { PresetThumb } from './TextEditor'
 import { presetById } from '../core/text'
@@ -60,6 +60,7 @@ export function CaptionsDialog(): React.JSX.Element {
   // Selected clips first, then the time selection, else the whole timeline.
   const [scope, setScope] = useState<Scope>(() => (selectedClips.length > 0 ? 'selected' : range ? 'range' : 'all'))
   const [again, setAgain] = useState(false)
+  const linked = useEditor((s) => s.options.linkedCaptions)
 
   useEffect(() => {
     if (!bridge) return
@@ -108,7 +109,7 @@ export function CaptionsDialog(): React.JSX.Element {
       const span = scope === 'range' ? range : null
       const words = wordsOnTimeline(clips, useEditor.getState().transcripts)
         .filter((w) => !span || ((w.start + w.end) / 2 >= span.start && (w.start + w.end) / 2 < span.end))
-        .map((w) => ({ text: w.text, start: w.start / FLICKS_PER_SECOND, end: w.end / FLICKS_PER_SECOND }))
+        .map(timedWord)
       const captions = chunkWords(words, { maxChars: look.maxChars, maxWords: look.maxWords, maxGap: 0.6 })
       if (captions.length === 0) {
         setError('No speech found in these clips.')
@@ -178,6 +179,10 @@ export function CaptionsDialog(): React.JSX.Element {
                   Transcribe again (otherwise the saved transcript is reused)
                 </label>
               )}
+              <label className="te-check" title="Cutting, trimming, moving or deleting the clips later moves, shortens or removes their captions too. Also in Options.">
+                <input type="checkbox" checked={linked} onChange={(e) => A.setOption('linkedCaptions', e.target.checked)} />
+                Captions follow later edits of the clips (cuts, trims, moves)
+              </label>
             </div>
             <label>Language</label>
             <select className="select" value={language} onChange={(e) => setLanguage(e.target.value)}>

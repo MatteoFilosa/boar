@@ -3,7 +3,7 @@ import { emptyProject, mediaById, useEditor } from '../core/store'
 import { CAPTION_STYLES, chunkWords } from '../core/captions'
 import { FLICKS_PER_SECOND, secondsToFlicks } from '../core/time'
 import { projectEnd } from '../core/timeline'
-import { defaultSpeechTrack, hasSpeech, speechTracks, wordsOnTimeline } from '../core/transcript'
+import { defaultSpeechTrack, hasSpeech, speechTracks, timedWord, wordsOnTimeline } from '../core/transcript'
 import { type ShortCandidate, shortDuration } from '../core/shorts'
 import type { PanCropKey } from '../core/pancrop'
 import { isDirty, projectName, saveProject } from '../core/session'
@@ -81,7 +81,7 @@ export async function makeShort(candidate: ShortCandidate, o: MakeShortOptions, 
     if (track) {
       const words = wordsOnTimeline(project.events.filter((e) => e.trackId === track && hasSpeech(e)), get().transcripts)
       const look = CAPTION_STYLES.find((c) => c.id === o.captions) ?? CAPTION_STYLES[0]
-      const timed = words.map((w) => ({ text: w.text, start: w.start / FLICKS_PER_SECOND, end: w.end / FLICKS_PER_SECOND }))
+      const timed = words.map(timedWord)
       captions = A.addCaptionEvents(chunkWords(timed, { maxChars: look.maxChars, maxWords: look.maxWords, maxGap: 0.6 }), 0, look.id)
       if (captions) {
         A.clearSelection()

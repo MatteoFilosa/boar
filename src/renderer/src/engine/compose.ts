@@ -5,7 +5,7 @@ import { type Flicks, flicksToSeconds, frameFlicks } from '../core/time'
 import { eventsOnTrack, sourceTime, videoAlpha } from '../core/timeline'
 import type { Project, TimelineEvent } from '../core/types'
 import { imageCache } from '../media/cache'
-import { type EventMask, type MaskPoint, maskCanvas, pathAt } from '../core/mask'
+import { type EventMask, type MaskPoint, maskCanvas, pathAt, shapeOutline } from '../core/mask'
 import { activeFx } from '../core/fx'
 import { applyTransition, applyVideoFx } from './videoFx'
 import { personMask } from './vision'
@@ -127,7 +127,8 @@ function drawEvent(
       s.drawImage(processed, 0, 0)
     }
     s.globalCompositeOperation = 'destination-in'
-    const points = ev.mask.shape === 'custom' ? customMaskPoints(ev, ev.mask, t, width, height) : undefined
+    const onPicture = ev.mask.shape === 'custom' || ev.mask.space === 'picture'
+    const points = onPicture ? pictureMaskPoints(ev, ev.mask, t, width, height) : undefined
     s.drawImage(maskCanvas(ev.mask, width, height, points), 0, 0)
     s.globalCompositeOperation = 'source-over'
     out = scratch
@@ -138,10 +139,14 @@ function drawEvent(
   return true
 }
 
-/** A custom mask's shape at t, placed in the output frame (pixels) through the event's Pan/Crop. */
-function customMaskPoints(ev: TimelineEvent, mask: EventMask, t: Flicks, width: number, height: number): MaskPoint[] {
+/**
+ * The outline of a mask drawn over the picture (a custom shape, or an ellipse
+ * or rectangle that moves with the picture) at t, placed in the output frame
+ * (pixels) through the event's Pan/Crop.
+ */
+function pictureMaskPoints(ev: TimelineEvent, mask: EventMask, t: Flicks, width: number, height: number): MaskPoint[] {
   const time = sourceTime(ev, t)
-  const points = pathAt(mask.path, time)
+  const points = mask.shape === 'custom' ? pathAt(mask.path, time) : shapeOutline(mask)
   // Text has no source picture: its shape is drawn over the frame itself.
   if (ev.text) return points.map(([x, y]) => [x * width, y * height])
   const media = mediaById(ev.mediaId)

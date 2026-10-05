@@ -37,10 +37,10 @@
 
 ### Montaggio
 
-- Timeline multitraccia: trascina i media da Project Media o da Esplora file; video e audio di una clip restano raggruppati.
+- Timeline multitraccia: trascina i media da Project Media o da Esplora file; video e audio di una clip restano raggruppati. Trascinando vicino al bordo sinistro o destro la timeline scorre. Le immagini trascinate da una pagina web restano nel progetto. La rotella fa zoom attorno al cursore; `Ctrl+Shift++` / `Ctrl+Shift+-` rendono tutte le tracce più alte o più basse.
 - Trim dai bordi, **fade dagli angoli** dell'evento (curve Fast, Linear, Slow, Smooth, Sharp), crossfade automatico sovrapponendo due eventi.
 - **Selezione temporale**: trascina sul righello per lavorare su una porzione: split, elimina, trim, play e render solo di quella parte.
-- **Auto Ripple** (`Ctrl+L`): eliminando, tagliando o incollando i buchi si chiudono da soli, sulle tracce interessate o su tutte.
+- **Auto Ripple** (`Ctrl+L`): eliminando, tagliando o incollando i buchi si chiudono da soli, sulle tracce interessate o su tutte; spostando un evento o trascinandone un bordo si sposta anche quello che viene dopo.
 - **Velocità**: `Ctrl` + trascina un bordo per accelerare o rallentare (0.25x–4x, l'audio mantiene l'intonazione).
 - **Paste Event Attributes** (`Ctrl+Shift+V`): copi un evento e dai il suo aspetto a quelli selezionati: Video e Audio FX, Pan/Crop, maschera, livello o volume e stile del testo. *Selectively Paste Event Attributes* ti fa scegliere cosa.
 - **Strumento di selezione** (toolbar o `Ctrl+D`): trascina un rettangolo tratteggiato ovunque, anche sopra gli eventi, per selezionarne tanti insieme senza spostarli (`Shift` aggiunge, `Ctrl` alterna).
@@ -58,7 +58,7 @@
 
 ### Sottotitoli e testo
 
-- **Sottotitoli automatici parola per parola** con Whisper, in locale: karaoke, box sulla parola, parole che compaiono, una parola alla volta, sottotitoli classici. Per tutta la timeline (anche una clip tagliata in tanti pezzi), per le clip selezionate o per la selezione temporale.
+- **Sottotitoli automatici parola per parola** con Whisper, in locale: karaoke, box sulla parola, parole che compaiono, una parola alla volta, sottotitoli classici. Per tutta la timeline (anche una clip tagliata in tanti pezzi), per le clip selezionate o per la selezione temporale. I sottotitoli seguono il montaggio: se poi tagli, accorci, sposti o elimini le clip, si spostano, si accorciano o spariscono con le loro parole (*Options › Captions Follow Clip Edits*).
 - **Montaggio dal testo** (tab *Transcript*): il parlato diventa testo; selezioni le parole, premi `Canc` e il video si taglia. Un pulsante seleziona ehm, uhm e parole ripetute; un altro accorcia le pause lunghe.
 - Parole chiave evidenziate (`*parola*` nel testo, o in automatico) ed emoji sulle parole a tema.
 - 21 preset di testo, tra cui titolo d'aggancio in alto e progress bar; oltre 30 font inclusi; animazioni di entrata e uscita.
@@ -75,8 +75,8 @@
 
 - 24 effetti video sulla GPU: look colore pronti, correzione colore, chroma key, sfocatura, glow, vignettatura, grana, VHS, glitch e altri. **Rimozione dello sfondo** con AI, senza green screen.
 - Transizioni: zoom, whip pan, spin, glitch, flash, dissolvenza al nero, blur, pixel.
-- Maschere: ellisse, rettangolo o forma custom disegnata a punti e animata con i keyframe. **Smart Select** scontorna un oggetto con un clic (altri clic aggiungono o tolgono parti) e *Track Motion* lo segue per tutta la clip.
-- Event Pan/Crop con keyframe.
+- Maschere: ellisse, rettangolo o forma custom disegnata a punti e animata con i keyframe. La forma fa parte dell'immagine: spostandola con Pan/Crop la parte mascherata si sposta con lei. **Smart Select** scontorna un oggetto con un clic (altri clic aggiungono o tolgono parti) e *Track Motion* lo segue per tutta la clip.
+- Event Pan/Crop con keyframe: sulla barra dei keyframe clic, `Ctrl`+clic o `Shift`+clic per selezionarli, trascina per spostarli, `Canc` per eliminarli, `Ctrl+C` / `Ctrl+V` per copiarli al cursore o in un altro evento.
 - **Render As** in MP4 (H.264, HEVC, AV1, VP9): scegli chi codifica, la scheda video (NVENC, Quick Sync, AMF, VideoToolbox) o il processore, e l'audio (AAC o Opus). L'anteprima e l'export usano lo stesso motore: quello che vedi è quello che esporti.
 
 ## Installazione
@@ -190,7 +190,10 @@ Il modo più veloce per crearne uno: scegli il tema più vicino a quello che vuo
 | `Ctrl+F` | cerca comandi, opzioni ed effetti |
 | `Ctrl+R` / `Ctrl+Shift+R` | ruota video, immagine o testo selezionato di 90° in senso orario / antiorario |
 | `M`, `G` / `U`, `F8`, `Q` | marker, raggruppa / separa, snapping, loop |
-| `←` `→` / `↑` `↓` | frame precedente e successivo / zoom |
+| `←` `→` / `↑` `↓` | frame precedente e successivo (5 secondi indietro o avanti durante la riproduzione) / zoom |
+| `Shift+←` `Shift+→` | un secondo indietro / avanti |
+| `Ctrl+Shift++` / `Ctrl+Shift+-` | tracce più alte / più basse |
+| `Ctrl++` / `Ctrl+-` / `Ctrl+0` | interfaccia più grande / più piccola / normale (anche nel menu *View*) |
 | `Esc` | togli la selezione temporale |
 | `F1` | tutte le scorciatoie |
 

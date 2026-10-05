@@ -29,10 +29,11 @@ import {
   frameFlicks,
   quantizeToFrame
 } from '../../core/time'
-import type { TimelineEvent } from '../../core/types'
+import type { Project, TimelineEvent } from '../../core/types'
+import type { Draft } from 'immer'
 import { onMediaCacheChange } from '../../media/cache'
 import { importFiles, importPaths } from '../../media/importer'
-import { registerMediaDrop, useMediaDrag } from '../mediaDrag'
+import { type MediaDrag, registerMediaDrop, useMediaDrag } from '../mediaDrag'
 import { type MenuEntry, openContextMenu } from '../ContextMenu'
 import { fadeCurveIcon } from '../FadeCurveIcon'
 import { onThemeChange } from '../themes'
@@ -88,6 +89,12 @@ interface TrimItem {
   slip: boolean
 }
 
+/** With Auto Ripple, what moves along with a dragged event or edge: later events and (per the mode) markers. */
+interface Followers {
+  events: { id: string; start: Flicks }[]
+  markers: { id: string; time: Flicks }[]
+}
+
 type Drag =
   | {
       kind: 'move'
@@ -98,6 +105,7 @@ type Drag =
       items: MoveItem[]
       anchorIndex: number
       points: Flicks[]
+      ripple: Followers | null
     }
   | {
       kind: 'trim'
@@ -111,6 +119,7 @@ type Drag =
       items: TrimItem[]
       edge: Flicks
       points: Flicks[]
+      ripple: Followers | null
     }
   | {
       kind: 'fade'
@@ -180,6 +189,68 @@ function timeSelectionEntries(): MenuEntry[] {
   ]
 }
 const MAX_CONTENT_PX = 30_000_000
+
+/** Pixels from an edge of the track area where dragging starts to scroll the view. */
+const EDGE_ZONE = 40
+
+/** Scroll speed, in px per frame, for a pointer `depth` px into the edge zone (or past the edge). */
+const edgeSpeed = (depth: number): number => Math.min(40, 1 + depth * 0.3)
+
+/**
+ * Scrolls the timeline while a drag holds the pointer near or past an edge of
+ * the track area, so events and media can be dragged to times out of view.
+ * After each scroll step `move` runs again so the drag follows the new view.
+ */
+class EdgeScroller {
+  private state: { x: number; y: number; vertical: boolean; move: () => void; until: number } | null = null
+  private raf = 0
+
+  constructor(private readonly area: () => HTMLDivElement | null) {}
+
+  /** Pointer at (x, y) in client pixels. `holdMs`: stop unless updated again by then (HTML5 drags). */
+  update(x: number, y: number, vertical: boolean, move: () => void, holdMs = Infinity): void {
+    this.state = { x, y, vertical, move, until: performance.now() + holdMs }
+    if (!this.raf) this.raf = requestAnimationFrame(this.tick)
+  }
+
+  stop(): void {
+    this.state = null
+    cancelAnimationFrame(this.raf)
+    this.raf = 0
+  }
+
+  private readonly tick = (): void => {
+    this.raf = 0
+    const st = this.state
+    const el = this.area()
+    if (!st || !el) return
+    if (performance.now() > st.until) {
+      this.state = null
+      return
+    }
+    const r = el.getBoundingClientRect()
+    const right = r.left + el.clientWidth
+    const bottom = r.top + el.clientHeight
+    let dx = 0
+    let dy = 0
+    if (st.x < r.left + EDGE_ZONE) dx = -edgeSpeed(r.left + EDGE_ZONE - st.x)
+    else if (st.x > right - EDGE_ZONE) dx = edgeSpeed(st.x - (right - EDGE_ZONE))
+    if (st.vertical) {
+      if (st.y < r.top + EDGE_ZONE / 2) dy = -edgeSpeed(r.top + EDGE_ZONE / 2 - st.y)
+      else if (st.y > bottom - EDGE_ZONE / 2) dy = edgeSpeed(st.y - (bottom - EDGE_ZONE / 2))
+    }
+    const { view, project } = get()
+    const maxX = MAX_CONTENT_PX - el.clientWidth
+    const maxY = Math.max(0, tracksHeight(project.tracks) + TRACKS_TAIL_PX - el.clientHeight)
+    const scrollX = Math.min(maxX, Math.max(0, view.scrollX + dx))
+    const scrollY = Math.min(maxY, Math.max(0, view.scrollY + dy))
+    if (scrollX !== view.scrollX || scrollY !== view.scrollY) {
+      A.setView({ scrollX, scrollY })
+      st.move()
+    }
+    this.raf = requestAnimationFrame(this.tick)
+  }
+}
 
 /** Owns the three timeline canvases and redraws them only when something changed. */
 class TimelineCanvases {
@@ -371,6 +442,48 @@ function alignedGroup(event: TimelineEvent, edge: 'start' | 'end'): TimelineEven
   )
 }
 
+/**
+ * Auto Ripple on a drag: the events not being dragged that start at or after
+ * the edit point (on the dragged events' tracks, or on every track) and, per
+ * the mode, the markers after it. `points` maps each track to its edit point.
+ */
+function rippleFollowers(dragged: Set<string>, points: Map<string, Flicks>): Followers | null {
+  const { options, project } = get()
+  if (!options.autoRipple || points.size === 0) return null
+  const everywhere = Math.min(...points.values())
+  const all = options.rippleMode === 'all'
+  const events = project.events
+    .filter((e) => {
+      if (dragged.has(e.id)) return false
+      const at = all ? everywhere : points.get(e.trackId)
+      return at !== undefined && e.start >= at
+    })
+    .map((e) => ({ id: e.id, start: e.start }))
+  const markers =
+    options.rippleMode === 'tracks' ? [] : project.markers.filter((m) => m.time >= everywhere).map((m) => ({ id: m.id, time: m.time }))
+  return { events, markers }
+}
+
+/** Earliest value per track. */
+function perTrack(events: TimelineEvent[], value: (e: TimelineEvent) => Flicks): Map<string, Flicks> {
+  const out = new Map<string, Flicks>()
+  for (const e of events) out.set(e.trackId, Math.min(out.get(e.trackId) ?? Infinity, value(e)))
+  return out
+}
+
+function shiftFollowers(d: Draft<Project>, ripple: Followers, dt: Flicks): void {
+  const events = new Map(ripple.events.map((f) => [f.id, f.start]))
+  for (const ev of d.events) {
+    const start = events.get(ev.id)
+    if (start !== undefined) ev.start = Math.max(0, start + dt)
+  }
+  const markers = new Map(ripple.markers.map((m) => [m.id, m.time]))
+  for (const m of d.markers) {
+    const time = markers.get(m.id)
+    if (time !== undefined) m.time = Math.max(0, time + dt)
+  }
+}
+
 function beginEventDrag(
   hit: Extract<Hit, { kind: 'event' }>,
   x: number,
@@ -384,9 +497,10 @@ function beginEventDrag(
     if (!s.selection.includes(event.id)) return null
     const ids = new Set(s.selection)
     const layouts = layoutTracks(s.project.tracks)
-    const items = s.project.events
-      .filter((o) => ids.has(o.id))
-      .map((o) => ({
+    const dragged = s.project.events.filter((o) => ids.has(o.id))
+    // Auto Ripple: what comes after the moved events moves with them.
+    const ripple = rippleFollowers(ids, perTrack(dragged, (o) => o.start))
+    const items = dragged.map((o) => ({
         id: o.id,
         start: o.start,
         end: eventEnd(o),
@@ -400,12 +514,17 @@ function beginEventDrag(
       clickTime,
       items,
       anchorIndex: hit.layout.index,
-      points: snapPoints(s.project, s.cursor, ids)
+      points: snapPoints(s.project, s.cursor, new Set([...ids, ...(ripple?.events.map((f) => f.id) ?? [])])),
+      ripple
     }
   }
   if (hit.zone === 'trimL' || hit.zone === 'trimR') {
     const side = hit.zone === 'trimL' ? 'L' : 'R'
     const members = alignedGroup(event, side === 'L' ? 'start' : 'end').filter((m) => !stretch || A.canStretch(m))
+    // Auto Ripple: the events after the trimmed ones follow the change of length
+    // (trimming the start keeps the event in place and pulls the rest).
+    const memberIds = new Set(members.map((m) => m.id))
+    const ripple = rippleFollowers(memberIds, perTrack(members, eventEnd))
     return {
       kind: 'trim',
       side,
@@ -416,7 +535,8 @@ function beginEventDrag(
       clickTime,
       items: trimItems(members),
       edge: side === 'L' ? event.start : eventEnd(event),
-      points: snapPoints(s.project, s.cursor, new Set(members.map((m) => m.id)))
+      points: snapPoints(s.project, s.cursor, new Set([...memberIds, ...(ripple?.events.map((f) => f.id) ?? [])])),
+      ripple
     }
   }
   const side = hit.zone === 'fadeIn' ? 'in' : 'out'
@@ -437,8 +557,9 @@ function applyDrag(drag: Exclude<Drag, { kind: 'rubber' | 'range' }>, x: number,
   const frameRate = s.project.settings.frameRate
   const snapThreshold = pxToFlicks(SNAP_PX, view)
 
+  // Deltas are measured in time, not pixels: the view can scroll during the drag.
   if (drag.kind === 'move') {
-    let dt = pxToFlicks(x - drag.x0, view)
+    let dt = xToTime(x, view) - drag.clickTime
     if (options.quantize) dt = quantizeToFrame(dt, frameRate)
     const minStart = Math.min(...drag.items.map((i) => i.start))
     dt = Math.max(dt, -minStart)
@@ -481,15 +602,18 @@ function applyDrag(drag: Exclude<Drag, { kind: 'rubber' | 'range' }>, x: number,
         const target = from.track.kind === anchor?.track.kind ? sameKind[ordinal(item.trackIndex) + dOrd] : from
         if (target) ev.trackId = target.track.id
       }
+      if (drag.ripple) shiftFollowers(d, drag.ripple, dt)
     })
     useEditor.setState({ snapLine: snapAt })
     return
   }
 
   if (drag.kind === 'trim') {
-    let dt = pxToFlicks(x - drag.x0, view)
+    let dt = xToTime(x, view) - drag.clickTime
     if (options.quantize) dt = quantizeToFrame(dt, frameRate)
     const frame = frameFlicks(frameRate)
+    // With ripple the start of a trimmed (or stretched) event stays put.
+    const keepStart = drag.side === 'L' && drag.ripple !== null
     let lo = -Infinity
     let hi = Infinity
     for (const i of drag.items) {
@@ -499,7 +623,7 @@ function applyDrag(drag: Exclude<Drag, { kind: 'rubber' | 'range' }>, x: number,
         const minLength = Math.max(frame, source / MAX_RATE)
         const maxLength = source / MIN_RATE
         if (drag.side === 'L') {
-          lo = Math.max(lo, -i.start, i.length - maxLength)
+          lo = Math.max(lo, keepStart ? -Infinity : -i.start, i.length - maxLength)
           hi = Math.min(hi, i.length - minLength)
         } else {
           lo = Math.max(lo, minLength - i.length)
@@ -508,7 +632,7 @@ function applyDrag(drag: Exclude<Drag, { kind: 'rubber' | 'range' }>, x: number,
         continue
       }
       if (drag.side === 'L') {
-        lo = Math.max(lo, -i.start)
+        if (!keepStart) lo = Math.max(lo, -i.start)
         if (i.limit !== Infinity) lo = Math.max(lo, -i.offset / i.rate)
         hi = Math.min(hi, i.length - frame)
       } else {
@@ -521,9 +645,12 @@ function applyDrag(drag: Exclude<Drag, { kind: 'rubber' | 'range' }>, x: number,
     if (lo > hi) return
     let snapAt: Flicks | null = null
     if (options.snapping && !freeMove) {
-      const snap = findSnap([drag.edge + dt], drag.points, snapThreshold)
-      if (snap && dt + snap.delta >= lo && dt + snap.delta <= hi) {
-        dt += snap.delta
+      // A ripple trim of the start moves the end of the event instead: that is what snaps.
+      const first = drag.items[0]
+      const sign = keepStart ? -1 : 1
+      const snap = findSnap([keepStart ? first.start + first.length - dt : drag.edge + dt], drag.points, snapThreshold)
+      if (snap && dt + sign * snap.delta >= lo && dt + sign * snap.delta <= hi) {
+        dt += sign * snap.delta
         snapAt = snap.at
       }
     }
@@ -533,7 +660,7 @@ function applyDrag(drag: Exclude<Drag, { kind: 'rubber' | 'range' }>, x: number,
         const ev = d.events.find((o) => o.id === i.id)
         if (!ev) continue
         if (drag.side === 'L') {
-          ev.start = i.start + dt
+          if (!keepStart) ev.start = i.start + dt
           ev.length = i.length - dt
           if (!drag.stretch && i.slip) ev.offset = i.offset + Math.round(dt * i.rate)
         } else {
@@ -543,6 +670,7 @@ function applyDrag(drag: Exclude<Drag, { kind: 'rubber' | 'range' }>, x: number,
         ev.fadeIn = Math.min(i.fadeIn, ev.length)
         ev.fadeOut = Math.min(i.fadeOut, ev.length - ev.fadeIn)
       }
+      if (drag.ripple) shiftFollowers(d, drag.ripple, drag.side === 'L' ? -dt : dt)
     })
     useEditor.setState({ snapLine: snapAt })
     const first = drag.items[0]
@@ -767,7 +895,13 @@ export function Timeline(): React.JSX.Element {
   const rulerDragRef = useRef<RulerDrag | null>(null)
   /** Last pointer position over the tracks (null when outside), for cursor updates on Ctrl. */
   const hoverRef = useRef<{ x: number; y: number } | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const edgeRef = useRef<EdgeScroller | null>(null)
+  if (!edgeRef.current) edgeRef.current = new EdgeScroller(() => scrollRef.current)
+  const edge = edgeRef.current
   const [size, setSize] = useState({ width: 800, height: 300 })
+
+  useEffect(() => () => edgeRef.current?.stop(), [])
 
   // Pressing or releasing Ctrl over an event edge switches between the trim and stretch cursors.
   useEffect(() => {
@@ -829,6 +963,7 @@ export function Timeline(): React.JSX.Element {
   )
 
   // Wheel: zoom (default), Ctrl = horizontal scroll, Shift = vertical scroll.
+  // Zooming keeps the cursor where it is; at the mouse when the cursor is out of view.
   useEffect(() => {
     const canvas = overlayRef.current!
     const onWheel = (e: WheelEvent): void => {
@@ -837,11 +972,14 @@ export function Timeline(): React.JSX.Element {
       if (!el) return
       const rect = canvas.getBoundingClientRect()
       const delta = e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY
-      if (isMac && e.ctrlKey) A.zoomAround(Math.exp(-delta / 100), e.clientX - rect.left)
+      const { cursor, view } = get()
+      const cursorX = timeToX(cursor, view)
+      const anchor = cursorX >= 0 && cursorX <= rect.width ? cursorX : e.clientX - rect.left
+      if (isMac && e.ctrlKey) A.zoomAround(Math.exp(-delta / 100), anchor)
       else if (isMac ? e.metaKey : e.ctrlKey) el.scrollLeft += delta
       else if (e.shiftKey) el.scrollTop += delta
       else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) el.scrollLeft += e.deltaX
-      else A.zoomAround(delta < 0 ? 1.25 : 1 / 1.25, e.clientX - rect.left)
+      else A.zoomAround(delta < 0 ? 1.25 : 1 / 1.25, anchor)
     }
     canvas.addEventListener('wheel', onWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', onWheel)
@@ -892,7 +1030,7 @@ export function Timeline(): React.JSX.Element {
       else A.addMediaToTimeline(mediaId, at, layout ? layout.track.id : 'new')
       return true
     })
-    const offPreview = useMediaDrag.subscribe(({ drag }) => {
+    const showDrop = (drag: MediaDrag | null): void => {
       const canvases = canvasesRef.current
       if (!canvases) return
       let preview: DropPreview | null = null
@@ -925,12 +1063,30 @@ export function Timeline(): React.JSX.Element {
       }
       canvases.drop = preview
       canvases.overlayDirty = true
+    }
+    // Over the timeline (headers and ruler included), the edges scroll it, once
+    // the media has been over the tracks: crossing the headers on the way in does not.
+    let armed = false
+    const overTimeline = (cx: number, cy: number): boolean => {
+      const r = rootRef.current?.getBoundingClientRect()
+      return !!r && cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom
+    }
+    const offPreview = useMediaDrag.subscribe(({ drag }) => {
+      showDrop(drag)
+      if (!drag) {
+        armed = false
+        edge.stop()
+        return
+      }
+      if (inside(drag.x, drag.y)) armed = true
+      if (armed && overTimeline(drag.x, drag.y)) edge.update(drag.x, drag.y, true, () => showDrop(useMediaDrag.getState().drag))
+      else edge.stop()
     })
     return () => {
       offDrop()
       offPreview()
     }
-  }, [])
+  }, [edge])
 
   const local = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
     const r = overlayRef.current!.getBoundingClientRect()
@@ -1014,33 +1170,43 @@ export function Timeline(): React.JSX.Element {
   }
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>): void => {
-    const { x, y } = local(e)
     const drag = dragRef.current
     if (!drag) {
+      const { x, y } = local(e)
       hoverRef.current = { x, y }
       const hit = hitTest(x, y)
       const button = hit.kind === 'event' && (hit.zone === 'panCrop' || hit.zone === 'fx')
       e.currentTarget.style.cursor = get().editTool === 'select' && !button ? 'crosshair' : hoverCursor(hit, e.ctrlKey || e.metaKey)
       return
     }
+    const { clientX, clientY, altKey } = e
+    dragTo(clientX, clientY, altKey)
+    // Near an edge the view scrolls and the drag follows.
+    if (drag.moved) edge.update(clientX, clientY, drag.kind === 'move' || drag.kind === 'rubber', () => dragTo(clientX, clientY, altKey))
+  }
+
+  const dragTo = (clientX: number, clientY: number, altKey: boolean): void => {
+    const drag = dragRef.current
+    if (!drag) return
+    const { x, y } = local({ clientX, clientY })
     if (!drag.moved) {
       if (Math.abs(x - drag.x0) < 3 && Math.abs(y - drag.y0) < 3) return
       drag.moved = true
     }
     if (drag.kind === 'range') {
-      const { t, snapAt } = selectionTime(xToTime(x, get().view), drag.points, e.altKey)
+      const { t, snapAt } = selectionTime(xToTime(x, get().view), drag.points, altKey)
       A.setTimeSelection({ start: Math.min(drag.anchor, t), end: Math.max(drag.anchor, t) })
       useEditor.setState({ snapLine: snapAt })
       return
     }
     if (drag.kind !== 'rubber') {
-      applyDrag(drag, x, y, e.altKey)
+      applyDrag(drag, x, y, altKey)
       return
     }
     const s = get()
     const contentY = y + s.view.scrollY
-    const tA = xToTime(Math.min(drag.x0, x), s.view)
-    const tB = xToTime(Math.max(drag.x0, x), s.view)
+    const tA = Math.min(drag.clickTime, xToTime(x, s.view))
+    const tB = Math.max(drag.clickTime, xToTime(x, s.view))
     const yA = Math.min(drag.contentY0, contentY)
     const yB = Math.max(drag.contentY0, contentY)
     const layouts = new Map(layoutTracks(s.project.tracks).map((l) => [l.track.id, l]))
@@ -1053,7 +1219,7 @@ export function Timeline(): React.JSX.Element {
     useEditor.setState({ selection: [...new Set([...drag.base, ...hits])] })
     const canvases = canvasesRef.current
     if (canvases) {
-      canvases.rubber = { x0: drag.x0, y0: drag.contentY0 - s.view.scrollY, x1: x, y1: y }
+      canvases.rubber = { x0: timeToX(drag.clickTime, s.view), y0: drag.contentY0 - s.view.scrollY, x1: x, y1: y }
       canvases.overlayDirty = true
     }
   }
@@ -1061,6 +1227,7 @@ export function Timeline(): React.JSX.Element {
   const finishDrag = (cancelled: boolean): void => {
     const drag = dragRef.current
     dragRef.current = null
+    edge.stop()
     if (!drag) return
     if (drag.kind === 'range') {
       useEditor.setState({ snapLine: null })
@@ -1137,19 +1304,29 @@ export function Timeline(): React.JSX.Element {
   }
 
   const onRulerPointerMove = (e: React.PointerEvent<HTMLCanvasElement>): void => {
+    const drag = rulerDragRef.current
+    if (drag) {
+      const { clientX, clientY, altKey } = e
+      rulerDragTo(clientX, altKey)
+      edge.update(clientX, clientY, false, () => rulerDragTo(clientX, altKey))
+      return
+    }
     const r = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - r.left
     const s = get()
+    const range = s.timeSelection
+    const onEdge =
+      range && (Math.abs(x - timeToX(range.start, s.view)) <= 5 || Math.abs(x - timeToX(range.end, s.view)) <= 5)
+    const onCursor = Math.abs(x - timeToX(s.cursor, s.view)) <= 7
+    e.currentTarget.style.cursor = onEdge ? 'ew-resize' : onCursor ? 'grab' : 'text'
+  }
+
+  const rulerDragTo = (clientX: number, altKey: boolean): void => {
     const drag = rulerDragRef.current
-    if (!drag) {
-      const range = s.timeSelection
-      const onEdge =
-        range &&
-        (Math.abs(x - timeToX(range.start, s.view)) <= 5 || Math.abs(x - timeToX(range.end, s.view)) <= 5)
-      const onCursor = Math.abs(x - timeToX(s.cursor, s.view)) <= 7
-      e.currentTarget.style.cursor = onEdge ? 'ew-resize' : onCursor ? 'grab' : 'text'
-      return
-    }
+    const ruler = rulerRef.current
+    if (!drag || !ruler) return
+    const x = clientX - ruler.getBoundingClientRect().left
+    const s = get()
     if (drag.kind === 'scrub') {
       A.setCursor(xToTime(x, s.view))
       return
@@ -1158,7 +1335,7 @@ export function Timeline(): React.JSX.Element {
       if (Math.abs(x - drag.x0) < 3) return
       drag.moved = true
     }
-    const { t, snapAt } = selectionTime(xToTime(x, s.view), drag.points, e.altKey)
+    const { t, snapAt } = selectionTime(xToTime(x, s.view), drag.points, altKey)
     const fixed = drag.kind === 'select' ? drag.anchor : drag.fixed
     A.setTimeSelection({ start: Math.min(fixed, t), end: Math.max(fixed, t) })
     useEditor.setState({ snapLine: snapAt })
@@ -1167,6 +1344,7 @@ export function Timeline(): React.JSX.Element {
   const onRulerPointerUp = (cancelled: boolean): void => {
     const drag = rulerDragRef.current
     rulerDragRef.current = null
+    edge.stop()
     useEditor.setState({ snapLine: null })
     if (!drag || cancelled || drag.kind !== 'select') return
     if (!drag.moved) {
@@ -1221,7 +1399,7 @@ export function Timeline(): React.JSX.Element {
   const contentHeight = Math.max(tracksHeight(tracks) + TRACKS_TAIL_PX, size.height)
 
   return (
-    <div className="timeline">
+    <div className="timeline" ref={rootRef}>
       <div className="tl-corner">
         <CursorTimecode />
       </div>
@@ -1254,9 +1432,14 @@ export function Timeline(): React.JSX.Element {
           if (e.dataTransfer.types.includes('Files')) {
             e.preventDefault()
             e.dataTransfer.dropEffect = 'copy'
+            // Files from the system file manager: the edges scroll too (dragover repeats while held).
+            edge.update(e.clientX, e.clientY, true, () => undefined, 250)
           }
         }}
-        onDrop={(e) => void onDrop(e)}
+        onDrop={(e) => {
+          edge.stop()
+          void onDrop(e)
+        }}
       >
         <div
           className="tl-scroll"

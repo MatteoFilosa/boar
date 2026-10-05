@@ -55,6 +55,14 @@ export function wordsOnTimeline(events: readonly TimelineEvent[], transcripts: R
   return out
 }
 
+/** A timeline word as a caption word (seconds), linked to its place in the transcript. */
+export const timedWord = (w: TimelineWord): CaptionWord => ({
+  text: w.text,
+  start: w.start / FLICKS_PER_SECOND,
+  end: w.end / FLICKS_PER_SECOND,
+  src: [w.mediaId, w.index]
+})
+
 /** Lowercase letters and digits only ("Ehm," -> "ehm"). */
 export const normalizeWord = (text: string): string => text.toLowerCase().replace(/[^\p{L}\p{N}']+/gu, '')
 

@@ -4,9 +4,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { startThemes } from './ui/themes'
+import { startInterfaceScale } from './ui/interfaceScale'
 import './styles.css'
 
 startThemes()
+startInterfaceScale()
 
 if (import.meta.env.DEV) void import('./devtools')
 

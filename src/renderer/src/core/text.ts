@@ -5,6 +5,12 @@ export interface CaptionWord {
   text: string
   start: number
   end: number
+  /**
+   * Captions made from a transcript: the media id and the index of the word in
+   * its transcript, so the caption can follow the clip when it is edited
+   * (core/linkedCaptions.ts).
+   */
+  src?: [string, number]
 }
 
 /**

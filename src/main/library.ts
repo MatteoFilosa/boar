@@ -301,6 +301,20 @@ export function registerLibraryIpc(): void {
     }
     return null
   })
+  /**
+   * A file dropped without a path on disk (an image dragged out of a web page)
+   * is kept in the pasted media folder, so the project can open it again.
+   */
+  ipcMain.handle('media:keep', async (_event, name: string, data: Uint8Array) => {
+    const ext = extname(String(name)).slice(1).toLowerCase()
+    if (!MEDIA_EXT.has(ext)) throw new Error('Unsupported file type')
+    if (!(data instanceof Uint8Array) || data.byteLength === 0) throw new Error('Empty file')
+    await mkdir(pastedDir(), { recursive: true })
+    const path = await uniquePath(pastedDir(), safeName(basename(String(name), extname(String(name)))), ext)
+    await writeFile(path, data)
+    allowMediaPaths([path])
+    return path
+  })
   /** Copying events replaces an older image on the system clipboard, so Ctrl+V pastes the events. */
   ipcMain.handle('clipboard:claim', () => clipboard.writeText('Boar events'))
 

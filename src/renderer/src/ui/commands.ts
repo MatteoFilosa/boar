@@ -7,6 +7,7 @@ import { openProject, saveProject } from '../core/session'
 import { bridge } from '../platform'
 import { toggleFullScreenPreview } from './fullScreen'
 import { checkForUpdates } from './updates'
+import { stepInterfaceScale } from './interfaceScale'
 
 /**
  * Ctrl+V: an image on the system clipboard (a screenshot, "Copy image" in the
@@ -63,6 +64,11 @@ export const commands = {
   zoomIn: (): void => A.zoomStep(1),
   zoomOut: (): void => A.zoomStep(-1),
   zoomFit: A.zoomToFit,
+  tallerTracks: (): void => A.resizeTracks(1),
+  shorterTracks: (): void => A.resizeTracks(-1),
+  interfaceBigger: (): void => stepInterfaceScale(1),
+  interfaceSmaller: (): void => stepInterfaceScale(-1),
+  interfaceReset: (): void => stepInterfaceScale(0),
   addVideoTrack: (): void => A.addTrack('video'),
   addAudioTrack: (): void => A.addTrack('audio'),
   addMarker: A.addMarkerAtCursor,
@@ -127,8 +133,9 @@ export const commands = {
   playStop: (): void => getEngine().togglePlay(useEditor.getState().options.spaceReturns),
   playPause: (): void => getEngine().togglePlay(false),
   playFromStart: (): void => getEngine().playFromStart(),
-  previousFrame: (): void => A.stepFrames(-1),
-  nextFrame: (): void => A.stepFrames(1),
+  previousFrame: (): void => A.arrowStep(-1),
+  nextFrame: (): void => A.arrowStep(1),
+  forwardOneSecond: (): void => A.jumpSeconds(1),
   previousEditPoint: (): void => A.jumpToEditPoint(-1),
   nextEditPoint: (): void => A.jumpToEditPoint(1),
   goToStart: A.goToStart,
@@ -141,6 +148,7 @@ export const commands = {
   toggleUpdateCheck: (): void => A.toggleOption('checkUpdates'),
   toggleProxies: (): void => A.toggleOption('proxies'),
   toggleSpaceReturns: (): void => A.toggleOption('spaceReturns'),
+  toggleLinkedCaptions: (): void => A.toggleOption('linkedCaptions'),
   themes: (): void => A.openDialog({ kind: 'themes' }),
   pasteAttributes: (): void => void A.pasteEventAttributes(),
   pasteAttributesSelective: (): void => {

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
 // Keep in sync with BoarBridge in src/renderer/src/platform.ts.
 contextBridge.exposeInMainWorld('boar', {
@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('boar', {
     } catch {
       return ''
     }
+  },
+  setZoomFactor(factor: number): void {
+    if (Number.isFinite(factor) && factor >= 0.5 && factor <= 3) webFrame.setZoomFactor(factor)
   },
   pickExportPath: (suggestedName: string): Promise<string | null> => ipcRenderer.invoke('export:pick', suggestedName),
   openFile: (path: string): Promise<number> => ipcRenderer.invoke('export:open', path),
@@ -55,6 +58,7 @@ contextBridge.exposeInMainWorld('boar', {
   saveToLibrary: (dir: string, name: string, ext: string, data: Uint8Array): Promise<string> =>
     ipcRenderer.invoke('library:save', dir, name, ext, data),
   clipboardImage: (): Promise<string | null> => ipcRenderer.invoke('clipboard:image'),
+  keepMediaFile: (name: string, data: Uint8Array): Promise<string> => ipcRenderer.invoke('media:keep', name, data),
   claimClipboard: (): Promise<void> => ipcRenderer.invoke('clipboard:claim'),
   youtubeStatus: (): Promise<unknown> => ipcRenderer.invoke('youtube:status'),
   installYtDlp: (): Promise<void> => ipcRenderer.invoke('youtube:install'),

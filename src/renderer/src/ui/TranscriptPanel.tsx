@@ -3,7 +3,7 @@ import { Captions, Download, Scissors } from 'lucide-react'
 import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
 import { CAPTION_STYLES, alignWords, chunkWords } from '../core/captions'
-import { type TimelineWord, type WordFlag, defaultSpeechTrack, hasSpeech, longPauses, speechTracks, wordFlag, wordsOnTimeline } from '../core/transcript'
+import { type TimelineWord, type WordFlag, defaultSpeechTrack, hasSpeech, longPauses, speechTracks, timedWord, wordFlag, wordsOnTimeline } from '../core/transcript'
 import { FLICKS_PER_SECOND, type Flicks, formatTimecode } from '../core/time'
 import type { MediaItem } from '../core/types'
 import { type CaptionProgress, type CaptionStatus, bridge } from '../platform'
@@ -219,7 +219,7 @@ export function TranscriptPanel(): React.JSX.Element {
 
   const makeCaptions = (): void => {
     const look = CAPTION_STYLES.find((s) => s.id === style) ?? CAPTION_STYLES[0]
-    const timed = words.map((w) => ({ text: w.text, start: w.start / FLICKS_PER_SECOND, end: w.end / FLICKS_PER_SECOND }))
+    const timed = words.map(timedWord)
     const chunks = chunkWords(timed, { maxChars: look.maxChars, maxWords: look.maxWords, maxGap: 0.6 })
     const count = A.addCaptionEvents(chunks, 0, style)
     A.setStatus(`Added ${count} captions from the transcript`)

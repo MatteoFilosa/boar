@@ -10,8 +10,10 @@ import {
   frameRect,
   framingZoom,
   panCropAt,
+  sourceToOutput,
   upsertKey
 } from '../core/pancrop'
+import { type MaskPoint, pathAt, shapeOutline } from '../core/mask'
 import { type Flicks, flicksToSeconds, frameFlicks } from '../core/time'
 import type { MediaItem, TimelineEvent } from '../core/types'
 import { sourceTime } from '../core/timeline'
@@ -250,6 +252,29 @@ function PanCropWindow({
     ctx.fillStyle = 'rgba(255,255,255,0.35)'
     ctx.fillText('F', 0, 0)
     ctx.restore()
+
+    // The event's mask over the picture: it moves with it (or shows where a frame mask cuts it).
+    const mask = event.mask
+    if (mask) {
+      let outline: MaskPoint[]
+      if (mask.shape === 'custom') outline = pathAt(mask.path, srcTime).map(([x, y]) => [x * sw, y * sh])
+      else if (mask.space === 'picture') outline = shapeOutline(mask).map(([x, y]) => [x * sw, y * sh])
+      else {
+        const { inverse } = sourceToOutput(state, sw, sh, outW, outH)
+        outline = shapeOutline(mask).map(([x, y]) => inverse(x * outW, y * outH))
+      }
+      if (outline.length >= 2) {
+        ctx.save()
+        ctx.setLineDash([5, 4])
+        ctx.strokeStyle = '#ff9f43'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        outline.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(sx(x), sy(y)) : ctx.lineTo(sx(x), sy(y))))
+        ctx.closePath()
+        ctx.stroke()
+        ctx.restore()
+      }
+    }
   })
 
   const toSource = (e: { clientX: number; clientY: number }): [number, number] => {
@@ -376,14 +401,15 @@ function PanCropWindow({
           />
           <KeyframeBar
             event={event}
-            keys={event.panCrop.map((k) => k.time)}
+            keys={event.panCrop}
+            kind="panCrop"
             srcTime={srcTime}
             here={keyHere ? event.panCrop.indexOf(keyHere) : -1}
             local={local}
             frame={frame}
             frameRate={settings.frameRate}
             onAdd={() => A.setPanCropKeys(event.id, upsertKey(event.panCrop, { ...state, time: srcTime, ease: keyHere?.ease ?? 'smooth' }))}
-            onDelete={() => A.setPanCropKeys(event.id, event.panCrop.filter((k) => k !== keyHere))}
+            onChange={(keys) => A.setPanCropKeys(event.id, keys)}
           />
         </div>
       </div>

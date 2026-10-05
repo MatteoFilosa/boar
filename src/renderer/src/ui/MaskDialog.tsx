@@ -8,6 +8,7 @@ import {
   type EventMask,
   type MaskPoint,
   type SmartSeeds,
+  convertMaskSpace,
   insertPoint,
   pathAt,
   removePoint,
@@ -73,6 +74,22 @@ export function MaskDialog({ eventId }: { eventId: string }): React.JSX.Element 
   if (!event) return null
   const mask = event.mask
   const update = (patch: Partial<EventMask>, field: string): void => A.setMask(event.id, { ...(mask ?? DEFAULT_MASK), ...patch }, field)
+  // Text has no picture of its own: its shapes are always over the frame.
+  const media = event.text ? undefined : mediaById(event.mediaId)
+  const follow = mask && media && media.width > 0 && media.height > 0 ? (
+    <label className="te-check" title="On: the shape is part of the picture, so moving, zooming or turning it with Event Pan/Crop (or the preview handles) takes the masked part along. Off: a fixed window over the frame that the picture moves behind.">
+      <input
+        type="checkbox"
+        checked={mask.space === 'picture'}
+        onChange={(e) => {
+          const state = panCropAt(event.panCrop, sourceTime(event, Math.min(Math.max(cursor, event.start), event.start + event.length - 1)))
+          A.setMask(event.id, convertMaskSpace(mask, e.target.checked ? 'picture' : 'frame', state, media.width, media.height, settings.width, settings.height), 'space')
+        }}
+      />
+      Moves with the picture (Pan/Crop)
+    </label>
+  ) : null
+  const of = mask?.space === 'picture' && media ? 'picture' : 'frame'
 
   const enable = (
     <label className="te-check">
@@ -131,11 +148,18 @@ export function MaskDialog({ eventId }: { eventId: string }): React.JSX.Element 
                 {invert}
               </div>
             </label>
+            {follow && (
+              <label className="te-field">
+                <span />
+                <div className="te-control">{follow}</div>
+              </label>
+            )}
             <Slider label="Center X" value={mask.cx} min={0} max={1} step={0.005} format={pct} onChange={(cx) => update({ cx }, 'cx')} />
             <Slider label="Center Y" value={mask.cy} min={0} max={1} step={0.005} format={pct} onChange={(cy) => update({ cy }, 'cy')} />
             <Slider label="Width" value={mask.w} min={0.02} max={1.5} step={0.005} format={pct} onChange={(w) => update({ w }, 'w')} />
             <Slider label="Height" value={mask.h} min={0.02} max={1.5} step={0.005} format={pct} onChange={(h) => update({ h }, 'h')} />
             {feather}
+            <p className="dim">Position and size are fractions of the {of}.</p>
           </div>
         )}
         <p className="dim">
@@ -575,14 +599,20 @@ function CustomMaskEditor({
         />
         <KeyframeBar
           event={event}
-          keys={mask.path.map((k) => k.time)}
+          keys={mask.path}
+          kind="mask"
           srcTime={srcTime}
           here={keyHere}
           local={local}
           frame={frame}
           frameRate={settings.frameRate}
           onAdd={() => points.length > 0 && A.replaceMask(event.id, { ...mask, path: upsertPathKey(mask.path, { time: srcTime, points }) })}
-          onDelete={() => A.replaceMask(event.id, { ...mask, path: mask.path.filter((_, i) => i !== keyHere) })}
+          onChange={(path) => A.replaceMask(event.id, { ...latest(), path })}
+          pasteProblem={(keys) => {
+            const count = mask.path[0]?.points.length
+            const other = keys.find((k) => count !== undefined && k.points.length !== count)
+            return other ? `The copied shape has ${other.points.length} points and this one ${count}: keyframes of a shape need the same points` : null
+          }}
         />
       </div>
     </div>

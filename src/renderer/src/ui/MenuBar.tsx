@@ -7,6 +7,7 @@ import { shortcutLabel } from './shortcuts'
 import logo from '../assets/logo.png'
 import { MenuIcon } from './ContextMenu'
 import { CommandSearch } from './CommandSearch'
+import { interfaceScaleLabel } from './interfaceScale'
 
 export interface Item {
   label: string
@@ -87,6 +88,15 @@ function useMenus(): Menu[] {
         { label: 'Zoom Out', command: 'zoomOut' },
         { label: 'Zoom to Fit Project', command: 'zoomFit' },
         { label: 'Zoom to Time Selection', command: 'zoomToSelection', disabled: !hasTimeSelection },
+        { label: 'Taller Tracks', command: 'tallerTracks' },
+        { label: 'Shorter Tracks', command: 'shorterTracks' },
+        'separator',
+        { label: 'Bigger Interface', command: 'interfaceBigger' },
+        { label: 'Smaller Interface', command: 'interfaceSmaller' },
+        {
+          label: options.uiScale === 1 ? 'Reset Interface Size' : `Reset Interface Size (${interfaceScaleLabel(options.uiScale)})`,
+          command: 'interfaceReset'
+        },
         'separator',
         quality('draft', 'Preview Quality: Draft (1/4)'),
         quality('preview', 'Preview Quality: Preview (1/2)'),
@@ -143,6 +153,7 @@ function useMenus(): Menu[] {
         { label: 'Quantize to Frames', command: 'toggleQuantize', checked: options.quantize },
         { label: 'Loop Playback', command: 'toggleLoop', checked: options.loop },
         { label: 'Space Returns to the Start Position', command: 'toggleSpaceReturns', checked: options.spaceReturns },
+        { label: 'Captions Follow Clip Edits', command: 'toggleLinkedCaptions', checked: options.linkedCaptions },
         'separator',
         { label: 'AI Agents (MCP)...', command: 'aiAgents' },
         { label: 'Download from Link (yt-dlp, optional)', command: 'toggleLinkDownloads', checked: options.linkDownloads },

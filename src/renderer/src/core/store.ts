@@ -54,6 +54,10 @@ export interface EditorOptions {
   pasteAttributes: EventAttribute[]
   /** Interface theme: a built-in id ('dark', 'light'...) or a loaded file ('user:...'). */
   theme: string
+  /** Size of the whole interface (1 = 100%), Ctrl++ / Ctrl+- (desktop app). */
+  uiScale: number
+  /** Captions made from the transcript move, shrink and disappear with the clips they caption. */
+  linkedCaptions: boolean
 }
 
 const DEFAULT_OPTIONS: EditorOptions = {
@@ -75,7 +79,9 @@ const DEFAULT_OPTIONS: EditorOptions = {
   proxies: true,
   spaceReturns: false,
   pasteAttributes: ['fx', 'panCrop', 'mask', 'gain', 'textStyle'],
-  theme: 'dark'
+  theme: 'dark',
+  uiScale: 1,
+  linkedCaptions: true
 }
 
 const OPTIONS_KEY = 'boar.options'

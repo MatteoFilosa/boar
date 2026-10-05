@@ -4,10 +4,10 @@ import { FLICKS_PER_SECOND, type Flicks, fps, frameFlicks, secondsToFlicks } fro
 import { eventEnd, projectEnd, sourceTime } from '../core/timeline'
 import type { TimelineEvent } from '../core/types'
 import { CAPTION_STYLES, alignWords, chunkWords } from '../core/captions'
-import { type TimelineWord, defaultSpeechTrack, hasSpeech, speechTracks, wordFlag, wordsOnTimeline } from '../core/transcript'
+import { type TimelineWord, defaultSpeechTrack, hasSpeech, speechTracks, timedWord, wordFlag, wordsOnTimeline } from '../core/transcript'
 import { TEXT_PRESETS } from '../core/text'
 import { normalizeAngle, panCropAt, sourceToOutput } from '../core/pancrop'
-import { DEFAULT_MASK, type EventMask, type MaskPoint } from '../core/mask'
+import { DEFAULT_MASK, type EventMask, type MaskPoint, convertMaskSpace } from '../core/mask'
 import { smartOutline, trackOutline } from '../engine/smartMask'
 import { AUDIO_FX, VIDEO_FX } from '../core/fx'
 import type { Corner } from '../core/layouts'
@@ -229,7 +229,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 function captionsFromWords(words: readonly TimelineWord[], style: string): number {
   const look = CAPTION_STYLES.find((s) => s.id === style) ?? CAPTION_STYLES[0]
-  const timed = words.map((w) => ({ text: w.text, start: w.start / F, end: w.end / F }))
+  const timed = words.map(timedWord)
   return A.addCaptionEvents(chunkWords(timed, { maxChars: look.maxChars, maxWords: look.maxWords, maxGap: 0.6 }), 0, look.id)
 }
 
@@ -668,7 +668,7 @@ const TOOLS: Tool[] = [
     name: 'set_mask',
     title: 'Mask or cut out an event',
     description:
-      'Makes part of a video, image or text event transparent (lower tracks show through). shape "smart" cuts out the object under the include points with a local AI, minus what the exclude points touch; points are fractions of the frame as get_frame shows it at `time`, and track follows the object through a video clip. "ellipse" and "rectangle" use cx, cy, w, h (fractions of the frame). "none" removes the mask.',
+      'Makes part of a video, image or text event transparent (lower tracks show through). shape "smart" cuts out the object under the include points with a local AI, minus what the exclude points touch; points are fractions of the frame as get_frame shows it at `time`, and track follows the object through a video clip. "ellipse" and "rectangle" use cx, cy, w, h (fractions of the frame as it looks at the cursor); with follow_picture (default) the shape becomes part of the picture and moves with its Pan/Crop. "none" removes the mask.',
     inputSchema: object(
       {
         event_id: S.str('Event id'),
@@ -681,6 +681,7 @@ const TOOLS: Tool[] = [
         cy: S.num('Ellipse/rectangle center, 0-1'),
         w: S.num('Ellipse/rectangle width, fraction of the frame'),
         h: S.num('Ellipse/rectangle height, fraction of the frame'),
+        follow_picture: S.bool('Ellipse/rectangle: move with the picture when its Pan/Crop changes (default true; false: a fixed window over the frame)'),
         feather: S.num('Edge softness in px at 1080p (default 40, smart 6)'),
         invert: S.bool('Keep the outside instead (default false)')
       },
@@ -698,16 +699,25 @@ const TOOLS: Tool[] = [
       }
       const base: EventMask = { ...DEFAULT_MASK, ...event.mask, invert: bool(a, 'invert', event.mask?.invert ?? false) }
       if (shape !== 'smart') {
-        A.replaceMask(id, {
-          ...base,
+        // The agent works in frame fractions; a shape over the picture is converted at the cursor.
+        const media = event.text ? undefined : mediaById(event.mediaId)
+        const { width, height } = get().project.settings
+        const at = Math.min(Math.max(get().cursor, event.start), eventEnd(event) - 1)
+        const state = panCropAt(event.panCrop, sourceTime(event, at))
+        const current = media?.width && media.height && base.space === 'picture' ? convertMaskSpace(base, 'frame', state, media.width, media.height, width, height) : base
+        const framed: EventMask = {
+          ...current,
           shape,
-          cx: num(a, 'cx', { min: -1, max: 2, def: base.cx }),
-          cy: num(a, 'cy', { min: -1, max: 2, def: base.cy }),
-          w: num(a, 'w', { min: 0.01, max: 3, def: base.w }),
-          h: num(a, 'h', { min: 0.01, max: 3, def: base.h }),
+          space: 'frame',
+          cx: num(a, 'cx', { min: -1, max: 2, def: current.cx }),
+          cy: num(a, 'cy', { min: -1, max: 2, def: current.cy }),
+          w: num(a, 'w', { min: 0.01, max: 3, def: current.w }),
+          h: num(a, 'h', { min: 0.01, max: 3, def: current.h }),
           feather: num(a, 'feather', { min: 0, max: 400, def: base.feather })
-        })
-        return `${shape} mask set`
+        }
+        const follow = bool(a, 'follow_picture', true) && !!media?.width && !!media.height
+        A.replaceMask(id, follow && media ? convertMaskSpace(framed, 'picture', state, media.width, media.height, width, height) : framed)
+        return `${shape} mask set${follow ? ' (moves with the picture)' : ''}`
       }
       const media = mediaById(event.mediaId)
       if (event.text || !media?.width || !media.height) throw new ToolError('Smart masks work on video and image events')
