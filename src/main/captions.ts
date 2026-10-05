@@ -113,6 +113,37 @@ interface Job {
   output: string
   done: Promise<number>
   log: string
+  /** Speech segments found by voice activity detection (seconds), from the engine's log. */
+  vad: [number, number][]
+  /** Start of a log line not finished yet. */
+  partial: string
+}
+
+/** The engine joins the speech segments with this much in between (0.1 s overlap + 0.1 s silence). */
+const VAD_JOIN = 0.2
+
+/**
+ * Real time of a token time on the speech-only clock: with voice activity
+ * detection the engine transcribes only the speech segments, joined, and maps
+ * the phrases back but not their tokens. Null when the log had no segments.
+ */
+function vadClock(vad: [number, number][]): ((t: number) => number) | null {
+  if (vad.length === 0) return null
+  const joined: number[] = []
+  let at = 0
+  for (const [start, end] of vad) {
+    joined.push(at)
+    at += end - start + VAD_JOIN
+  }
+  return (t) => {
+    let k = 0
+    while (k + 1 < joined.length && t >= joined[k + 1]) k++
+    const [start, end] = vad[k]
+    const into = t - joined[k]
+    // In the silence between two segments: the next one starts there.
+    if (into > end - start + VAD_JOIN / 2 && k + 1 < vad.length) return vad[k + 1][0]
+    return start + into
+  }
 }
 
 const jobs = new Map<number, Job>()
@@ -151,11 +182,12 @@ async function start(req: TranscribeRequest, sender: WebContents): Promise<numbe
   const id = nextJob++
   const output = join(tmp, `captions-${Date.now()}-${id}`)
   const threads = Math.max(1, Math.min(8, availableParallelism() - 1))
-  const args = ['-m', modelFile, '-f', '-', '-l', language, '-t', String(threads), '-ojf', '-of', output, '-pp', '-np']
+  // No -np: the log lists the speech segments, needed to place the words (see vadClock).
+  const args = ['-m', modelFile, '-f', '-', '-l', language, '-t', String(threads), '-ojf', '-of', output, '-pp']
   // Only the parts with speech are transcribed: no made-up text over music or silence, and faster.
   if (existsSync(vadModel())) args.push('--vad', '-vm', vadModel())
   const child = spawn(whisperPath(), args, { windowsHide: true })
-  const job: Job = { child, output: `${output}.json`, log: '', done: Promise.resolve(0) }
+  const job: Job = { child, output: `${output}.json`, log: '', done: Promise.resolve(0), vad: [], partial: '' }
   job.done = new Promise<number>((resolve) => {
     child.on('error', (err) => {
       job.log += String(err)
@@ -171,6 +203,12 @@ async function start(req: TranscribeRequest, sender: WebContents): Promise<numbe
     let last = -1
     while ((match = progress.exec(text))) last = Number(match[1])
     if (last >= 0) sender.send('captions:progress', { phase: 'transcribe', progress: last / 100 })
+    const lines = (job.partial + text).split(/\r?\n/)
+    job.partial = lines.pop() ?? ''
+    for (const line of lines) {
+      const segment = /VAD segment \d+: start = ([\d.]+), end = ([\d.]+)/.exec(line)
+      if (segment) job.vad.push([Number(segment[1]), Number(segment[2])])
+    }
   })
   // Results go to the JSON file; the console text is not needed.
   child.stdout.resume()
@@ -184,6 +222,22 @@ async function sendAudio(id: number, data: Uint8Array): Promise<void> {
   const job = jobs.get(id)
   if (!job) throw new Error('Transcription is not running')
   if (!job.child.stdin.write(data)) await new Promise<void>((resolve) => job.child.stdin.once('drain', () => resolve()))
+}
+
+/**
+ * The speech-segment clock, if it agrees with the phrase times the engine
+ * reports (it would not if a new engine version joined segments differently).
+ */
+function trustedClock(clock: ((t: number) => number) | null, json: WhisperJson): ((t: number) => number) | null {
+  if (!clock) return null
+  const errors: number[] = []
+  for (const s of json.transcription ?? []) {
+    const first = (s.tokens ?? []).find((t) => !isSpecial(t.text) && t.text.trim())
+    if (first) errors.push(Math.abs(clock(first.offsets.from / 1000) - s.offsets.from / 1000))
+  }
+  if (errors.length === 0) return null
+  errors.sort((a, b) => a - b)
+  return errors[Math.floor(errors.length / 2)] < 0.3 ? clock : null
 }
 
 /** Special tokens ([_BEG_], [_TT_150], <|en|>) carry no text. */
@@ -211,6 +265,7 @@ async function finish(id: number): Promise<Transcript> {
     const json = JSON.parse(await readFile(job.output, 'utf8')) as WhisperJson
     const segments: TranscriptPiece[] = []
     const tokens: TranscriptPiece[] = []
+    const realTime = trustedClock(vadClock(job.vad), json)
     for (const s of json.transcription ?? []) {
       const text = s.text.trim()
       if (!text) continue
@@ -219,7 +274,13 @@ async function finish(id: number): Promise<Transcript> {
       segments.push({ start, end, text })
       const words = (s.tokens ?? []).filter((t) => !isSpecial(t.text) && t.text.trim())
       if (words.length === 0) continue
-      // With voice activity detection, whisper.cpp gives the phrases their real
+      if (realTime) {
+        for (const t of words) {
+          tokens.push({ start: realTime(t.offsets.from / 1000), end: realTime(t.offsets.to / 1000), text: t.text.trim() })
+        }
+        continue
+      }
+      // Without the segment list: whisper.cpp gives the phrases their real
       // times but leaves the tokens on the speech-only clock (pauses removed),
       // so they drift earlier and earlier. Each phrase's tokens are laid back
       // over the phrase; without the drift this changes nothing.
