@@ -21,6 +21,13 @@ contextBridge.exposeInMainWorld('boar', {
     ipcRenderer.invoke('project:save', json, currentPath, saveAs),
   openProject: (): Promise<{ path: string; json: string } | null> => ipcRenderer.invoke('project:open'),
   saveTheme: (json: string, name: string): Promise<string | null> => ipcRenderer.invoke('theme:save', json, name),
+  takeLaunchProject: (): Promise<{ path: string; json: string } | null> => ipcRenderer.invoke('project:takeLaunch'),
+  openDroppedProject: (path: string): Promise<{ path: string; json: string }> => ipcRenderer.invoke('project:openDropped', path),
+  onLaunchProject(callback: () => void): () => void {
+    const listener = (): void => callback()
+    ipcRenderer.on('project:launch', listener)
+    return () => ipcRenderer.removeListener('project:launch', listener)
+  },
   captionsStatus: (): Promise<unknown> => ipcRenderer.invoke('captions:status'),
   downloadModel: (id: string): Promise<void> => ipcRenderer.invoke('captions:download', id),
   startTranscription: (request: unknown): Promise<number> => ipcRenderer.invoke('captions:start', request),

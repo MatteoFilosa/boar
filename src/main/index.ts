@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { open, readFile, unlink, writeFile, type FileHandle } from 'node:fs/promises'
-import { join, relative, isAbsolute } from 'node:path'
+import { extname, join, relative, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { allowMediaPaths, handleMediaProtocol, registerMediaScheme } from './media-protocol'
 import { registerCaptionIpc, whisperPath, whisperRuns } from './captions'
@@ -24,6 +24,61 @@ if (process.platform === 'win32') app.setAppUserModelId('io.github.matteofilosa.
 let mainWindow: BrowserWindow | null = null
 let quitting = false
 app.on('before-quit', () => (quitting = true))
+
+// Projects opened from the file manager (double click, Open with, drag onto
+// the app icon): the path comes in the command line on Windows and Linux, or
+// as an open-file event on macOS. The renderer takes it when it is ready.
+
+let launchProject: string | null = null
+
+const isProjectFile = (path: string): boolean => extname(path).toLowerCase() === '.boar' && existsSync(path)
+
+/** The project file in a command line, if any (the app's own arguments come after the executable, or after the app folder in development). */
+function projectInArgs(argv: string[], workingDir = process.cwd()): string | null {
+  for (const arg of argv.slice(app.isPackaged ? 1 : 2)) {
+    if (arg.startsWith('-')) continue
+    const path = resolve(workingDir, arg)
+    if (isProjectFile(path)) return path
+  }
+  return null
+}
+
+function requestProjectOpen(path: string): void {
+  launchProject = path
+  const win = mainWindow
+  // No window yet (starting), or none left (macOS keeps the app running): the
+  // new window takes the project when its page is ready.
+  if (!win) {
+    if (app.isReady()) createWindow()
+    return
+  }
+  if (win.isMinimized()) win.restore()
+  win.focus()
+  win.webContents.send('project:launch')
+}
+
+launchProject = projectInArgs(process.argv)
+app.on('open-file', (event, path) => {
+  event.preventDefault()
+  if (isProjectFile(path)) requestProjectOpen(path)
+})
+
+// One editor at a time (they share settings and caches): opening Boar or a
+// project again goes to the window that is already open. Development and
+// smoke runs are left alone so they can run next to an installed copy.
+if (app.isPackaged && !smoke) {
+  if (!app.requestSingleInstanceLock()) app.exit(0)
+  else {
+    app.on('second-instance', (_event, argv, workingDir) => {
+      const path = projectInArgs(argv, workingDir)
+      if (path) requestProjectOpen(path)
+      else if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore()
+        mainWindow.focus()
+      }
+    })
+  }
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -200,12 +255,8 @@ function registerIpc(): void {
     projectPaths.add(path)
     return path
   })
-  ipcMain.handle('project:open', async (event) => {
-    const options = { title: 'Open Project', properties: ['openFile' as const], filters: [...filters, { name: 'All files', extensions: ['*'] }] }
-    const win = BrowserWindow.fromWebContents(event.sender)
-    const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
-    const path = result.filePaths[0]
-    if (result.canceled || !path) return null
+  // A project the user opened: its media may be served, and saving writes back to it.
+  const readProject = async (path: string): Promise<{ path: string; json: string }> => {
     const json = await readFile(path, 'utf8')
     try {
       const data = JSON.parse(json) as { media?: { path?: string }[] }
@@ -215,6 +266,25 @@ function registerIpc(): void {
     }
     projectPaths.add(path)
     return { path, json }
+  }
+  ipcMain.handle('project:open', async (event) => {
+    const options = { title: 'Open Project', properties: ['openFile' as const], filters: [...filters, { name: 'All files', extensions: ['*'] }] }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    const path = result.filePaths[0]
+    if (result.canceled || !path) return null
+    return readProject(path)
+  })
+  // The project Boar was started with (or asked to open by the file manager).
+  ipcMain.handle('project:takeLaunch', async () => {
+    const path = launchProject
+    launchProject = null
+    return path ? readProject(path) : null
+  })
+  // A .boar file dropped on the window.
+  ipcMain.handle('project:openDropped', async (_event, path: unknown) => {
+    if (typeof path !== 'string' || !isProjectFile(path)) throw new Error('Not a Boar project')
+    return readProject(path)
   })
 }
 

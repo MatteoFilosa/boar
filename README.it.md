@@ -181,15 +181,16 @@ Il modo più veloce per crearne uno: scegli il tema più vicino a quello che vuo
 | `Ctrl` + trascina un bordo | cambia velocità |
 | `Ctrl+Z` / `Ctrl+Y` | annulla / ripeti |
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copia / taglia / incolla (anche immagini dagli appunti) |
-| `Ctrl+S` / `Ctrl+O` | salva / apri progetto (`.boar`) |
+| `Ctrl+S` / `Ctrl+O` | salva / apri progetto (`.boar`; si apre anche con un doppio clic sul file o trascinandolo su Boar) |
 | `Ctrl+M` | Render As |
 | `Ctrl+F` | cerca comandi, opzioni ed effetti |
 | `Ctrl+R` / `Ctrl+Shift+R` | ruota video, immagine o testo selezionato di 90° in senso orario / antiorario |
 | `M`, `G` / `U`, `F8`, `Q` | marker, raggruppa / separa, snapping, loop |
 | `←` `→` / `↑` `↓` | frame precedente e successivo / zoom |
 | `Esc` | togli la selezione temporale |
+| `F1` | tutte le scorciatoie |
 
-Su Mac usa ⌘ al posto di Ctrl e ⌥ al posto di Alt. Elenco completo in *Help › Keyboard Shortcuts*.
+Su Mac usa ⌘ al posto di Ctrl e ⌥ al posto di Alt. `F1` (o il pulsante con la tastiera nella toolbar) apre l'elenco completo su una mappa della tastiera: tieni premuto Ctrl, Shift o Alt per vedere cosa fanno con ogni tasto, e premi una scorciatoia qualsiasi per vederne il nome mentre funziona. La finestra può restare aperta mentre monti.
 
 ## Per sviluppatori
 

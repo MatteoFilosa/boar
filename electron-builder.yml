@@ -22,6 +22,14 @@ extraResources:
   - from: resources/whisper
     to: whisper
 npmRebuild: false
+# Double-clicking a .boar project opens it in Boar (Windows, macOS, deb; the
+# AppImage registers it only through an AppImage integration tool).
+fileAssociations:
+  - ext: boar
+    name: Boar Project
+    description: Boar video project
+    mimeType: application/x-boar-project
+    role: Editor
 win:
   target:
     - target: nsis

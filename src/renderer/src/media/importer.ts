@@ -104,6 +104,11 @@ export function importPaths(paths: string[]): Promise<MediaItem | null>[] {
 export function importFiles(files: Iterable<File>): Promise<MediaItem | null>[] {
   const pending: Promise<MediaItem | null>[] = []
   for (const file of files) {
+    // A project file opens the project instead (loaded lazily: the session imports this module).
+    if (/\.boar$/i.test(file.name)) {
+      void import('../core/session').then((session) => session.openDroppedProject(file))
+      continue
+    }
     const kind = classify(file)
     if (!kind) {
       setStatus(`Unsupported file type: ${file.name}`)

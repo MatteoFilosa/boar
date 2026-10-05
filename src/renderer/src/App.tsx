@@ -11,7 +11,7 @@ import { Timeline } from './ui/timeline/Timeline'
 import { useGlobalShortcuts } from './ui/shortcuts'
 import { getEngine } from './engine/preview'
 import { useEditor } from './core/store'
-import { isDirty, projectName, saveProject } from './core/session'
+import { isDirty, projectName, saveProject, startLaunchProjects } from './core/session'
 import { checkForUpdates } from './ui/updates'
 import { startAgentHost } from './agent/host'
 
@@ -25,6 +25,7 @@ export function App(): React.JSX.Element {
     startAgentHost()
     window.__boarReady = true
     window.__boarSave = () => saveProject(false)
+    startLaunchProjects()
     // A few seconds after opening, so the check never slows down the start.
     const timer = window.setTimeout(() => {
       if (useEditor.getState().options.checkUpdates) void checkForUpdates(false)

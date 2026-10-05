@@ -181,15 +181,16 @@ The quickest way to make one: pick the theme closest to what you want, press *Ex
 | `Ctrl` + drag an edge | change speed |
 | `Ctrl+Z` / `Ctrl+Y` | undo / redo |
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copy / cut / paste (images from the clipboard too) |
-| `Ctrl+S` / `Ctrl+O` | save / open project (`.boar`) |
+| `Ctrl+S` / `Ctrl+O` | save / open project (`.boar`; double-clicking a project file or dropping it on Boar opens it too) |
 | `Ctrl+M` | Render As |
 | `Ctrl+F` | search commands, options and effects |
 | `Ctrl+R` / `Ctrl+Shift+R` | rotate the selected video, image or text 90° clockwise / counterclockwise |
 | `M`, `G` / `U`, `F8`, `Q` | marker, group / ungroup, snapping, loop |
 | `←` `→` / `↑` `↓` | previous and next frame / zoom |
 | `Esc` | clear the time selection |
+| `F1` | all the shortcuts |
 
-On a Mac, use ⌘ instead of Ctrl and ⌥ instead of Alt. Full list in *Help › Keyboard Shortcuts*.
+On a Mac, use ⌘ instead of Ctrl and ⌥ instead of Alt. `F1` (or the keyboard button in the toolbar) opens the full list on a keyboard map: hold Ctrl, Shift or Alt to see what they do with each key, and press any shortcut to see its name while it works. The window can stay open while you edit.
 
 ## For developers
 

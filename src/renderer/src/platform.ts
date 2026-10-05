@@ -16,6 +16,12 @@ export interface BoarBridge {
   openProject(): Promise<{ path: string; json: string } | null>
   /** Writes a theme file where the user picks. Null if cancelled. */
   saveTheme(json: string, name: string): Promise<string | null>
+  /** The project the app was started with or asked to open from the file manager (taken once). */
+  takeLaunchProject(): Promise<{ path: string; json: string } | null>
+  /** Reads a .boar file dropped on the window. */
+  openDroppedProject(path: string): Promise<{ path: string; json: string }>
+  /** Called when the file manager asks the running app to open a project. */
+  onLaunchProject(callback: () => void): () => void
   captionsStatus(): Promise<CaptionStatus>
   downloadModel(id: string): Promise<void>
   /**

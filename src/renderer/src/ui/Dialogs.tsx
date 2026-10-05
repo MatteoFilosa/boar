@@ -4,9 +4,6 @@ import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
 import { type FrameRate, STANDARD_RATES, nearestStandardRate, rateLabel } from '../core/time'
 import type { ProjectSettings } from '../core/types'
-import { BINDINGS, shortcutLabel } from './shortcuts'
-import { ALT, MOD } from '../platform'
-import type { CommandId } from './commands'
 import { PanCropDialog } from './PanCropDialog'
 import { TextEditor } from './TextEditor'
 import { RenderDialog } from './RenderDialog'
@@ -24,6 +21,7 @@ import { AutoZoomDialog } from './AutoZoomDialog'
 import { AgentDialog } from './AgentDialog'
 import { UpdateDialog } from './UpdateDialog'
 import { ThemesDialog } from './ThemesDialog'
+import { ShortcutsWindow } from './ShortcutsWindow'
 
 function Modal({ title, children, width = 460 }: { title: string; children: React.ReactNode; width?: number }): React.JSX.Element {
   return (
@@ -205,97 +203,6 @@ function MatchMediaDialog({ mediaId }: { mediaId: string }): React.JSX.Element {
   )
 }
 
-const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
-  playStop: 'Play / pause (Options can make it return to the start)',
-  playPause: 'Play / pause',
-  play: 'Play',
-  pause: 'Pause',
-  backOneSecond: 'Back one second',
-  split: 'Split events at cursor',
-  deleteSelection: 'Delete selected events (or selected track)',
-  rippleDelete: 'Delete and close the gap (ripple)',
-  copy: 'Copy events',
-  cut: 'Cut events',
-  paste: 'Paste events at the cursor',
-  openProject: 'Open project',
-  saveProject: 'Save project',
-  saveProjectAs: 'Save project as',
-  render: 'Render As',
-  undo: 'Undo',
-  redo: 'Redo',
-  selectAll: 'Select all events',
-  group: 'Group selected events',
-  ungroup: 'Remove selected events from group',
-  addMarker: 'Insert marker',
-  toggleLoop: 'Loop playback',
-  toggleSnapping: 'Enable snapping',
-  toggleQuantize: 'Quantize to frames',
-  toggleCrossfades: 'Automatic crossfades',
-  addVideoTrack: 'Insert video track',
-  addAudioTrack: 'Insert audio track',
-  importMedia: 'Import media',
-  newProject: 'New project',
-  properties: 'Project properties',
-  goToStart: 'Go to start',
-  goToEnd: 'Go to end',
-  previousFrame: 'Previous frame',
-  nextFrame: 'Next frame',
-  previousEditPoint: 'Previous edit point',
-  nextEditPoint: 'Next edit point',
-  zoomIn: 'Zoom in',
-  zoomOut: 'Zoom out',
-  fullScreenPreview: 'Full screen preview (Esc to exit)',
-  rotateClockwise: 'Rotate selected video, image or text 90° clockwise',
-  rotateCounterclockwise: 'Rotate selected video, image or text 90° counterclockwise',
-  searchCommands: 'Search commands, options and effects'
-}
-
-const MOUSE = [
-  ['Wheel', 'Zoom timeline at the mouse'],
-  [`${MOD}+Wheel`, 'Scroll left / right'],
-  ['Shift+Wheel', 'Scroll tracks up / down'],
-  ['Drag event', 'Move (also to another track of the same kind)'],
-  [`${ALT} while dragging`, 'Ignore snapping'],
-  ['Drag event edge', 'Trim'],
-  [`${MOD}+drag event edge`, 'Change speed'],
-  ['Drag event top corner', 'Fade in / fade out'],
-  ['Overlap two events', 'Automatic crossfade'],
-  ['Drag on empty area', 'Select events in a rectangle'],
-  ['Preview: drag just outside a corner', 'Rotate (Shift: 15° steps)'],
-  ['Right-click / Alt+click marker', 'Delete marker']
-]
-
-function ShortcutsDialog(): React.JSX.Element {
-  const seen = new Set<CommandId>()
-  const rows = BINDINGS.filter((b) => {
-    if (seen.has(b.command)) return false
-    seen.add(b.command)
-    return true
-  })
-  return (
-    <Modal title="Keyboard and mouse" width={560}>
-      <div className="shortcuts">
-        <table>
-          <tbody>
-            {rows.map((b) => (
-              <tr key={b.command}>
-                <td className="kbd">{shortcutLabel(b.command)}</td>
-                <td>{DESCRIPTIONS[b.command] ?? b.command}</td>
-              </tr>
-            ))}
-            {MOUSE.map(([k, d]) => (
-              <tr key={k}>
-                <td className="kbd">{k}</td>
-                <td>{d}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Modal>
-  )
-}
-
 function AboutDialog(): React.JSX.Element {
   return (
     <Modal title="About Boar">
@@ -351,7 +258,7 @@ export function Dialogs(): React.JSX.Element | null {
     case 'agents':
       return <AgentDialog />
     case 'shortcuts':
-      return <ShortcutsDialog />
+      return <ShortcutsWindow />
     case 'about':
       return <AboutDialog />
     case 'update':

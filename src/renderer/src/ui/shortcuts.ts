@@ -5,7 +5,7 @@ import { type CommandId, commands } from './commands'
 import { isPreviewFullScreen, toggleFullScreenPreview } from './fullScreen'
 import { isMac } from '../platform'
 
-interface Binding {
+export interface Binding {
   key: string
   ctrl?: boolean
   shift?: boolean
@@ -53,6 +53,7 @@ export const BINDINGS: Binding[] = [
   { key: 's', ctrl: true, shift: true, command: 'saveProjectAs' },
   { key: 'm', ctrl: true, command: 'render' },
   { key: 'f', ctrl: true, command: 'searchCommands' },
+  { key: 'F1', command: 'shortcuts' },
   { key: 'r', ctrl: true, command: 'rotateClockwise' },
   { key: 'r', ctrl: true, shift: true, command: 'rotateCounterclockwise' },
   { key: 'Home', command: 'goToStart' },
@@ -67,7 +68,11 @@ export const BINDINGS: Binding[] = [
 
 export function shortcutLabel(command: CommandId): string {
   const binding = BINDINGS.find((b) => b.command === command)
-  if (!binding) return ''
+  return binding ? bindingLabel(binding) : ''
+}
+
+/** "Ctrl+Shift+S", or "⇧⌘S" on a Mac. */
+export function bindingLabel(binding: Binding): string {
   const names: Record<string, string> = {
     ' ': 'Space',
     ArrowLeft: '←',
@@ -127,9 +132,10 @@ export function useGlobalShortcuts(): void {
       }
       if (isTyping(e.target)) return
       // Floating tool windows (Pan/Crop) keep transport keys; modal dialogs block everything.
-      const floating = dialog?.kind === 'panCrop' || dialog?.kind === 'text' || dialog?.kind === 'mask' || dialog?.kind === 'fx' || dialog?.kind === 'transition' || dialog?.kind === 'silence' || dialog?.kind === 'youtube' || dialog?.kind === 'themes'
+      const floating = dialog?.kind === 'panCrop' || dialog?.kind === 'text' || dialog?.kind === 'mask' || dialog?.kind === 'fx' || dialog?.kind === 'transition' || dialog?.kind === 'silence' || dialog?.kind === 'youtube' || dialog?.kind === 'themes' || dialog?.kind === 'shortcuts'
       if (dialog && !floating) return
-      const allowed = full ? FULL_SCREEN_ALLOWED : floating ? FLOATING_ALLOWED : null
+      // The shortcuts window is a legend to keep open while editing: every key works.
+      const allowed = full ? FULL_SCREEN_ALLOWED : floating && dialog?.kind !== 'shortcuts' ? FLOATING_ALLOWED : null
       // Sliders keep their arrow keys.
       if (e.target instanceof HTMLInputElement && e.key.startsWith('Arrow')) return
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key

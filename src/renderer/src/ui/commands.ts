@@ -134,7 +134,7 @@ export const commands = {
   goToStart: A.goToStart,
   goToEnd: A.goToEnd,
   backOneSecond: (): void => A.setCursor(useEditor.getState().cursor - FLICKS_PER_SECOND),
-  shortcuts: (): void => A.openDialog({ kind: 'shortcuts' }),
+  shortcuts: (): void => (useEditor.getState().dialog?.kind === 'shortcuts' ? A.closeDialog() : A.openDialog({ kind: 'shortcuts' })),
   searchCommands: (): void => document.querySelector<HTMLInputElement>('#command-search')?.select(),
   about: (): void => A.openDialog({ kind: 'about' }),
   checkForUpdates: (): void => void checkForUpdates(true),

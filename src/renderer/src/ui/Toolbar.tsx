@@ -9,6 +9,7 @@ import {
   Redo2,
   Save,
   Scissors,
+  Keyboard,
   Settings2,
   Trash2,
   Undo2,
@@ -74,6 +75,7 @@ export function Toolbar(): React.JSX.Element {
       <RippleButton />
       <div className="tool-sep" />
       <ToolButton icon={Settings2} title="Project properties" command="properties" />
+      <ToolButton icon={Keyboard} title="Keyboard shortcuts" command="shortcuts" />
     </div>
   )
 }

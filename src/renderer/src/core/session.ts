@@ -6,6 +6,7 @@ import { dropMediaCache } from '../media/cache'
 import { track } from '../media/importer'
 import { canRead } from '../media/source'
 import { bridge, mediaPathUrl } from '../platform'
+import { getEngine } from '../engine/preview'
 
 const get = useEditor.getState
 const set = useEditor.setState
@@ -63,7 +64,42 @@ export async function openProject(): Promise<void> {
   if (get().playing) return
   if (isDirty() && !window.confirm('The project has unsaved changes. Discard them?')) return
   const opened = bridge ? await bridge.openProject() : await pickProjectInBrowser()
-  if (!opened) return
+  if (opened) loadProject(opened)
+}
+
+/** A project file dropped on the window. */
+export async function openDroppedProject(file: File): Promise<void> {
+  const path = bridge?.pathForFile(file)
+  getEngine().pause()
+  if (isDirty() && !window.confirm(`The project has unsaved changes. Discard them and open ${file.name}?`)) return
+  try {
+    loadProject(bridge && path ? await bridge.openDroppedProject(path) : { path: file.name, json: await file.text() })
+  } catch (err) {
+    setStatus(`Cannot open ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
+let launchStarted = false
+
+/** Opens the project Boar was started with, and the ones the file manager sends later. */
+export function startLaunchProjects(): void {
+  if (!bridge || launchStarted) return
+  launchStarted = true
+  const take = async (): Promise<void> => {
+    const opened = await bridge!.takeLaunchProject().catch((err: unknown) => {
+      setStatus(`Cannot open the project: ${err instanceof Error ? err.message : String(err)}`)
+      return null
+    })
+    if (!opened) return
+    getEngine().pause()
+    if (isDirty() && !window.confirm(`The project has unsaved changes. Discard them and open ${projectName(opened.path)}?`)) return
+    loadProject(opened)
+  }
+  bridge.onLaunchProject(() => void take())
+  void take()
+}
+
+function loadProject(opened: { path: string; json: string }): void {
   let parsed: ReturnType<typeof parseProject>
   try {
     parsed = parseProject(opened.json)
