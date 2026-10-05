@@ -214,11 +214,20 @@ async function finish(id: number): Promise<Transcript> {
     for (const s of json.transcription ?? []) {
       const text = s.text.trim()
       if (!text) continue
-      segments.push({ start: s.offsets.from / 1000, end: s.offsets.to / 1000, text })
-      for (const t of s.tokens ?? []) {
-        if (isSpecial(t.text) || !t.text.trim()) continue
-        tokens.push({ start: t.offsets.from / 1000, end: t.offsets.to / 1000, text: t.text.trim() })
-      }
+      const start = s.offsets.from / 1000
+      const end = s.offsets.to / 1000
+      segments.push({ start, end, text })
+      const words = (s.tokens ?? []).filter((t) => !isSpecial(t.text) && t.text.trim())
+      if (words.length === 0) continue
+      // With voice activity detection, whisper.cpp gives the phrases their real
+      // times but leaves the tokens on the speech-only clock (pauses removed),
+      // so they drift earlier and earlier. Each phrase's tokens are laid back
+      // over the phrase; without the drift this changes nothing.
+      const from = words[0].offsets.from / 1000
+      const to = Math.max(from, ...words.map((t) => t.offsets.to / 1000))
+      const scale = to > from ? (end - start) / (to - from) : 1
+      const place = (x: number): number => Math.min(end, Math.max(start, start + (x / 1000 - from) * scale))
+      for (const t of words) tokens.push({ start: place(t.offsets.from), end: place(t.offsets.to), text: t.text.trim() })
     }
     return { segments, tokens }
   } finally {

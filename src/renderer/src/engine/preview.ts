@@ -55,6 +55,9 @@ interface AudioGraph {
 
 const LOOKAHEAD = secondsToFlicks(0.75)
 const RELEASE_AFTER_MS = 10_000
+/** Loaded sound elements kept per file for the next event that plays it. */
+const SPARE_AUDIO_PER_MEDIA = 3
+const SPARE_AUDIO_MS = 120_000
 const dbToGain = (db: number): number => (db <= -60 ? 0 : Math.pow(10, db / 20))
 
 class PreviewEngine {
@@ -65,6 +68,12 @@ class PreviewEngine {
   private readonly host = document.createElement('div')
   private readonly videos = new Map<string, VideoSlot>()
   private readonly audios = new Map<string, AudioSlot>()
+  /**
+   * Sound elements no event uses right now, by media: a clip cut into many
+   * events (Remove Silences) plays them all from the same loaded file instead
+   * of opening it again, which can take seconds with long recordings.
+   */
+  private readonly spareAudio = new Map<string, AudioSlot[]>()
   private audio: AudioGraph | null = null
   private dirty = true
   private playStartWall = 0
@@ -227,15 +236,16 @@ class PreviewEngine {
         const slot = this.videoSlot(ev, media)
         slot.lastUsed = now
         this.syncVideo(slot, srcSeconds, playing && active, media.fps, ev.rate)
-      } else if (ev.kind === 'audio' && playing) {
+      } else if (ev.kind === 'audio' && (playing || active)) {
+        // While paused, the sound under the cursor is loaded and positioned too: play starts at once.
         const audible = !track.muted && (!anyAudioSolo || track.solo)
         if (!audible) continue
         wantAudio.add(ev.id)
         const slot = this.audioSlot(ev, media, track)
         slot.lastUsed = now
         this.syncFx(slot, ev)
-        const gain = active ? audioGain(ev, t, byTrack.get(ev.trackId) ?? [ev], options.autoCrossfade) : 0
-        this.syncAudio(slot, srcSeconds, active, gain, ev.rate)
+        const gain = playing && active ? audioGain(ev, t, byTrack.get(ev.trackId) ?? [ev], options.autoCrossfade) : 0
+        this.syncAudio(slot, srcSeconds, playing && active, gain, ev.rate)
       }
     }
 
@@ -248,7 +258,13 @@ class PreviewEngine {
       if (wantAudio.has(id)) continue
       if (!slot.el.paused) slot.el.pause()
       slot.gain.gain.value = 0
-      if (now - slot.lastUsed > RELEASE_AFTER_MS) this.releaseAudio(id)
+      this.spare(id)
+    }
+    for (const [mediaId, list] of this.spareAudio) {
+      const keep = list.filter((slot) => now - slot.lastUsed < SPARE_AUDIO_MS)
+      for (const slot of list) if (!keep.includes(slot)) this.destroyAudio(slot)
+      if (keep.length) this.spareAudio.set(mediaId, keep)
+      else this.spareAudio.delete(mediaId)
     }
     if (this.audio) this.updateBuses(audioTracks, anyAudioSolo)
   }
@@ -377,6 +393,11 @@ class PreviewEngine {
       slot = undefined
     }
     if (!slot) {
+      // A loaded element of the same file, if one is free.
+      slot = this.spareAudio.get(media.id)?.pop()
+      if (slot) this.audios.set(ev.id, slot)
+    }
+    if (!slot) {
       const el = new Audio()
       el.preload = 'auto'
       // Without CORS, Web Audio outputs silence for boar-media:// files (Explorer, reopened projects).
@@ -440,16 +461,34 @@ class PreviewEngine {
     }
   }
 
+  /** The event no longer plays: its element waits, loaded, for the next event of the same file. */
+  private spare(id: string): void {
+    const slot = this.audios.get(id)
+    if (!slot) return
+    this.audios.delete(id)
+    const list = this.spareAudio.get(slot.mediaId) ?? []
+    list.push(slot)
+    while (list.length > SPARE_AUDIO_PER_MEDIA) {
+      const oldest = list.shift()
+      if (oldest) this.destroyAudio(oldest)
+    }
+    this.spareAudio.set(slot.mediaId, list)
+  }
+
   private releaseAudio(id: string): void {
     const slot = this.audios.get(id)
     if (!slot) return
+    this.audios.delete(id)
+    this.destroyAudio(slot)
+  }
+
+  private destroyAudio(slot: AudioSlot): void {
     slot.el.pause()
     slot.source.disconnect()
     slot.chain?.dispose()
     slot.gain.disconnect()
     slot.el.removeAttribute('src')
     slot.el.load()
-    this.audios.delete(id)
   }
 
   private updateMeters(playing: boolean): void {

@@ -58,7 +58,7 @@
 
 ### Captions and text
 
-- **Automatic word-by-word captions** with Whisper, locally: karaoke, box on the spoken word, words popping in, one word at a time, classic subtitles.
+- **Automatic word-by-word captions** with Whisper, locally: karaoke, box on the spoken word, words popping in, one word at a time, classic subtitles. For the whole timeline (even a clip cut into many pieces), the selected clips or the time selection.
 - **Text-based editing** (*Transcript* tab): speech becomes text; select words, press `Delete` and the video is cut. One button selects ums, uhs and repeated words; another shortens long pauses.
 - Highlighted keywords (`*word*` in the text, or automatic) and emoji on matching words.
 - 21 text presets, including a hook title at the top and a progress bar; more than 30 bundled fonts; in and out animations.
@@ -140,7 +140,7 @@ AI assistants and agents that support MCP (desktop apps, coding agents, AI edito
 2. Copy the configuration that fits your agent: URL with header, command (JSON) or TOML.
 3. Ask, for example, "remove the filler words and add captions", or use the ready-made prompts *make_shorts*, *clean_up_talking_head* and *youtube_chapters*.
 
-The agent reads the timeline and the transcripts, looks at frames and makes the edits: each one can be undone with `Ctrl+Z`, and the window shows everything it did. Video and audio stay on your PC.
+The agent reads the timeline and the transcripts, looks at frames and makes the edits: it cuts and reorders the speech, adds captions, effects and titles, and puts pictures, videos and sound effects from your library on the timeline (over the speaker with a pop, or full screen). Each edit can be undone with `Ctrl+Z`, and the window shows everything it did. Video and audio stay on your PC.
 
 ## Themes
 

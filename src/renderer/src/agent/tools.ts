@@ -1,6 +1,6 @@
 import * as A from '../core/actions'
 import { type EventAttribute, mediaById, useEditor } from '../core/store'
-import { FLICKS_PER_SECOND, type Flicks, fps, secondsToFlicks } from '../core/time'
+import { FLICKS_PER_SECOND, type Flicks, fps, frameFlicks, secondsToFlicks } from '../core/time'
 import { eventEnd, projectEnd, sourceTime } from '../core/timeline'
 import type { TimelineEvent } from '../core/types'
 import { CAPTION_STYLES, alignWords, chunkWords } from '../core/captions'
@@ -21,6 +21,9 @@ import { uid } from '../core/ids'
 import { DEFAULT_SHORT_OPTIONS, type ShortFraming, backToLongVideo, makeShort } from '../engine/makeShort'
 import { bridge } from '../platform'
 import { transcribeMedia } from '../engine/transcribe'
+import { importPaths, kindOfName } from '../media/importer'
+import { coverFrame, placedFrame } from '../core/layouts'
+import type { PanCropKey, PanCropState } from '../core/pancrop'
 import { THEME_COLORS, addUserTheme, allThemes, parseTheme } from '../ui/themes'
 
 // MCP tools. Times are seconds on the timeline, tracks are numbered from 1 at
@@ -300,7 +303,8 @@ const TOOLS: Tool[] = [
     description: 'Runs Whisper on this PC for the media of a track that have no transcript yet. Can take a while for long videos.',
     inputSchema: object({
       track: S.int('Track number (default: the speech track)'),
-      language: S.str('Spoken language code (it, en, es, fr, de, pt) or auto', ['auto', 'it', 'en', 'es', 'fr', 'de', 'pt'])
+      language: S.str('Spoken language code (it, en, es, fr, de, pt) or auto', ['auto', 'it', 'en', 'es', 'fr', 'de', 'pt']),
+      again: S.bool('Transcribe files that already have a transcript again (fixes drifting word times of transcripts made with Boar 0.7.0 to 0.7.2)')
     }),
     run: async (a) => {
       if (!bridge) throw new ToolError('Transcription needs the desktop app')
@@ -312,7 +316,7 @@ const TOOLS: Tool[] = [
       if (!model) throw new ToolError('No Whisper model downloaded yet: ask the user to open the Transcript tab and click "Get Whisper"')
       const { project, transcripts } = get()
       const media = [...new Set(project.events.filter((e) => e.trackId === id && hasSpeech(e)).map((e) => e.mediaId))]
-        .filter((m) => !transcripts[m])
+        .filter((m) => bool(a, 'again', false) || !transcripts[m])
         .map((m) => mediaById(m))
       for (const m of media) {
         if (!m) continue
@@ -390,6 +394,22 @@ const TOOLS: Tool[] = [
     run: (a) => {
       const gaps = A.keepRanges(ranges(a))
       return `Removed ${gaps} part(s). New duration ${sec(projectEnd(get().project))} s`
+    }
+  },
+  {
+    name: 'move_range',
+    title: 'Move a part of the video',
+    description:
+      'Moves a stretch of the timeline (start to end, every track: picture, sound, captions, overlays) so it starts where "to" is now: ' +
+      'reorders the story without leaving gaps. Times are timeline seconds before the move.',
+    inputSchema: object({ start: S.num('Start, seconds'), end: S.num('End, seconds'), to: S.num('Where it goes, seconds (not inside the part)') }, ['start', 'end', 'to']),
+    run: (a) => {
+      const start = secondsToFlicks(num(a, 'start', { min: 0 }))
+      const end = secondsToFlicks(num(a, 'end', { min: 0 }))
+      const to = secondsToFlicks(num(a, 'to', { min: 0 }))
+      if (end <= start) throw new ToolError('end must be after start')
+      if (!A.moveRange({ start, end }, to)) throw new ToolError('"to" cannot be inside the part being moved')
+      return `Moved ${sec(end - start)} s. New duration ${sec(projectEnd(get().project))} s`
     }
   },
   {
@@ -754,6 +774,169 @@ const TOOLS: Tool[] = [
       if (![...VIDEO_FX, ...AUDIO_FX].some((f) => f.type === type)) throw new ToolError(`Unknown effect "${type}"`)
       A.addFx(eventIds(a), type)
       return get().status
+    }
+  },
+  {
+    name: 'list_files',
+    title: 'Find media files',
+    description:
+      'The media library (the folders the user added in the Explorer tab: sound effects, music, images, videos). ' +
+      'No arguments: the library folders. folder: the files and subfolders in it. search: files whose name has all these words, in every library folder and its subfolders. ' +
+      'Use the paths with add_media (or import_media).',
+    inputSchema: object({
+      folder: S.str('A folder path (from a previous answer)'),
+      search: S.str('Words in the file name, e.g. "pop" or "whoosh"'),
+      kind: S.str('Only this kind', ['video', 'audio', 'image'])
+    }),
+    readOnly: true,
+    run: async (a) => {
+      if (!bridge) throw new ToolError('The media library needs the desktop app')
+      const folders = (await bridge.libraryFolders()).filter((f) => f.exists)
+      const kind = a.kind === undefined ? null : oneOf(a, 'kind', ['video', 'audio', 'image'] as const, 'video')
+      const fits = (name: string): boolean => !kind || kindOfName(name) === kind
+      if (a.search === undefined && a.folder === undefined) {
+        if (folders.length === 0) throw new ToolError('The library is empty: ask the user to add a folder in the Explorer tab')
+        return { folders: folders.map((f) => ({ name: f.name, path: f.path })) }
+      }
+      if (a.search === undefined) {
+        const entries = await bridge.listLibrary(str(a, 'folder'))
+        return {
+          folders: entries.filter((e) => e.dir).map((e) => e.path),
+          files: entries.filter((e) => !e.dir && fits(e.name)).map((e) => ({ name: e.name, path: e.path }))
+        }
+      }
+      const words = str(a, 'search').toLowerCase().split(/\s+/).filter(Boolean)
+      const found: { name: string; path: string }[] = []
+      const walk = async (dir: string, depth: number): Promise<void> => {
+        for (const e of await bridge!.listLibrary(dir).catch(() => [])) {
+          if (found.length >= 100) return
+          if (e.dir) {
+            if (depth < 3) await walk(e.path, depth + 1)
+          } else if (fits(e.name) && words.every((w) => e.name.toLowerCase().includes(w))) found.push({ name: e.name, path: e.path })
+        }
+      }
+      for (const f of a.folder === undefined ? folders.map((x) => x.path) : [str(a, 'folder')]) await walk(f, 0)
+      return { files: found }
+    }
+  },
+  {
+    name: 'import_media',
+    title: 'Import media files',
+    description: 'Adds files (absolute paths: videos, sounds, images) to Project Media without placing them. add_media also imports by path.',
+    inputSchema: object({ paths: { type: 'array', items: { type: 'string' }, description: 'Absolute file paths' } }, ['paths']),
+    run: async (a) => {
+      if (!bridge) throw new ToolError('Importing files needs the desktop app')
+      if (!Array.isArray(a.paths) || a.paths.some((p) => typeof p !== 'string')) throw new ToolError('"paths" must be an array of file paths')
+      const media = await Promise.all(importPaths(a.paths as string[]))
+      return media.map((m, i) =>
+        m ? { media_id: m.id, name: m.name, kind: m.kind, duration: sec(m.duration), size: m.width ? `${m.width}x${m.height}` : undefined } : { path: (a.paths as string[])[i], error: 'not imported' }
+      )
+    }
+  },
+  {
+    name: 'add_media',
+    title: 'Put media on the timeline',
+    description:
+      'Places a file from Project Media (media_id) or from disk (path) at a time. Pictures and video go on a free overlay track above the main video ' +
+      '(below the captions), sounds on a "Sound Effects" audio track, unless track is given. layout for pictures/video: ' +
+      '"overlay" (default for images: whole picture, size = fraction of the frame width, centered at x, y fractions of the frame; pop = springs in and out), ' +
+      '"fit" (whole picture, centered; what is below shows around it) or "full" (covers the frame). ' +
+      'For a sound effect from a video file use sound_only. volume_db changes the loudness (e.g. -8 for a background sound).',
+    inputSchema: object(
+      {
+        media_id: S.str('Project Media id (get_project)'),
+        path: S.str('Or an absolute file path (list_files)'),
+        at: S.num('Timeline position, seconds'),
+        length: S.num('Seconds on the timeline (default: the whole sound or video, 3 s for a picture)'),
+        source_in: S.num('Start this many seconds into the file'),
+        track: S.int('Track number (default: automatic)'),
+        layout: S.str('Pictures and video', ['overlay', 'fit', 'full']),
+        x: S.num('Overlay center, 0-1 across the frame (default 0.5)'),
+        y: S.num('Overlay center, 0-1 down the frame (default 0.5)'),
+        size: S.num('Overlay width as a fraction of the frame width (default 0.8)'),
+        pop: S.bool('Overlay springs in and out (default true)'),
+        fade: S.num('Fade in and out, seconds (default 0.1 for full/fit, none for sounds)'),
+        volume_db: S.num('Sound level change in dB (default 0)'),
+        sound_only: S.bool('Only the sound of a video file')
+      },
+      ['at']
+    ),
+    run: async (a) => {
+      let media = a.media_id === undefined ? undefined : mediaById(str(a, 'media_id'))
+      if (!media && a.path !== undefined) {
+        const path = str(a, 'path')
+        media = get().media.find((m) => m.path === path && m.status === 'ready') ?? (await importPaths([path])[0]) ?? undefined
+      }
+      if (!media) throw new ToolError(a.path === undefined ? 'Give media_id (get_project) or path (list_files)' : 'This file could not be imported')
+      if (media.status !== 'ready') throw new ToolError(`${media.name} is not ready: ${media.error || 'still analyzing'}`)
+      const { project } = get()
+      const { width, height } = project.settings
+      const frame = frameFlicks(project.settings.frameRate)
+      const at = secondsToFlicks(num(a, 'at', { min: 0 }))
+      const soundOnly = bool(a, 'sound_only', false) || !media.hasVideo
+      const picture = media.kind === 'image'
+      const sourceIn = secondsToFlicks(num(a, 'source_in', { min: 0, def: 0 }))
+      const available = picture ? Infinity : media.duration - sourceIn
+      if (available <= frame) throw new ToolError('source_in is past the end of the file')
+      const wanted = a.length === undefined ? (picture ? secondsToFlicks(3) : available) : secondsToFlicks(num(a, 'length', { min: 0.05 }))
+      const length = Math.max(frame, Math.min(available, wanted))
+      const end = at + length
+      const free = (trackId: string): boolean => !project.events.some((e) => e.trackId === trackId && e.start < end && e.start + e.length > at)
+      // Default tracks: a free overlay track just above the main video (under the
+      // captions) for the picture, a free "Sound Effects" track for the sound.
+      const targets: NonNullable<A.PlaceOptions['targets']> = {}
+      const given = trackId(a)
+      const givenKind = project.tracks.find((t) => t.id === given)?.kind
+      if (given && givenKind) targets[givenKind] = given
+      if (!targets.audio && media.hasAudio) {
+        const sfx = project.tracks.find((t) => t.kind === 'audio' && t.name === 'Sound Effects' && free(t.id))
+        targets.audio = sfx ? sfx.id : { index: project.tracks.length, name: 'Sound Effects' }
+      }
+      if (!targets.video && !soundOnly) {
+        // The main video is the lowest video track with clips.
+        const mainIndex = project.tracks.findLastIndex((t) => t.kind === 'video' && project.events.some((e) => e.trackId === t.id && !e.text))
+        if (mainIndex >= 0) {
+          const above = project.tracks.slice(0, mainIndex).reverse()
+          const overlay = above.find((t) => t.kind === 'video' && !project.events.some((e) => e.trackId === t.id && e.text) && free(t.id))
+          targets.video = overlay ? overlay.id : { index: mainIndex, name: 'Overlays' }
+        } else {
+          // Nothing on the timeline yet: this is the main video, with its sound on a normal track.
+          delete targets.audio
+        }
+      }
+      const layout = oneOf(a, 'layout', ['overlay', 'fit', 'full'] as const, picture ? 'overlay' : 'fit')
+      const x = num(a, 'x', { min: -0.5, max: 1.5, def: 0.5 })
+      const y = num(a, 'y', { min: -0.5, max: 1.5, def: 0.5 })
+      const size = num(a, 'size', { min: 0.05, max: 3, def: 0.8 })
+      const pop = bool(a, 'pop', true)
+      const fade = secondsToFlicks(num(a, 'fade', { min: 0, max: 5, def: soundOnly ? 0 : layout === 'overlay' && pop ? 0.05 : 0.1 }))
+      const gain = Math.pow(10, num(a, 'volume_db', { min: -60, max: 24, def: 0 }) / 20)
+      const ids = A.addMediaToTimeline(media.id, at, null, {
+        kinds: soundOnly ? ['audio'] : undefined,
+        targets,
+        shape: (e) => {
+          e.start = at
+          e.length = length
+          e.offset = picture ? 0 : sourceIn
+          e.gain = e.kind === 'audio' ? gain : 1
+          e.fadeIn = Math.min(fade, length / 2)
+          e.fadeOut = Math.min(fade, length / 2)
+          if (e.kind !== 'video' || !media) return
+          if (layout === 'full') e.panCrop = [{ time: e.offset, ...coverFrame(media.width, media.height, width, height), ease: 'smooth' }]
+          else if (layout === 'overlay') {
+            const state = (scale: number): PanCropState => placedFrame(media!.width, media!.height, width, height, x, y, size * scale)
+            const key = (t: number, scale: number): PanCropKey => ({ time: e.offset + Math.round(t), ...state(scale), ease: 'smooth' })
+            const s = (seconds: number): number => secondsToFlicks(seconds)
+            e.panCrop =
+              pop && length > s(0.5)
+                ? [key(0, 0.3), key(s(0.12), 1.08), key(s(0.2), 1), key(length - s(0.14), 1), key(length - frame, 0.3)]
+                : [key(0, 1)]
+          }
+        }
+      })
+      if (ids.length === 0) throw new ToolError(get().status)
+      const track = get().project.tracks.findIndex((t) => t.id === get().project.events.find((e) => e.id === ids[0])?.trackId) + 1
+      return `Added ${media.name} at ${sec(at)} s for ${sec(length)} s on track ${track} (event ${ids.join(', ')})`
     }
   },
   {

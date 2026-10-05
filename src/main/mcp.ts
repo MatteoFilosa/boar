@@ -2,7 +2,10 @@ import { app, type BrowserWindow, ipcMain } from 'electron'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
+import { allowMediaPaths } from './media-protocol'
+import { isMediaFile } from './library'
 
 // MCP server (Streamable HTTP, stateless, JSON responses) on 127.0.0.1 with a
 // bearer token, off by default. The tools run in the renderer (agent/tools.ts);
@@ -122,9 +125,17 @@ async function handleRpc(message: RpcMessage): Promise<object | null> {
         return result(id, {})
       case 'tools/list':
         return result(id, { tools: await askEditor('list', null, 15_000) })
-      case 'tools/call':
+      case 'tools/call': {
+        // Files an agent imports by path (import_media, add_media) may be read by
+        // the editor: the agent acts for the user, who gave it the token.
+        const args = (params.arguments ?? {}) as Record<string, unknown>
+        if (params.name === 'import_media' || params.name === 'add_media') {
+          const paths = [...(Array.isArray(args.paths) ? args.paths : []), args.path]
+          allowMediaPaths(paths.filter((p): p is string => typeof p === 'string' && isAbsolute(p) && isMediaFile(p) && existsSync(p)))
+        }
         // Long tools (transcription, analysis) may take minutes.
-        return result(id, await askEditor('call', { name: params.name, arguments: params.arguments ?? {} }, 20 * 60_000))
+        return result(id, await askEditor('call', { name: params.name, arguments: args }, 20 * 60_000))
+      }
       case 'prompts/list':
         return result(id, { prompts: await askEditor('prompts', null, 15_000) })
       case 'prompts/get':

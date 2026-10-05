@@ -16,6 +16,9 @@ const MEDIA_EXT = new Set([
   'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'avif'
 ])
 
+/** A media file Boar can import (by its extension). */
+export const isMediaFile = (path: string): boolean => MEDIA_EXT.has(extname(path).slice(1).toLowerCase())
+
 const settingsFile = (): string => join(app.getPath('userData'), 'library.json')
 const pastedDir = (): string => join(app.getPath('userData'), 'Pasted Media')
 const binDir = (): string => join(app.getPath('userData'), 'bin')

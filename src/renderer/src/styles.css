@@ -2061,6 +2061,12 @@ body.moving-window * {
   border: 1px solid rgba(255, 97, 97, 0.45);
 }
 
+.caption-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 .caption-models {
   display: flex;
   flex-direction: column;

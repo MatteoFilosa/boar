@@ -424,7 +424,21 @@ function differsFromProject(m: MediaItem, settings: ProjectSettings): boolean {
  * fresh tracks at the bottom (drop below the last track), `'top'`
  * a new video track in front of the others (pasted images).
  */
-export function addMediaToTimeline(mediaId: string, at: Flicks, trackId?: string | 'new' | 'top' | null): string[] {
+export interface PlaceOptions {
+  /** Only these parts of the file (e.g. ['audio'] for the sound of a video). */
+  kinds?: TrackKind[]
+  /** Last changes to each new event (length, framing, volume…), in the same undo step. */
+  shape?: (event: Draft<TimelineEvent>) => void
+  /** Track for each part: an existing track id, or a new track at this index with this name. */
+  targets?: Partial<Record<TrackKind, string | { index: number; name: string }>>
+}
+
+export function addMediaToTimeline(
+  mediaId: string,
+  at: Flicks,
+  trackId?: string | 'new' | 'top' | null,
+  place: PlaceOptions = {}
+): string[] {
   const media = mediaById(mediaId)
   if (!media) return []
   if (media.status !== 'ready') {
@@ -443,6 +457,15 @@ export function addMediaToTimeline(mediaId: string, at: Flicks, trackId?: string
 
   commit((d) => {
     const pick = (kind: TrackKind, below: number): Track => {
+      const target = place.targets?.[kind]
+      if (typeof target === 'string') {
+        const track = d.tracks.find((t) => t.id === target && t.kind === kind)
+        if (track) return track
+      } else if (target) {
+        const track = insertTrack(d, kind, target.index)
+        track.name = target.name
+        return track
+      }
       if (trackId === 'new') return insertTrack(d, kind, d.tracks.length)
       if (trackId === 'top' && kind === 'video') return insertTrack(d, kind, Math.max(0, d.tracks.findIndex((t) => t.kind === 'video')))
       if (trackId) {
@@ -454,19 +477,23 @@ export function addMediaToTimeline(mediaId: string, at: Flicks, trackId?: string
     const groupId = media.hasVideo && media.hasAudio ? uid() : null
     const base = { mediaId, start, length, offset: 0, fadeIn: 0, fadeOut: 0, fadeInCurve: DEFAULT_FADE_CURVE, fadeOutCurve: DEFAULT_FADE_CURVE, rate: 1, groupId, gain: 1, panCrop: [], text: null, mask: null, fx: [], envelope: [], transition: null }
     let videoIndex = -1
-    if (media.hasVideo) {
+    const wanted = (kind: TrackKind): boolean => !place.kinds || place.kinds.includes(kind)
+    const add = (event: TimelineEvent): void => {
+      d.events.push(event)
+      place.shape?.(d.events[d.events.length - 1])
+      created.push(event.id)
+    }
+    if (media.hasVideo && wanted('video')) {
       const track = pick('video', -1)
       videoIndex = d.tracks.findIndex((t) => t.id === track.id)
-      const id = uid()
-      d.events.push({ ...base, id, trackId: track.id, kind: 'video' })
-      created.push(id)
+      add({ ...base, id: uid(), trackId: track.id, kind: 'video' })
     }
-    if (media.hasAudio) {
+    if (media.hasAudio && wanted('audio')) {
       const track = pick('audio', videoIndex)
-      const id = uid()
-      d.events.push({ ...base, id, trackId: track.id, kind: 'audio' })
-      created.push(id)
+      add({ ...base, id: uid(), trackId: track.id, kind: 'audio' })
     }
+    // A single part of a video file is not grouped with anything.
+    if (place.kinds?.length === 1) for (const e of d.events) if (created.includes(e.id)) e.groupId = null
   })
   set({ selection: created, selectedTrackId: null })
   setStatus(`Added ${media.name}`)
@@ -1262,9 +1289,15 @@ export function addCaptionEvents(captions: CaptionChunk[], origin: Flicks, prese
   const frame = frameFlicks(rate)
   const sorted = [...captions].sort((a, b) => a.start - b.start)
   const ids: string[] = []
+  // A Captions track with room for all of them is reused (captions made a part at a time stay together).
+  const from = origin + secondsToFlicks(sorted[0].start)
+  const to = origin + secondsToFlicks(Math.max(...sorted.map((c) => c.end)))
   commit((d) => {
     const firstVideo = d.tracks.findIndex((t) => t.kind === 'video')
-    const track = insertTrack(d, 'video', Math.max(0, firstVideo))
+    const free = d.tracks.find(
+      (t) => t.kind === 'video' && t.name === 'Captions' && !d.events.some((e) => e.trackId === t.id && e.start < to && e.start + e.length > from)
+    )
+    const track = free ?? insertTrack(d, 'video', Math.max(0, firstVideo))
     track.name = 'Captions'
     sorted.forEach((c, i) => {
       // Never overlap the next caption (that would become a crossfade), but
@@ -1614,6 +1647,35 @@ export function keepRanges(keep: readonly TimeRange[]): number {
   }
   clearTimeSelection()
   return gaps.length
+}
+
+/**
+ * Moves a stretch of the timeline (every track, markers too) to another time:
+ * the gap it leaves closes and the destination opens to make room. One undo step.
+ */
+export function moveRange(range: TimeRange, to: Flicks): boolean {
+  const { start, end } = range
+  const length = end - start
+  if (length <= 0 || (to > start && to < end)) return false
+  commit((d) => {
+    const all = new Set(d.events.map((e) => e.id))
+    for (const t of [start, end, to]) {
+      for (const id of splitInDraft(d, all, t)) all.add(id)
+    }
+    const block = d.events.filter((e) => e.start >= start && e.start + e.length <= end)
+    const moving = new Set(block.map((e) => e.id))
+    const blockMarkers = d.markers.filter((m) => m.time >= start && m.time < end)
+    // Close the gap, then open one at the destination (counted after the gap closed).
+    const target = to >= end ? to - length : to
+    for (const e of d.events) if (!moving.has(e.id) && e.start >= end) e.start -= length
+    for (const m of d.markers) if (!blockMarkers.includes(m) && m.time >= end) m.time -= length
+    for (const e of d.events) if (!moving.has(e.id) && e.start >= target) e.start += length
+    for (const m of d.markers) if (!blockMarkers.includes(m) && m.time >= target) m.time += length
+    for (const e of block) e.start = target + (e.start - start)
+    for (const m of blockMarkers) m.time = target + (m.time - start)
+  })
+  clearTimeSelection()
+  return true
 }
 
 /** Replaces the Short candidates (Shorts tab). */

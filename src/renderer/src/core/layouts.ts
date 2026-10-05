@@ -44,6 +44,20 @@ export function cornerFrame(
   return { cx, cy, zoom, rotation: 0 }
 }
 
+/**
+ * Source shown whole, `size` wide (fraction of the frame width), centered at
+ * (x, y) as fractions of the frame: overlays, pictures over a speaker.
+ */
+export function placedFrame(srcW: number, srcH: number, outW: number, outH: number, x: number, y: number, size: number): PanCropState {
+  const fit = fitFrame(srcW, srcH, outW, outH)
+  const shownW = (srcW / fit.w) * outW
+  const zoom = (size * outW) / shownW
+  const k = (outW * zoom) / fit.w
+  const cx = (srcW / 2 - (x * outW - outW / 2) / k) / srcW
+  const cy = (srcH / 2 - (y * outH - outH / 2) / k) / srcH
+  return { cx, cy, zoom, rotation: 0 }
+}
+
 /** The source covering the whole frame (no bars). */
 export const coverFrame = (srcW: number, srcH: number, outW: number, outH: number): PanCropState => ({
   cx: 0.5,

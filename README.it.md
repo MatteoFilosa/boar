@@ -58,7 +58,7 @@
 
 ### Sottotitoli e testo
 
-- **Sottotitoli automatici parola per parola** con Whisper, in locale: karaoke, box sulla parola, parole che compaiono, una parola alla volta, sottotitoli classici.
+- **Sottotitoli automatici parola per parola** con Whisper, in locale: karaoke, box sulla parola, parole che compaiono, una parola alla volta, sottotitoli classici. Per tutta la timeline (anche una clip tagliata in tanti pezzi), per le clip selezionate o per la selezione temporale.
 - **Montaggio dal testo** (tab *Transcript*): il parlato diventa testo; selezioni le parole, premi `Canc` e il video si taglia. Un pulsante seleziona ehm, uhm e parole ripetute; un altro accorcia le pause lunghe.
 - Parole chiave evidenziate (`*parola*` nel testo, o in automatico) ed emoji sulle parole a tema.
 - 21 preset di testo, tra cui titolo d'aggancio in alto e progress bar; oltre 30 font inclusi; animazioni di entrata e uscita.
@@ -140,7 +140,7 @@ Gli assistenti e gli agenti AI compatibili con MCP (app desktop, agenti di codin
 2. Copia la configurazione adatta al tuo agente: URL con header, comando (JSON) o TOML.
 3. Chiedi, per esempio: "togli gli intercalari e aggiungi i sottotitoli", oppure usa i prompt pronti *make_shorts*, *clean_up_talking_head* e *youtube_chapters*.
 
-L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: ognuna si annulla con `Ctrl+Z` e la finestra mostra tutto quello che ha fatto. Video e audio restano sul tuo PC.
+L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: taglia e riordina il parlato, aggiunge sottotitoli, effetti e titoli, e mette sulla timeline immagini, video ed effetti sonori della tua libreria (sopra chi parla con un effetto pop, o a tutto schermo). Ogni modifica si annulla con `Ctrl+Z` e la finestra mostra tutto quello che ha fatto. Video e audio restano sul tuo PC.
 
 ## Temi
 
