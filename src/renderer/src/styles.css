@@ -3010,6 +3010,13 @@ body.dragging-track * {
   grid-template-columns: repeat(4, 1fr);
 }
 
+.tr-where {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Transcript */
 
 .transcript {

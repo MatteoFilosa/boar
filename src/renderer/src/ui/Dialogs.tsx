@@ -329,7 +329,7 @@ export function Dialogs(): React.JSX.Element | null {
     case 'ducking':
       return <DuckingDialog />
     case 'transition':
-      return <TransitionWindow eventId={dialog.eventId} />
+      return <TransitionWindow eventId={dialog.eventId} side={dialog.side} />
     case 'reframe':
       return <ReframeDialog />
     case 'autoZoom':

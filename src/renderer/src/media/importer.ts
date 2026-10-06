@@ -13,7 +13,7 @@ import { uid } from '../core/ids'
 import { secondsToFlicks } from '../core/time'
 import type { MediaItem, MediaKind } from '../core/types'
 import { bridge, mediaPathUrl } from '../platform'
-import { imageCache, notifyMediaCache, peakCache, thumbCache, type Peaks, type ThumbStrip } from './cache'
+import { type AnimatedImage, animationCache, imageCache, notifyMediaCache, peakCache, thumbCache, type Peaks, type ThumbStrip } from './cache'
 import { isSlowToSeek, setUpProxy } from './proxy'
 
 const VIDEO_EXT = ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'mts', 'm2ts', 'ts', 'wmv', 'mpg', 'mpeg', '3gp']
@@ -202,7 +202,9 @@ export function track(item: MediaItem): Promise<MediaItem | null> {
   return analyzeMedia(item).then(
     () => {
       const ready = mediaById(item.id)
-      setStatus(`Imported ${item.name}`)
+      // A sound track the system cannot decode (AC-3 from some cameras...) leaves the clip silent: say so.
+      const silent = ready && ready.kind === 'video' && !ready.hasAudio && ready.audioCodec
+      setStatus(silent ? `Imported ${item.name} without sound: its audio (${ready.audioCodec}) cannot be decoded here` : `Imported ${item.name}`)
       return ready && ready.status === 'ready' ? ready : null
     },
     (err: unknown) => {
@@ -219,6 +221,8 @@ async function analyzeMedia(item: MediaItem): Promise<void> {
     const blob = item.file ?? (await (await fetch(item.url)).blob())
     const bitmap = await createImageBitmap(blob)
     imageCache.set(item.id, bitmap)
+    const animation = await decodeAnimation(blob, item.name).catch(() => null)
+    if (animation) animationCache.set(item.id, animation)
     updateMedia(item.id, { status: 'ready', width: bitmap.width, height: bitmap.height, hasVideo: true })
     notifyMediaCache()
     return
@@ -278,6 +282,48 @@ async function analyzeMedia(item: MediaItem): Promise<void> {
     void Promise.allSettled(jobs).then(() => input.dispose())
   } finally {
     if (!keepInput) input.dispose()
+  }
+}
+
+const IMAGE_TYPES: Record<string, string> = { gif: 'image/gif', webp: 'image/webp', png: 'image/png', avif: 'image/avif' }
+/** Animations above this size keep fewer frames (each one held longer). */
+const ANIMATION_BYTES = 768 * 1024 * 1024
+/** Frames shorter than this play for the usual 0.1 s, as browsers do. */
+const MIN_FRAME_US = 20_000
+const DEFAULT_FRAME_US = 100_000
+
+/** Decodes every frame of an animated image; null for still pictures. */
+async function decodeAnimation(blob: Blob, name: string): Promise<AnimatedImage | null> {
+  if (typeof ImageDecoder === 'undefined') return null
+  const type = IMAGE_TYPES[name.split('.').pop()?.toLowerCase() ?? ''] ?? blob.type
+  if (!type || !(await ImageDecoder.isTypeSupported(type))) return null
+  const decoder = new ImageDecoder({ data: await blob.arrayBuffer(), type })
+  try {
+    await decoder.tracks.ready
+    const track = decoder.tracks.selectedTrack
+    if (!track?.animated) return null
+    await decoder.completed
+    const count = track.frameCount
+    if (count < 2) return null
+    const frames: ImageBitmap[] = []
+    const ends: number[] = []
+    let step = 1
+    let time = 0
+    for (let i = 0; i < count; i++) {
+      const { image } = await decoder.decode({ frameIndex: i })
+      if (i === 0) step = Math.max(1, Math.ceil((image.displayWidth * image.displayHeight * 4 * count) / ANIMATION_BYTES))
+      const us = image.duration && image.duration >= MIN_FRAME_US ? image.duration : DEFAULT_FRAME_US
+      try {
+        if (i % step === 0) frames.push(await createImageBitmap(image))
+      } finally {
+        image.close()
+      }
+      time += us / 1e6
+      if (i % step === step - 1 || i === count - 1) ends.push(time)
+    }
+    return { frames, ends, duration: time }
+  } finally {
+    decoder.close()
   }
 }
 

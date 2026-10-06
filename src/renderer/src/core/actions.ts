@@ -26,14 +26,26 @@ import {
   quantizeToFrame,
   secondsToFlicks
 } from './time'
-import { editPoints, eventEnd, projectEnd, sourceLength, sourceTime } from './timeline'
+import { editPoints, eventEnd, eventsOnTrack, projectEnd, sourceLength, sourceTime } from './timeline'
 import { DEFAULT_FADE_CURVE, type FadeCurve, clampRate, formatRate } from './fades'
 import { type PanCropKey, DEFAULT_PANCROP, framingZoom, normalizeAngle, turnState } from './pancrop'
 import { type TextContent, presetById, retimeWords } from './text'
 import type { CaptionChunk } from './captions'
 import type { EventMask } from './mask'
 import { type FxKind, cloneFx, createFx, fxDef } from './fx'
-import { DEFAULT_TRANSITION_LENGTH } from './transitions'
+import {
+  type EventTransition,
+  type TransitionMode,
+  type TransitionSide,
+  type TransitionSlot,
+  type TransitionSpan,
+  TRANSITIONS,
+  defaultTransitionLength,
+  previewSpan,
+  slotTransition,
+  transitionLabel,
+  transitionSlot
+} from './transitions'
 import { type MediaTranscript, type TimelineWord, rangesForWords } from './transcript'
 import { addEmoji, emphasizeKeywords } from './captionStyle'
 import type { ShortCandidate } from './shorts'
@@ -521,7 +533,7 @@ export function addMediaToTimeline(
       return d.tracks.find((t, i) => t.kind === kind && i > below) ?? insertTrack(d, kind)
     }
     const groupId = media.hasVideo && media.hasAudio ? uid() : null
-    const base = { mediaId, start, length, offset: 0, fadeIn: 0, fadeOut: 0, fadeInCurve: DEFAULT_FADE_CURVE, fadeOutCurve: DEFAULT_FADE_CURVE, rate: 1, groupId, gain: 1, panCrop: [], text: null, mask: null, fx: [], envelope: [], transition: null }
+    const base = { mediaId, start, length, offset: 0, fadeIn: 0, fadeOut: 0, fadeInCurve: DEFAULT_FADE_CURVE, fadeOutCurve: DEFAULT_FADE_CURVE, rate: 1, groupId, gain: 1, panCrop: [], text: null, mask: null, fx: [], envelope: [], transition: null, transitionOut: null }
     let videoIndex = -1
     const wanted = (kind: TrackKind): boolean => !place.kinds || place.kinds.includes(kind)
     const add = (event: TimelineEvent): void => {
@@ -598,12 +610,13 @@ function splitInDraft(d: Draft<Project>, ids: Set<string>, t: Flicks): string[] 
       mask: e.mask ? { ...e.mask } : null,
       fx: cloneFx(e.fx),
       envelope: e.envelope.map((p) => ({ ...p })),
-      // The new cut inside the event is a plain cut.
+      // The new cut inside the event is a plain cut; the end keeps its transition.
       transition: null
     })
     e.length = cut
     e.fadeIn = Math.min(e.fadeIn, cut)
     e.fadeOut = 0
+    e.transitionOut = null
   }
   d.events.push(...added)
   return added.map((e) => e.id)
@@ -1314,7 +1327,8 @@ export function addTextEvent(presetId: string, at: Flicks, trackId?: string | 'n
       mask: null,
       fx: [],
       envelope: [],
-      transition: null
+      transition: null,
+      transitionOut: null
     })
   })
   set({ selection: [id], selectedTrackId: null, dialog: { kind: 'text', eventId: id } })
@@ -1386,7 +1400,8 @@ export function addCaptionEvents(captions: CaptionChunk[], origin: Flicks, prese
         mask: null,
         fx: [],
         envelope: [],
-        transition: null
+        transition: null,
+        transitionOut: null
       })
     })
   })
@@ -1596,6 +1611,7 @@ export function blurredBackground(eventIds: readonly string[]): number {
       groupId: null,
       mask: null,
       transition: null,
+      transitionOut: null,
       panCrop: [{ time: t.offset, ...coverFrame(media.width, media.height, width, height), ease: 'smooth' }],
       fx: [blur, darken].filter((f): f is NonNullable<typeof f> => f !== null)
     })
@@ -1824,45 +1840,169 @@ export function clearEnvelopes(trackIds: string[]): void {
 
 // Transitions
 
+const transitionAdjacency = (project: Project): Flicks => frameFlicks(project.settings.frameRate) / 2
+
+/** The video event that carries transitions for an event: itself, or the picture of its group. */
+function transitionEvent(project: Project, id: string): TimelineEvent | undefined {
+  const e = project.events.find((o) => o.id === id)
+  if (!e) return undefined
+  if (e.kind === 'video') return e
+  return e.groupId ? project.events.find((o) => o.groupId === e.groupId && o.kind === 'video') : undefined
+}
+
+export interface TransitionPlace {
+  slot: TransitionSlot
+  /** Where it plays once set (with the current type, or a default one). */
+  span: TransitionSpan | null
+  current: EventTransition | null
+}
+
+/** Where the transition for one side of an event is kept and how it plays. */
+export function transitionPlace(project: Project, eventId: string, side: TransitionSide): TransitionPlace | null {
+  const e = transitionEvent(project, eventId)
+  if (!e) return null
+  const list = eventsOnTrack(project, e.trackId)
+  const adjacency = transitionAdjacency(project)
+  const i = list.indexOf(e)
+  const slot = transitionSlot(list, i, side, adjacency)
+  const current = slotTransition(slot)
+  return { slot, current, span: previewSpan(list, i, side, current?.type ?? TRANSITIONS[0].type, adjacency) }
+}
+
+const PLACE_LABELS: Record<TransitionMode, string> = {
+  overlap: 'over the overlap',
+  cut: 'on the cut',
+  in: 'at the start of the clip',
+  out: 'at the end of the clip'
+}
+
 /**
- * Sets the transition into each given video event (null removes it). Grouped
- * audio is ignored: transitions are visual.
+ * Sets the transition at the start (or the end) of each given video event;
+ * null removes it. Grouped audio is ignored: transitions are visual. Between
+ * two events it belongs to the start of the second one, whichever side was given.
  */
-export function setTransition(eventIds: string[], type: string | null, duration?: Flicks): number {
+export function setTransition(eventIds: string[], type: string | null, duration?: Flicks, side: TransitionSide = 'in'): number {
   const { project } = get()
-  const ids = new Set(
-    eventIds
-      .map((id) => {
-        const e = project.events.find((o) => o.id === id)
-        if (!e) return undefined
-        if (e.kind === 'video') return e.id
-        return e.groupId ? project.events.find((o) => o.groupId === e.groupId && o.kind === 'video')?.id : undefined
-      })
-      .filter((id): id is string => !!id)
-  )
-  if (ids.size === 0) {
+  const places = new Map<string, TransitionPlace>()
+  for (const id of eventIds) {
+    const place = transitionPlace(project, id, side)
+    if (place) places.set(`${place.slot.event.id}:${place.slot.side}`, place)
+  }
+  if (places.size === 0) {
     setStatus('Select a video or text event for the transition')
     return 0
   }
   commit((d) => {
-    for (const e of d.events) {
-      if (!ids.has(e.id)) continue
-      e.transition = type ? { type, duration: duration ?? e.transition?.duration ?? DEFAULT_TRANSITION_LENGTH } : null
+    const byId = new Map(d.events.map((e) => [e.id, e]))
+    for (const { slot, current } of places.values()) {
+      const e = byId.get(slot.event.id)
+      if (!e) continue
+      const next = type ? { type, duration: duration ?? current?.duration ?? defaultTransitionLength(slot) } : null
+      if (slot.side === 'out') {
+        e.transitionOut = next
+        continue
+      }
+      e.transition = next
+      const prev = slot.prev ? byId.get(slot.prev.id) : undefined
+      if (prev) prev.transitionOut = null
     }
   })
-  setStatus(type ? `Transition on ${ids.size} event${ids.size > 1 ? 's' : ''}` : 'Transition removed')
-  return ids.size
+  const [first] = places.values()
+  if (!type) setStatus('Transition removed')
+  else if (places.size > 1) setStatus(`${transitionLabel(type)} on ${places.size} events`)
+  else setStatus(`${transitionLabel(type)} ${first.span ? PLACE_LABELS[first.span.mode] : ''}`.trim())
+  return places.size
 }
 
-export function openTransitionWindow(eventId?: string): void {
+/**
+ * Length of a transition (slider: one undo step). Over an overlap the
+ * transition is the whole overlap: both events are trimmed around its middle,
+ * with their grouped sound, as far as their media allows.
+ */
+export function setTransitionLength(eventId: string, side: TransitionSide, length: Flicks): void {
+  const { project, options } = get()
+  const place = transitionPlace(project, eventId, side)
+  if (!place?.current) return
+  const { slot } = place
+  commitCoalesced(`transition:${slot.event.id}:${slot.side}`, (d) => {
+    const e = d.events.find((o) => o.id === slot.event.id)
+    if (!e) return
+    if (place.span?.mode === 'overlap' && slot.prev) {
+      resizeOverlap(d, slot.prev.id, e.id, length, options.quantize)
+      return
+    }
+    const tr = slot.side === 'out' ? e.transitionOut : (e.transition ?? d.events.find((o) => o.id === slot.prev?.id)?.transitionOut)
+    if (tr) tr.duration = Math.max(1, Math.round(length))
+  })
+}
+
+/** How far an event's start (or end) can move out before its media runs out, in timeline time. */
+function trimRoom(e: TimelineEvent, edge: 'start' | 'end'): Flicks {
+  const media = mediaById(e.mediaId)
+  if (e.text || !media || media.kind === 'image' || media.duration <= 0) return Infinity
+  if (edge === 'start') return Math.max(0, e.offset / e.rate)
+  return Math.max(0, (media.duration - e.offset - sourceLength(e)) / e.rate)
+}
+
+function resizeOverlap(d: Draft<Project>, aId: string, bId: string, length: Flicks, quantize: boolean): void {
+  const a = d.events.find((e) => e.id === aId)
+  const b = d.events.find((e) => e.id === bId)
+  if (!a || !b) return
+  const rate = d.settings.frameRate
+  const frame = frameFlicks(rate)
+  const aEnd = eventEnd(a)
+  const bEnd = eventEnd(b)
+  if (aEnd >= bEnd) return
+  const groupA = d.events.filter((e) => e === a || (a.groupId && e.groupId === a.groupId && Math.abs(eventEnd(e) - aEnd) <= frame / 2))
+  const groupB = d.events.filter((e) => e === b || (b.groupId && e.groupId === b.groupId && Math.abs(e.start - b.start) <= frame / 2))
+  const roomA = Math.min(...groupA.map((e) => trimRoom(e, 'end')))
+  const roomB = Math.min(...groupB.map((e) => trimRoom(e, 'start')))
+  // Both events stay at least a frame long outside the overlap.
+  const target = Math.max(frame, Math.min(length, bEnd - a.start - 2 * frame))
+  const delta = target - (aEnd - b.start)
+  let growB = delta / 2
+  let growA = delta - growB
+  if (delta > 0) {
+    growB = Math.min(growB, roomB, b.start - a.start - frame)
+    growA = Math.min(delta - growB, roomA, bEnd - aEnd - frame)
+    growB = Math.min(delta - growA, roomB, b.start - a.start - frame)
+  }
+  let bStart = b.start - growB
+  let newAEnd = aEnd + growA
+  if (quantize) {
+    bStart = Math.max(b.start - roomB, quantizeToFrame(bStart, rate))
+    newAEnd = Math.min(aEnd + roomA, quantizeToFrame(newAEnd, rate))
+  }
+  bStart = Math.round(bStart)
+  newAEnd = Math.round(newAEnd)
+  if (newAEnd - bStart <= frame / 2 || bStart <= a.start || newAEnd >= bEnd) return
+  for (const e of groupA) {
+    e.length = newAEnd - e.start
+    e.fadeOut = Math.min(e.fadeOut, e.length)
+    e.fadeIn = Math.min(e.fadeIn, e.length - e.fadeOut)
+  }
+  for (const e of groupB) {
+    const move = e.start - bStart
+    e.offset -= Math.round(move * e.rate)
+    e.length += move
+    e.start = bStart
+    e.fadeIn = Math.min(e.fadeIn, e.length)
+    e.fadeOut = Math.min(e.fadeOut, e.length - e.fadeIn)
+  }
+  const tr = b.transition ?? a.transitionOut
+  if (tr) tr.duration = newAEnd - bStart
+}
+
+/** Opens the Transition window for one side of an event (the selection's first one by default). */
+export function openTransitionWindow(eventId?: string, side: TransitionSide = 'in'): void {
   const { project, selection } = get()
   const ids = eventId ? [eventId] : selection
-  const event = project.events.find((e) => ids.includes(e.id) && e.kind === 'video')
+  const event = ids.map((id) => transitionEvent(project, id)).find((e) => e !== undefined)
   if (!event) {
     setStatus('Select a video or text event to edit its transition')
     return
   }
-  set({ dialog: { kind: 'transition', eventId: event.id } })
+  set({ dialog: { kind: 'transition', eventId: event.id, side } })
 }
 
 // Event fx

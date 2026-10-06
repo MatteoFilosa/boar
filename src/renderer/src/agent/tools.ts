@@ -10,6 +10,7 @@ import { normalizeAngle, panCropAt, sourceToOutput } from '../core/pancrop'
 import { DEFAULT_MASK, type EventMask, type MaskPoint, convertMaskSpace } from '../core/mask'
 import { smartOutline, trackOutline } from '../engine/smartMask'
 import { AUDIO_FX, VIDEO_FX } from '../core/fx'
+import { TRANSITIONS } from '../core/transitions'
 import type { Corner } from '../core/layouts'
 import { renderStill } from '../engine/export'
 import { autoThreshold, eventLevels, findSilences, mediaLevels } from '../engine/analysis'
@@ -176,6 +177,8 @@ function describeEvent(e: TimelineEvent, trackIndex: Map<string, number>): Recor
   if (e.fadeIn) out.fadeIn = sec(e.fadeIn)
   if (e.fadeOut) out.fadeOut = sec(e.fadeOut)
   if (e.fx.length) out.fx = e.fx.map((f) => f.type)
+  if (e.transition) out.transitionIn = e.transition.type
+  if (e.transitionOut) out.transitionOut = e.transitionOut.type
   if (e.panCrop.length) out.panCrop = e.panCrop.length === 1 ? `zoom ${e.panCrop[0].zoom.toFixed(2)}` : `${e.panCrop.length} keyframes`
   // Clockwise on screen (a Pan/Crop rotation turns the frame, so the picture the other way).
   const rotation = e.text ? e.text.rotation : e.panCrop.length === 1 ? normalizeAngle(-e.panCrop[0].rotation) : 0
@@ -772,6 +775,37 @@ const TOOLS: Tool[] = [
         }
       })
       return `Fades set on ${ids.size} event(s)`
+    }
+  },
+  {
+    name: 'set_transition',
+    title: 'Transition',
+    description:
+      `Puts a transition at the start (side "in") or end (side "out") of video or text events; type "none" removes it. Types: ${TRANSITIONS.map((t) => t.type).join(', ')}. ` +
+      'Between two clips it goes on the cut (half before, half after) or, where they overlap, lasts the whole overlap; ' +
+      'length (seconds) on an overlap trims both clips around its middle. With nothing next to the clip, the clip comes in or goes out with the effect.',
+    inputSchema: object(
+      {
+        event_ids: S.ids(),
+        type: S.str('Transition type, or "none"', [...TRANSITIONS.map((t) => t.type), 'none']),
+        side: S.str('Start or end of the events (default in)', ['in', 'out']),
+        length: S.num('Seconds (default: 0.5 on a cut, 1 at a clip edge)')
+      },
+      ['event_ids', 'type']
+    ),
+    run: (a) => {
+      const type = str(a, 'type')
+      if (type !== 'none' && !TRANSITIONS.some((t) => t.type === type)) throw new ToolError(`Unknown transition "${type}"`)
+      const side = a.side === 'out' ? 'out' : 'in'
+      const ids = eventIds(a)
+      const length = a.length === undefined ? undefined : secondsToFlicks(num(a, 'length', { min: 0.05, max: 30 }))
+      if (A.setTransition(ids, type === 'none' ? null : type, length, side) === 0) throw new ToolError(get().status)
+      const status = get().status
+      // Over an overlap the length is the overlap itself: the clips are trimmed to it.
+      if (type !== 'none' && length !== undefined) {
+        for (const id of ids) if (A.transitionPlace(get().project, id, side)?.span?.mode === 'overlap') A.setTransitionLength(id, side, length)
+      }
+      return status
     }
   },
   {

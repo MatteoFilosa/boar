@@ -1,7 +1,7 @@
 import { TRACK_COLORS } from '../../core/actions'
 import { mediaById, type EditorState, type ViewState } from '../../core/store'
 import { crossfadeIn, crossfadeOut, eventEnd, eventsOnTrack } from '../../core/timeline'
-import { type FrameRate, flicksToSeconds, formatTimecode, fps, secondsToFlicks } from '../../core/time'
+import { type FrameRate, flicksToSeconds, formatTimecode, fps, frameFlicks, secondsToFlicks } from '../../core/time'
 import type { MediaItem, TimelineEvent } from '../../core/types'
 import { type FadeCurve, fadeShape, formatRate } from '../../core/fades'
 import { imageCache, peakCache, thumbAt, thumbCache } from '../../media/cache'
@@ -16,6 +16,7 @@ import {
   xToTime
 } from './geometry'
 import { onThemeChange, themeColor } from '../themes'
+import { type TransitionSpan, transitionLabel, transitionSpans } from '../../core/transitions'
 
 const FONT = '11px "Segoe UI", system-ui, sans-serif'
 
@@ -44,7 +45,9 @@ const C = {
   rulerTickMinor: '#5b5e66',
   rulerText: '#b9bcc6',
   loop: '#4f9cff',
-  hint: '#6b6f79'
+  hint: '#6b6f79',
+  transition: '#4f9cff',
+  onTransition: '#ffffff'
 }
 
 /** Reads the canvas colors from the theme. */
@@ -63,6 +66,8 @@ function syncTheme(): void {
   C.rulerText = themeColor('ruler-text')
   C.loop = themeColor('accent')
   C.hint = themeColor('text-faint')
+  C.transition = themeColor('accent')
+  C.onTransition = themeColor('on-accent')
 }
 syncTheme()
 onThemeChange(syncTheme)
@@ -232,7 +237,9 @@ export function drawTracks(
       if (eventEnd(e) < t0 || e.start > t1) continue
       drawEvent(ctx, e, events, l, y, width, s, selected.has(e.id))
     }
-    if (s.options.autoCrossfade) drawCrossfades(ctx, events, y, l.height, width, view)
+    const tags = transitionTags(s, events, y, l.height)
+    if (s.options.autoCrossfade) drawCrossfades(ctx, events, y, l.height, width, view, tags)
+    drawTransitions(ctx, tags, y, l.height, width, view)
   }
 
   ctx.save()
@@ -312,7 +319,7 @@ function drawEvent(
   ctx.fillStyle = C.text
   ctx.font = FONT
   ctx.textBaseline = 'middle'
-  ctx.fillText(eventLabel(e, media), Math.max(x, 0) + 5 + (e.transition && x >= x0 - 1 ? headH : 0), y + headH / 2 + 0.5)
+  ctx.fillText(eventLabel(e, media), Math.max(x, 0) + 5, y + headH / 2 + 0.5)
   const mediaVideo = e.kind === 'video' && !e.text
   if (mediaVideo) {
     const button = panCropButton(x, w, y)
@@ -320,7 +327,6 @@ function drawEvent(
       drawPanCropButton(ctx, button.x, button.y, button.size, e.panCrop.length > 0)
     }
   }
-  if (e.transition && x >= x0 - 1) drawTransitionMark(ctx, x, y, headH)
   const fx = fxButton(x, w, y, mediaVideo)
   if (fx && fx.x > x0 && fx.x + fx.size < x1) {
     drawFxButton(ctx, fx.x, fx.y, fx.size, e.fx.some((f) => f.enabled), e.fx.length > 0)
@@ -336,21 +342,95 @@ function drawEvent(
   if (x + w <= width + 2) ctx.fillRect(x + w - bw, y, bw, h)
 }
 
-/** Bow-tie mark at the start of an event that has a transition into it. */
-function drawTransitionMark(ctx: CanvasRenderingContext2D, x: number, y: number, headH: number): void {
-  const s = Math.max(6, headH - 4)
-  const cy = y + headH / 2
-  ctx.fillStyle = '#ffffff'
-  ctx.strokeStyle = '#1b1c20'
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(x + 2, cy - s / 2)
-  ctx.lineTo(x + 2 + s, cy + s / 2)
-  ctx.lineTo(x + 2 + s, cy - s / 2)
-  ctx.lineTo(x + 2, cy + s / 2)
-  ctx.closePath()
-  ctx.fill()
-  ctx.stroke()
+const TAG_FONT = '600 10px "Segoe UI", system-ui, sans-serif'
+const TAG_MAX_W = 120
+const TAG_MIN_W = 18
+let measureCtx: CanvasRenderingContext2D | null = null
+
+/** The label fitted into `width` px, cut with an ellipsis. */
+function fitLabel(label: string, width: number): string {
+  measureCtx ??= document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D
+  measureCtx.font = TAG_FONT
+  if (measureCtx.measureText(label).width <= width) return label
+  let n = label.length
+  while (n > 0 && measureCtx.measureText(`${label.slice(0, n).trimEnd()}…`).width > width) n--
+  return `${label.slice(0, n).trimEnd()}…`
+}
+
+export interface TransitionTag {
+  span: TransitionSpan
+  x: number
+  y: number
+  w: number
+  h: number
+  text: string
+}
+
+/** The transitions on a track and their name tags, centered on where each plays, under the event header. */
+export function transitionTags(s: EditorState, trackEvents: TimelineEvent[], rowY: number, rowH: number): TransitionTag[] {
+  const spans = transitionSpans(trackEvents, frameFlicks(s.project.settings.frameRate) / 2)
+  if (spans.length === 0) return []
+  const h = rowH - 3
+  const headH = Math.min(EVENT_HEAD_H, Math.floor(h * 0.35))
+  const tagH = Math.min(14, h - headH - 4)
+  if (tagH < 9) return []
+  return spans.map((span) => {
+    const x0 = timeToX(span.start, s.view)
+    const x1 = timeToX(span.end, s.view)
+    const label = transitionLabel(span.type)
+    measureCtx ??= document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D
+    measureCtx.font = TAG_FONT
+    const w = Math.round(Math.min(measureCtx.measureText(label).width + 10, TAG_MAX_W, Math.max(TAG_MIN_W, x1 - x0 - 4)))
+    return { span, x: Math.round((x0 + x1) / 2 - w / 2), y: rowY + 1 + headH + 3, w, h: tagH, text: fitLabel(label, w - 8) }
+  })
+}
+
+/** Where each transition plays (shaded) and its name tag. */
+function drawTransitions(ctx: CanvasRenderingContext2D, tags: TransitionTag[], rowY: number, rowH: number, width: number, view: ViewState): void {
+  const y = rowY + 1
+  const h = rowH - 3
+  ctx.save()
+  for (const tag of tags) {
+    const x0 = timeToX(tag.span.start, view)
+    const x1 = timeToX(tag.span.end, view)
+    if (x1 < -TAG_MAX_W || x0 > width + TAG_MAX_W) continue
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'
+    ctx.fillRect(x0, y, Math.max(1, x1 - x0), h)
+    ctx.globalAlpha = 0.25
+    ctx.fillStyle = C.transition
+    ctx.fillRect(x0, y, Math.max(1, x1 - x0), h)
+    ctx.globalAlpha = 0.9
+    ctx.fillRect(Math.round(x0), y, 1, h)
+    ctx.fillRect(Math.round(x1) - 1, y, 1, h)
+    // Like a fade: rising into the clip, falling out of it, crossed between two.
+    const mode = tag.span.mode
+    ctx.strokeStyle = C.transition
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    if (mode !== 'out') {
+      ctx.moveTo(x0, y + h)
+      ctx.lineTo(x1, y)
+    }
+    if (mode !== 'in') {
+      ctx.moveTo(x0, y)
+      ctx.lineTo(x1, y + h)
+    }
+    ctx.stroke()
+    ctx.globalAlpha = 1
+    ctx.fillStyle = C.transition
+    ctx.beginPath()
+    ctx.roundRect(tag.x, tag.y, tag.w, tag.h, 3)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)'
+    ctx.lineWidth = 1
+    ctx.stroke()
+    ctx.fillStyle = C.onTransition
+    ctx.font = TAG_FONT
+    ctx.textBaseline = 'middle'
+    ctx.textAlign = 'center'
+    ctx.fillText(tag.text, tag.x + tag.w / 2, tag.y + tag.h / 2 + 0.5)
+  }
+  ctx.restore()
 }
 
 /** Volume envelope (Auto Ducking): a yellow line, 0 dB at the top of the body, -36 dB at the bottom. */
@@ -484,7 +564,8 @@ function drawCrossfades(
   rowY: number,
   rowH: number,
   width: number,
-  view: ViewState
+  view: ViewState,
+  tags: TransitionTag[]
 ): void {
   const y = rowY + 1
   const h = rowH - 3
@@ -493,6 +574,8 @@ function drawCrossfades(
     for (let j = i + 1; j < events.length; j++) {
       const b = events[j]
       if (b.start >= eventEnd(a)) break
+      // An overlap with a transition shows the transition instead.
+      if (tags.some((tag) => tag.span.from === a && tag.span.to === b && tag.span.mode === 'overlap')) continue
       const x0 = timeToX(b.start, view)
       const x1 = timeToX(Math.min(eventEnd(a), eventEnd(b)), view)
       if (x1 < 0 || x0 > width || x1 - x0 < 1) continue

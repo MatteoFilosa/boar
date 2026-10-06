@@ -4,7 +4,7 @@ import { drawText } from '../core/text'
 import { type Flicks, flicksToSeconds, frameFlicks } from '../core/time'
 import { eventsOnTrack, sourceTime, videoAlpha } from '../core/timeline'
 import type { Project, TimelineEvent } from '../core/types'
-import { imageCache } from '../media/cache'
+import { imageAt } from '../media/cache'
 import { type EventMask, type MaskPoint, maskCanvas, pathAt, shapeOutline } from '../core/mask'
 import { activeFx } from '../core/fx'
 import { applyTransition, applyVideoFx } from './videoFx'
@@ -85,14 +85,15 @@ function drawTransition(
   frameFor: FrameLookup
 ): boolean {
   const a = transitionCanvas(0, width, height)
-  if (!drawEvent(a, tr.from, t, width, height, tr.from.gain, frameFor)) return false
-  let b = a
-  if (tr.to !== tr.from) {
-    b = transitionCanvas(1, width, height)
-    if (!drawEvent(b, tr.to, t, width, height, tr.to.gain, frameFor)) b = a
-  }
-  const out = applyTransition(a.canvas, b.canvas, tr.type, tr.p, width, height)
-  ctx.drawImage(out ?? (tr.p < 0.5 ? a.canvas : b.canvas), 0, 0)
+  const b = tr.to === tr.from ? a : transitionCanvas(1, width, height)
+  const drewA = drawEvent(a, tr.from, t, width, height, tr.from.gain, frameFor)
+  const drewB = b === a ? drewA : drawEvent(b, tr.to, t, width, height, tr.to.gain, frameFor)
+  if (!drewA && !drewB) return false
+  // A side still decoding stands in for the other one rather than a flash of nothing.
+  const from = drewA ? a : b
+  const to = drewB ? b : a
+  const out = applyTransition(from.canvas, to.canvas, tr.type, tr.p, width, height)
+  ctx.drawImage(out ?? (tr.p < 0.5 ? from.canvas : to.canvas), 0, 0)
   return true
 }
 
@@ -176,7 +177,7 @@ function drawEventContent(
   if (!media) return false
   let frame: FrameSource | null = null
   if (media.kind === 'image') {
-    const bitmap = imageCache.get(media.id)
+    const bitmap = imageAt(media.id, flicksToSeconds(sourceTime(ev, t)))
     if (bitmap) frame = { source: bitmap, width: bitmap.width, height: bitmap.height }
   } else {
     frame = frameFor(ev)

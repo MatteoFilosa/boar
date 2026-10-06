@@ -3,6 +3,7 @@ import type { MediaItem, Project, ProjectSettings } from './types'
 import type { Flicks } from './time'
 import type { MediaTranscript } from './transcript'
 import type { ShortCandidate } from './shorts'
+import type { TransitionSide } from './transitions'
 import type { UpdateInfo } from '../platform'
 
 export type PreviewQuality = 'draft' | 'preview' | 'good' | 'best'
@@ -115,7 +116,8 @@ export type Dialog =
   | { kind: 'silence' }
   | { kind: 'themes' }
   | { kind: 'pasteAttributes' }
-  | { kind: 'transition'; eventId: string }
+  /** Transition window for one side of an event. */
+  | { kind: 'transition'; eventId: string; side: TransitionSide }
   | { kind: 'ducking' }
   | { kind: 'reframe' }
   | { kind: 'autoZoom' }

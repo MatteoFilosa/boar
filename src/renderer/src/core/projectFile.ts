@@ -84,7 +84,8 @@ export function parseProject(json: string): {
         mask: e.mask ? normalizeMask(e.mask) : null,
         fx: Array.isArray(e.fx) ? e.fx : [],
         envelope: Array.isArray(e.envelope) ? e.envelope : [],
-        transition: e.transition ?? null
+        transition: e.transition ?? null,
+        transitionOut: e.transitionOut ?? null
       })
     ),
     markers: (p.markers ?? []).map((m) => ({ ...m }))

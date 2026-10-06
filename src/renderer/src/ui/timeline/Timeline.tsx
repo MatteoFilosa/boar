@@ -40,7 +40,8 @@ import { onThemeChange } from '../themes'
 import { isMac, MOD } from '../../platform'
 import type { Corner } from '../../core/layouts'
 import { TrackHeader, useTrackDrag } from './TrackHeader'
-import { type DropPreview, type Rect, drawOverlay, drawRuler, drawTracks } from './draw'
+import { type DropPreview, type Rect, drawOverlay, drawRuler, drawTracks, transitionTags } from './draw'
+import { type TransitionSide, type TransitionSpan, TRANSITIONS, dropSide, previewSpan, transitionLabel } from '../../core/transitions'
 import {
   EDGE_PX,
   FADE_HANDLE_PX,
@@ -65,6 +66,8 @@ type Zone = 'body' | 'trimL' | 'trimR' | 'fadeIn' | 'fadeOut' | 'panCrop' | 'fx'
 
 type Hit =
   | { kind: 'event'; event: TimelineEvent; zone: Zone; layout: TrackLayout }
+  /** The name tag of a transition. */
+  | { kind: 'transition'; span: TransitionSpan; layout: TrackLayout }
   | { kind: 'track'; layout: TrackLayout }
   | { kind: 'empty' }
 
@@ -357,6 +360,9 @@ function hitTest(x: number, y: number): Hit {
   if (!layout) return { kind: 'empty' }
   const events = eventsOnTrack(s.project, layout.track.id)
   const rowY = contentY - layout.top
+  for (const tag of transitionTags(s, events, layout.top - view.scrollY, layout.height)) {
+    if (x >= tag.x && x <= tag.x + tag.w && y >= tag.y && y <= tag.y + tag.h) return { kind: 'transition', span: tag.span, layout }
+  }
   for (let i = events.length - 1; i >= 0; i--) {
     const event = events[i]
     const ex = timeToX(event.start, view)
@@ -387,6 +393,48 @@ function hitTest(x: number, y: number): Hit {
   return { kind: 'track', layout }
 }
 
+interface TransitionDrop {
+  event: TimelineEvent
+  side: TransitionSide
+  /** Where it would play. */
+  span: TransitionSpan | null
+  layout: TrackLayout
+}
+
+/**
+ * Where a transition dropped at (x, y) goes: on its tag, the transition there;
+ * on a clip, the overlap with the clip before it, else its start or end half.
+ */
+function transitionDropAt(x: number, y: number, type: string): TransitionDrop | null {
+  const hit = hitTest(x, y)
+  const { project, view } = get()
+  let event: TimelineEvent | undefined
+  let side: TransitionSide = 'in'
+  if (hit.kind === 'transition') {
+    event = project.events.find((e) => e.id === hit.span.eventId)
+    side = hit.span.side
+  } else if (hit.kind === 'event') {
+    const ev = hit.event
+    event = ev.kind === 'video' ? ev : ev.groupId ? project.events.find((o) => o.groupId === ev.groupId && o.kind === 'video') : undefined
+  }
+  if (!event) return null
+  const adjacency = frameFlicks(project.settings.frameRate) / 2
+  const list = eventsOnTrack(project, event.trackId)
+  const i = list.indexOf(event)
+  if (hit.kind === 'event') side = dropSide(list, i, xToTime(x, view), adjacency)
+  const trackId = event.trackId
+  const layout = layoutTracks(project.tracks).find((l) => l.track.id === trackId)
+  if (!layout) return null
+  return { event, side, span: previewSpan(list, i, side, type, adjacency), layout }
+}
+
+const PLACES: Record<TransitionSpan['mode'], string> = {
+  overlap: 'over the overlap (the whole overlap is the transition)',
+  cut: 'on the cut (half before, half after)',
+  in: 'at the start of the clip',
+  out: 'at the end of the clip'
+}
+
 const HOVER_CURSORS: Record<Zone, string> = {
   body: 'default',
   trimL: 'col-resize',
@@ -411,6 +459,7 @@ const isStretch = (hit: Hit, ctrl: boolean): boolean =>
   ctrl && hit.kind === 'event' && (hit.zone === 'trimL' || hit.zone === 'trimR') && A.canStretch(hit.event)
 
 function hoverCursor(hit: Hit, ctrl: boolean): string {
+  if (hit.kind === 'transition') return 'pointer'
   if (hit.kind !== 'event') return 'default'
   return isStretch(hit, ctrl) ? STRETCH_CURSOR : HOVER_CURSORS[hit.zone]
 }
@@ -715,7 +764,12 @@ function eventToolEntries(ev: TimelineEvent): MenuEntry[] {
   if (partner('video')) entries.push({ label: 'Video FX...', icon: Sparkles, run: () => A.openFxWindow('video', ev.id) })
   if (partner('audio')) entries.push({ label: 'Audio FX...', icon: AudioLines, run: () => A.openFxWindow('audio', ev.id) })
   if (ev.kind === 'video') entries.push({ label: 'Event Mask...', icon: CircleDashed, run: () => A.openMaskEditor(ev.id) })
-  if (partner('video')) entries.push({ label: ev.transition ? 'Transition...' : 'Add Transition...', icon: Blend, run: () => A.openTransitionWindow(ev.id) })
+  if (partner('video')) {
+    entries.push(
+      { label: 'Transition In...', icon: Blend, run: () => A.openTransitionWindow(ev.id, 'in') },
+      { label: 'Transition Out...', icon: Blend, run: () => A.openTransitionWindow(ev.id, 'out') }
+    )
+  }
   if (partner('audio')) entries.push({ label: 'Remove Silences...', command: 'removeSilences' })
   if (ev.kind === 'audio') entries.push({ label: 'Save as Sound Effect...', icon: BookmarkPlus, run: () => A.openSaveSoundEffect(ev.id) })
   return entries
@@ -799,6 +853,19 @@ function playbackRateEntry(ev: TimelineEvent): MenuEntry {
 
 /** Right-click menu for an event, a track or the empty area. */
 function contextEntries(hit: Hit, at: Flicks): MenuEntry[] {
+  if (hit.kind === 'transition') {
+    const { eventId, side, type } = hit.span
+    return [
+      { header: transitionLabel(type) },
+      { label: 'Transition...', icon: Blend, run: () => A.openTransitionWindow(eventId, side) },
+      {
+        label: 'Change To',
+        submenu: TRANSITIONS.map((t) => ({ label: t.label, disabled: t.type === type, run: () => A.setTransition([eventId], t.type, undefined, side) }))
+      },
+      'separator',
+      { label: 'Remove Transition', icon: Trash, danger: true, run: () => A.setTransition([eventId], null, undefined, side) }
+    ]
+  }
   const range = get().timeSelection
   if (range && at >= range.start && at <= range.end) {
     // Inside the time selection: on an event the edits apply to that event (and
@@ -1000,13 +1067,13 @@ export function Timeline(): React.JSX.Element {
       const layout = layoutAt(layoutTracks(s.project.tracks), cy - r.top + s.view.scrollY)
       const at = xToTime(cx - r.left, s.view)
       if (mediaId.startsWith('tr:')) {
-        const hit = hitTest(cx - r.left, cy - r.top)
-        if (hit.kind !== 'event') {
-          A.setStatus('Drop the transition on the clip after the cut')
+        const target = transitionDropAt(cx - r.left, cy - r.top, mediaId.slice(3))
+        if (!target) {
+          A.setStatus('Drop the transition on a clip: its start, its end, or where two clips overlap')
           return true
         }
-        const ids = s.selection.includes(hit.event.id) ? s.selection : [hit.event.id]
-        A.setTransition(ids, mediaId.slice(3))
+        const ids = s.selection.length > 1 && s.selection.includes(target.event.id) ? s.selection : [target.event.id]
+        A.setTransition(ids, mediaId.slice(3), undefined, target.side)
         return true
       }
       if (mediaId.startsWith('fx:')) {
@@ -1030,6 +1097,7 @@ export function Timeline(): React.JSX.Element {
       else A.addMediaToTimeline(mediaId, at, layout ? layout.track.id : 'new')
       return true
     })
+    let dropPlace = ''
     const showDrop = (drag: MediaDrag | null): void => {
       const canvases = canvasesRef.current
       if (!canvases) return
@@ -1040,7 +1108,24 @@ export function Timeline(): React.JSX.Element {
         const media = mediaById(drag.mediaId)
         const y = drag.y - r.top + s.view.scrollY
         const layout = layoutAt(layoutTracks(s.project.tracks), y)
-        if (drag.mediaId.startsWith('fx:') || drag.mediaId.startsWith('tr:')) {
+        if (drag.mediaId.startsWith('tr:')) {
+          // The part of the clip the transition would cover.
+          const target = transitionDropAt(drag.x - r.left, drag.y - r.top, drag.mediaId.slice(3))
+          canvases.drop = target?.span
+            ? {
+                x: timeToX(target.span.start, s.view),
+                width: flicksToPx(target.span.end - target.span.start, s.view),
+                rowTop: target.layout.top - s.view.scrollY,
+                rowHeight: target.layout.height
+              }
+            : null
+          const place = target?.span ? `${transitionLabel(target.span.type)} ${PLACES[target.span.mode]}` : ''
+          if (place && place !== dropPlace) A.setStatus(place)
+          dropPlace = place
+          canvases.overlayDirty = true
+          return
+        }
+        if (drag.mediaId.startsWith('fx:')) {
           canvases.drop = null
           canvases.overlayDirty = true
           return
@@ -1101,6 +1186,11 @@ export function Timeline(): React.JSX.Element {
     const clickTime = xToTime(x, s.view)
     const hit = hitTest(x, y)
     const additive = e.ctrlKey || e.metaKey
+    if (hit.kind === 'transition') {
+      A.selectEvents([hit.span.eventId], 'replace')
+      A.openTransitionWindow(hit.span.eventId, hit.span.side)
+      return
+    }
     if (hit.kind === 'event' && hit.zone === 'panCrop') {
       A.selectEvents([hit.event.id], 'replace')
       A.openPanCrop(hit.event.id)
@@ -1175,7 +1265,7 @@ export function Timeline(): React.JSX.Element {
       const { x, y } = local(e)
       hoverRef.current = { x, y }
       const hit = hitTest(x, y)
-      const button = hit.kind === 'event' && (hit.zone === 'panCrop' || hit.zone === 'fx')
+      const button = hit.kind === 'transition' || (hit.kind === 'event' && (hit.zone === 'panCrop' || hit.zone === 'fx'))
       e.currentTarget.style.cursor = get().editTool === 'select' && !button ? 'crosshair' : hoverCursor(hit, e.ctrlKey || e.metaKey)
       return
     }

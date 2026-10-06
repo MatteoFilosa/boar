@@ -22,6 +22,43 @@ export const QUALITY_SCALE: Record<PreviewQuality, number> = {
   best: 1
 }
 
+/**
+ * Keeps a playing element on the timeline clock without fighting its own
+ * seeks: a correction aims where the timeline will be when the seek lands
+ * (seeks of long files or files read through the media protocol can take
+ * longer than the drift allowed), and waits before the next one. Correcting to
+ * where the timeline was could seek again and again and never play.
+ */
+interface Drift {
+  /** When the running seek started (performance.now), 0 = none. */
+  seekStart: number
+  /** How long this element's seeks take, in seconds. */
+  seekLag: number
+  /** No new correction before this time (performance.now). */
+  holdUntil: number
+}
+
+const newDrift = (): Drift => ({ seekStart: 0, seekLag: 0.05, holdUntil: 0 })
+
+function seekTo(el: HTMLMediaElement, drift: Drift, seconds: number): void {
+  drift.seekStart = performance.now()
+  el.currentTime = seconds
+}
+
+function seekLanded(drift: Drift): void {
+  if (drift.seekStart) drift.seekLag = Math.min(0.5, (performance.now() - drift.seekStart) / 1000)
+  drift.seekStart = 0
+}
+
+/** Seeks a playing element that drifted from `src` by more than `tolerance` seconds. */
+function correctDrift(el: HTMLMediaElement, drift: Drift, src: number, rate: number, tolerance: number): void {
+  if (el.seeking || el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return
+  const now = performance.now()
+  if (now < drift.holdUntil || Math.abs(el.currentTime - src) <= tolerance * Math.max(1, rate)) return
+  drift.holdUntil = now + 1000
+  seekTo(el, drift, src + drift.seekLag * rate)
+}
+
 interface VideoSlot {
   el: HTMLVideoElement
   mediaId: string
@@ -31,6 +68,7 @@ interface VideoSlot {
   lastUsed: number
   /** A frame was decoded once: while seeking the element still draws the last one. */
   hasFrame: boolean
+  drift: Drift
 }
 
 interface AudioSlot {
@@ -44,6 +82,7 @@ interface AudioSlot {
   chain: AudioFxChain | null
   fxKey: string
   fxRef: EventFx[] | null
+  drift: Drift
 }
 
 interface AudioGraph {
@@ -285,12 +324,13 @@ class PreviewEngine {
       // Files read by path come from boar-media://: CORS keeps their frames usable by the canvas.
       el.crossOrigin = 'anonymous'
       el.src = url
-      const created: VideoSlot = { el, mediaId: media.id, url, pendingSeek: null, lastUsed: 0, hasFrame: false }
+      const created: VideoSlot = { el, mediaId: media.id, url, pendingSeek: null, lastUsed: 0, hasFrame: false, drift: newDrift() }
       el.addEventListener('loadeddata', () => {
         created.hasFrame = true
         this.dirty = true
       })
       el.addEventListener('seeked', () => {
+        seekLanded(created.drift)
         created.hasFrame = true
         const pending = created.pendingSeek
         created.pendingSeek = null
@@ -310,10 +350,10 @@ class PreviewEngine {
     if (play) {
       if (el.playbackRate !== rate) el.playbackRate = rate
       if (el.paused) {
-        if (Math.abs(el.currentTime - src) > 0.04) el.currentTime = src
+        if (Math.abs(el.currentTime - src) > 0.04) seekTo(el, slot.drift, src)
         void el.play().catch(() => undefined)
-      } else if (Math.abs(el.currentTime - src) > 0.2 * Math.max(1, rate)) {
-        el.currentTime = src
+      } else {
+        correctDrift(el, slot.drift, src, rate, 0.2)
       }
       return
     }
@@ -404,11 +444,14 @@ class PreviewEngine {
       el.crossOrigin = 'anonymous'
       el.preservesPitch = true
       el.src = media.url
+      el.addEventListener('error', () => setStatus(`Preview cannot play the sound of ${media.name} (the render still includes it)`))
       const source = graph.ctx.createMediaElementSource(el)
       const gain = graph.ctx.createGain()
       gain.gain.value = 0
       source.connect(gain)
-      slot = { el, source, gain, mediaId: media.id, trackId: '', lastUsed: 0, chain: null, fxKey: '', fxRef: null }
+      const drift = newDrift()
+      el.addEventListener('seeked', () => seekLanded(drift))
+      slot = { el, source, gain, mediaId: media.id, trackId: '', lastUsed: 0, chain: null, fxKey: '', fxRef: null, drift }
       this.audios.set(ev.id, slot)
     }
     if (slot.trackId !== track.id) {
@@ -454,10 +497,10 @@ class PreviewEngine {
     }
     slot.gain.gain.setTargetAtTime(gain, graph.ctx.currentTime, 0.012)
     if (el.paused) {
-      if (Math.abs(el.currentTime - src) > 0.04) el.currentTime = src
+      if (Math.abs(el.currentTime - src) > 0.04) seekTo(el, slot.drift, src)
       void el.play().catch(() => undefined)
-    } else if (Math.abs(el.currentTime - src) > 0.15 * Math.max(1, rate)) {
-      el.currentTime = src
+    } else {
+      correctDrift(el, slot.drift, src, rate, 0.15)
     }
   }
 

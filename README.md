@@ -37,7 +37,7 @@
 
 ### Editing
 
-- Multitrack timeline: drag media from Project Media or from the Explorer; a clip's video and audio stay grouped. Dragging near the left or right edge scrolls the timeline. Images dragged in from a web page are kept with the project. The mouse wheel zooms around the cursor; `Ctrl+Shift++` / `Ctrl+Shift+-` make every track taller or shorter.
+- Multitrack timeline: drag media from Project Media or from the Explorer; a clip's video and audio stay grouped. Dragging near the left or right edge scrolls the timeline. Images dragged in from a web page are kept with the project; animated GIFs (and animated WebP/PNG) play on the timeline, in a loop. The mouse wheel zooms around the cursor; `Ctrl+Shift++` / `Ctrl+Shift+-` make every track taller or shorter.
 - Trim from the edges, **fades from the event's top corners** (Fast, Linear, Slow, Smooth and Sharp curves), automatic crossfades by overlapping two events.
 - **Time selection**: drag on the ruler to work on a portion: split, delete, trim, play and render just that part.
 - **Auto Ripple** (`Ctrl+L`): deleting, cutting or pasting closes the gaps by itself, on the affected tracks or on all of them; moving an event or dragging one of its edges moves what comes after it too.
@@ -74,7 +74,7 @@
 ### Effects, transitions, export
 
 - 24 GPU video effects: ready-made color looks, color correction, chroma key, blur, glow, vignette, grain, VHS, glitch and more. AI **background removal**, no green screen needed.
-- Transitions: zoom, whip pan, spin, glitch, flash, dip to black, blur, pixelate.
+- Transitions: zoom, whip pan, spin, glitch, flash, dip to black, blur, pixelate. Drag one onto the start or the end of a clip, or where two clips overlap: the whole overlap becomes the transition, and its name shows on the timeline. Click the name to change the type or the length.
 - Masks: ellipse, rectangle or a custom shape drawn with points and animated with keyframes. The shape is part of the picture, so moving it with Pan/Crop takes the masked part along. **Smart Select** cuts out an object with a click (more clicks add or leave out parts) and *Track Motion* follows it through the clip.
 - Event Pan/Crop with keyframes: click, `Ctrl`+click or `Shift`+click them on the keyframe bar to select, drag to move, `Delete` to remove, `Ctrl+C` / `Ctrl+V` to copy them to the cursor or to another event.
 - **Render As** MP4 (H.264, HEVC, AV1, VP9): you choose who encodes, the graphics card (NVENC, Quick Sync, AMF, VideoToolbox) or the processor, and the audio (AAC or Opus). Preview and export use the same engine: what you see is what you export.

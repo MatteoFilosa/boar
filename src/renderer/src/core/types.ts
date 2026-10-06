@@ -74,8 +74,10 @@ export interface TimelineEvent {
   fx: EventFx[]
   /** Volume envelope (audio events; written by Auto Ducking). Empty = flat. */
   envelope: VolumePoint[]
-  /** Transition into this event from the previous one on the track (video). */
+  /** Transition at the start of this event: from the previous one on the track, or from the tracks below (video). */
   transition: EventTransition | null
+  /** Transition at the end of this event when nothing follows it: to the tracks below (video). */
+  transitionOut: EventTransition | null
 }
 
 export interface Marker {

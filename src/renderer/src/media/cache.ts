@@ -23,6 +23,33 @@ export const thumbCache = new Map<string, ThumbStrip>()
 export const peakCache = new Map<string, Peaks>()
 export const imageCache = new Map<string, ImageBitmap>()
 
+/** The frames of an animated image (GIF, animated WebP or PNG), played in a loop. */
+export interface AnimatedImage {
+  frames: ImageBitmap[]
+  /** When each frame ends, in seconds from the start of the loop. */
+  ends: number[]
+  /** Length of one loop in seconds. */
+  duration: number
+}
+
+export const animationCache = new Map<string, AnimatedImage>()
+
+/** The picture of an image at a source time (seconds): the frame of the loop for animated ones. */
+export function imageAt(mediaId: string, seconds: number): ImageBitmap | undefined {
+  const anim = animationCache.get(mediaId)
+  if (!anim) return imageCache.get(mediaId)
+  let t = seconds % anim.duration
+  if (t < 0) t += anim.duration
+  let lo = 0
+  let hi = anim.ends.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (anim.ends[mid] > t) hi = mid
+    else lo = mid + 1
+  }
+  return anim.frames[lo]
+}
+
 const listeners = new Set<() => void>()
 
 export function onMediaCacheChange(listener: () => void): () => void {
@@ -39,6 +66,8 @@ export function dropMediaCache(mediaId: string): void {
   peakCache.delete(mediaId)
   imageCache.get(mediaId)?.close()
   imageCache.delete(mediaId)
+  for (const frame of animationCache.get(mediaId)?.frames ?? []) frame.close()
+  animationCache.delete(mediaId)
   notifyMediaCache()
 }
 
