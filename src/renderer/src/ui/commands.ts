@@ -8,6 +8,7 @@ import { bridge } from '../platform'
 import { toggleFullScreenPreview } from './fullScreen'
 import { checkForUpdates } from './updates'
 import { stepInterfaceScale } from './interfaceScale'
+import { reverseEvents } from '../engine/reverse'
 
 /**
  * Ctrl+V: an image on the system clipboard (a screenshot, "Copy image" in the
@@ -117,6 +118,10 @@ export const commands = {
   audioFx: (): void => A.openFxWindow('audio'),
   fillFrame: (): void => A.reframeVideoEvents('fill'),
   fitFrame: (): void => A.reframeVideoEvents('fit'),
+  reverse: (): void => {
+    getEngine().pause()
+    void reverseEvents(useEditor.getState().selection)
+  },
   rotateClockwise: (): void => void A.rotateEvents(useEditor.getState().selection, 90),
   rotateCounterclockwise: (): void => void A.rotateEvents(useEditor.getState().selection, -90),
   resetRotation: (): void => void A.rotateEvents(useEditor.getState().selection, 'reset'),
@@ -149,6 +154,7 @@ export const commands = {
   toggleProxies: (): void => A.toggleOption('proxies'),
   toggleSpaceReturns: (): void => A.toggleOption('spaceReturns'),
   toggleLinkedCaptions: (): void => A.toggleOption('linkedCaptions'),
+  toggleCelebrations: (): void => A.toggleOption('celebrations'),
   themes: (): void => A.openDialog({ kind: 'themes' }),
   pasteAttributes: (): void => void A.pasteEventAttributes(),
   pasteAttributesSelective: (): void => {

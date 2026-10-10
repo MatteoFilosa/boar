@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Dialogs } from './ui/Dialogs'
 import { ContextMenu } from './ui/ContextMenu'
+import { CelebrationLayer } from './ui/BoarProgress'
 import { Dock } from './ui/Dock'
 import { MasterBus } from './ui/MasterBus'
 import { MediaDragGhost, StatusBar, useSplit } from './ui/Chrome'
@@ -81,6 +82,7 @@ export function App(): React.JSX.Element {
       <StatusBar />
       <Dialogs />
       <ContextMenu />
+      <CelebrationLayer />
       <MediaDragGhost />
     </div>
   )

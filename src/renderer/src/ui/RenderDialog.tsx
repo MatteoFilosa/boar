@@ -271,14 +271,18 @@ export function RenderDialog(): React.JSX.Element {
             </span>
           </div>
 
-          {running && (
-            <BoarProgress value={overall}>
-              {PHASES[state.progress.phase]} · {Math.round(overall * 100)}%
-              {state.progress.frames ? ` · frame ${state.progress.frame} / ${state.progress.frames}` : ''}
-              {eta !== null ? ` · about ${Math.ceil(eta)} s left` : ''}
+          {/* One bar for the run and its end, so the boar runs the last stretch to the flag. */}
+          {(state.kind === 'running' || state.kind === 'done') && (
+            <BoarProgress value={state.kind === 'running' ? overall : 1} done={state.kind === 'done'}>
+              {state.kind === 'running' && (
+                <>
+                  {PHASES[state.progress.phase]} · {Math.round(overall * 100)}%
+                  {state.progress.frames ? ` · frame ${state.progress.frame} / ${state.progress.frames}` : ''}
+                  {eta !== null ? ` · about ${Math.ceil(eta)} s left` : ''}
+                </>
+              )}
             </BoarProgress>
           )}
-          {state.kind === 'done' && <BoarProgress value={1} done />}
           {state.kind === 'done' && (
             <div className="render-result ok">
               Rendered in {state.seconds.toFixed(1)} s: <b>{state.label}</b>

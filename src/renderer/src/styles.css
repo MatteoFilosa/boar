@@ -1956,14 +1956,93 @@ body.moving-window * {
   animation: boar-patrol 3.2s linear infinite;
 }
 
-/* Finished: standing at the flag. */
-.boar-track.done .boar-runner *,
-.boar-track.done .boar-runner {
+/* Finished: at the flag the boar hops for joy (confetti come from confetti.ts) and the flag waves. */
+.boar-track.done {
+  overflow: visible;
+}
+
+.boar-track.done .boar-runner * {
   animation: none;
+}
+
+/* Across the finish line: the snout just past the flag pole, the trail all the way. */
+.boar-track.done .boar-runner {
+  left: calc(100% - var(--boar-w) - 2px);
+  animation: boar-hop 0.42s ease-out 0.25s 3;
+}
+
+.boar-track.done .boar-trail {
+  width: 100%;
+}
+
+.boar-track.done .boar-tail {
+  animation: boar-tail 0.12s ease-in-out infinite alternate;
 }
 
 .boar-track.done .boar-dust {
   display: none;
+}
+
+.boar-track.done .boar-flag::after {
+  transform-origin: 0 50%;
+  animation: boar-flag-wave 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes boar-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-9px) rotate(-4deg);
+  }
+  70% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes boar-flag-wave {
+  from {
+    transform: skewY(-8deg) scaleX(0.92);
+  }
+  to {
+    transform: skewY(6deg) scaleX(1);
+  }
+}
+
+/* celebrate(): the bar of a window that closed stays a moment as a card, then fades. */
+.boar-finish {
+  position: fixed;
+  z-index: 400;
+  padding: 8px 12px;
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  animation: boar-finish-out 0.45s ease-in 2.3s forwards;
+}
+
+.boar-finish-label {
+  margin-top: 4px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+@keyframes boar-finish-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.confetti-layer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  pointer-events: none;
 }
 
 @keyframes boar-bob {
@@ -2037,6 +2116,11 @@ body.moving-window * {
 
   .boar-dust {
     display: none;
+  }
+
+  .boar-track.done .boar-runner,
+  .boar-track.done .boar-flag::after {
+    animation: none;
   }
 }
 

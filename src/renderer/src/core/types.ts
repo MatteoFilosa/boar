@@ -94,6 +94,16 @@ export interface Project {
   markers: Marker[]
 }
 
+/**
+ * What a reversed copy (made by Reverse) plays: source [start, end] of media
+ * `mediaId` backwards, so time r in the copy shows the original at end - r.
+ */
+export interface ReverseLink {
+  mediaId: string
+  start: Flicks
+  end: Flicks
+}
+
 export interface MediaItem {
   id: string
   name: string
@@ -126,4 +136,6 @@ export interface MediaItem {
   proxyProgress?: number
   /** Seeking decodes many frames (rare keyframes or a big picture): worth a proxy. */
   slowSeek?: boolean
+  /** Set on the reversed copies Reverse makes (saved with the project). */
+  reverseOf?: ReverseLink
 }

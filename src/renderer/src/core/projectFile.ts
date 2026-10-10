@@ -1,4 +1,4 @@
-import type { MediaItem, MediaKind, Project, TimelineEvent } from './types'
+import type { MediaItem, MediaKind, Project, ReverseLink, TimelineEvent } from './types'
 import type { MediaTranscript } from './transcript'
 import type { ShortCandidate } from './shorts'
 import { emptyProject } from './store'
@@ -25,6 +25,13 @@ export interface SavedMedia {
   kind: MediaKind
   path: string
   size: number
+  /** Reversed copy of another media file (Reverse). */
+  reverseOf?: ReverseLink
+}
+
+const isReverseLink = (r: unknown): r is ReverseLink => {
+  const l = r as ReverseLink | null
+  return !!l && typeof l.mediaId === 'string' && Number.isFinite(l.start) && Number.isFinite(l.end) && l.end > l.start
 }
 
 export function serializeProject(
@@ -41,7 +48,7 @@ export function serializeProject(
     savedAt: new Date().toISOString(),
     project,
     // Keep everything in Project Media, used or not.
-    media: saved.map((m) => ({ id: m.id, name: m.name, kind: m.kind, path: m.path, size: m.size })),
+    media: saved.map((m) => ({ id: m.id, name: m.name, kind: m.kind, path: m.path, size: m.size, ...(m.reverseOf ? { reverseOf: m.reverseOf } : {}) })),
     transcripts: Object.fromEntries(saved.filter((m) => transcripts[m.id]).map((m) => [m.id, transcripts[m.id]])),
     shorts
   }
@@ -99,5 +106,8 @@ export function parseProject(json: string): {
   const shorts = (Array.isArray(data.shorts) ? data.shorts : []).filter(
     (c) => c && typeof c.id === 'string' && Array.isArray(c.ranges) && c.ranges.every((r) => Number.isFinite(r?.start) && Number.isFinite(r?.end))
   )
-  return { project, media: (data.media ?? []).filter((m) => m && m.id && m.name), transcripts, shorts }
+  const media = (data.media ?? [])
+    .filter((m) => m && m.id && m.name)
+    .map(({ reverseOf, ...m }) => (isReverseLink(reverseOf) ? { ...m, reverseOf } : m))
+  return { project, media, transcripts, shorts }
 }

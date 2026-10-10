@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('boar', {
   finishProxy: (id: number): Promise<string> => ipcRenderer.invoke('proxy:finish', id),
   abortProxy: (id: number): Promise<void> => ipcRenderer.invoke('proxy:abort', id),
   deleteProxy: (source: string): Promise<void> => ipcRenderer.invoke('proxy:delete', source),
+  findReversed: (source: string, range: string, name: string): Promise<string | null> => ipcRenderer.invoke('reverse:find', source, range, name),
+  createReversed: (source: string, range: string, name: string): Promise<number> => ipcRenderer.invoke('reverse:create', source, range, name),
   setProgress: (value: number): void => ipcRenderer.send('app:progress', value),
   libraryFolders: (): Promise<unknown> => ipcRenderer.invoke('library:folders'),
   addLibraryFolder: (): Promise<string | null> => ipcRenderer.invoke('library:addFolder'),

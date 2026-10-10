@@ -57,6 +57,8 @@ const KEYWORDS: Partial<Record<CommandId, string>> = {
   rotateClockwise: 'turn right sideways portrait landscape phone orientation',
   rotateCounterclockwise: 'turn left sideways portrait landscape phone orientation',
   resetRotation: 'turn upright straighten',
+  reverse: 'backwards backward rewind play in reverse',
+  toggleCelebrations: 'confetti animation party finish done boar flag',
   toggleProxies: 'proxy preview scrubbing slow seek optimized media smooth',
   toggleSpaceReturns: 'space bar pause stop playback start position',
   themes: 'theme colors appearance look dark light galaxy skin palette mode white black'

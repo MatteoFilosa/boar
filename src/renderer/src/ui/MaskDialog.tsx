@@ -23,7 +23,7 @@ import { sourceLength, sourceTime } from '../core/timeline'
 import type { MediaItem, ProjectSettings, TimelineEvent } from '../core/types'
 import { imageCache } from '../media/cache'
 import { smartOutline, trackOutline } from '../engine/smartMask'
-import { BoarProgress } from './BoarProgress'
+import { BoarProgress, celebrate } from './BoarProgress'
 import { KeyframeBar, canDraw, useSourceFrame } from './KeyframeBar'
 import { themeColor } from './themes'
 
@@ -485,6 +485,7 @@ function CustomMaskEditor({
       if (keys.length > 0) {
         A.replaceMask(event.id, { ...latest(), path: keys })
         A.setStatus(`Mask follows the object: ${keys.length} keyframe${keys.length === 1 ? '' : 's'}`)
+        celebrate('Mask follows the object')
       } else A.setStatus('The object was not found in the clip')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

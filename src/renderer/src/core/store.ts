@@ -59,6 +59,8 @@ export interface EditorOptions {
   uiScale: number
   /** Captions made from the transcript move, shrink and disappear with the clips they caption. */
   linkedCaptions: boolean
+  /** Finished tasks end with the boar reaching the flag and confetti. */
+  celebrations: boolean
 }
 
 const DEFAULT_OPTIONS: EditorOptions = {
@@ -82,7 +84,8 @@ const DEFAULT_OPTIONS: EditorOptions = {
   pasteAttributes: ['fx', 'panCrop', 'mask', 'gain', 'textStyle'],
   theme: 'dark',
   uiScale: 1,
-  linkedCaptions: true
+  linkedCaptions: true,
+  celebrations: true
 }
 
 const OPTIONS_KEY = 'boar.options'
@@ -120,6 +123,8 @@ export type Dialog =
   | { kind: 'transition'; eventId: string; side: TransitionSide }
   | { kind: 'ducking' }
   | { kind: 'reframe' }
+  /** Progress while Reverse makes a reversed copy (engine/reverse.ts). */
+  | { kind: 'reverse' }
   | { kind: 'autoZoom' }
   | { kind: 'agents' }
   | { kind: 'saveSfx'; eventId: string }

@@ -2,7 +2,7 @@ import { app, ipcMain } from 'electron'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, open, readdir, rename, stat, unlink, utimes, type FileHandle } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import { allowMediaDir } from './media-protocol'
 
 // Proxies: light copies of videos that are slow to seek, made by the renderer
@@ -21,6 +21,22 @@ async function proxyPath(source: string): Promise<string> {
   return join(proxyDir(), `${key}.mp4`)
 }
 
+// Reversed copies (Reverse): a range of a media file played backwards, made by
+// the renderer like proxies. Projects use them as media, so they are never
+// pruned. Each one sits in a folder named after the source's path, size,
+// modification time and range, so asking again finds the same file.
+
+const reversedDir = (): string => join(app.getPath('userData'), 'Reversed Media')
+
+async function reversedPath(source: string, range: string, name: string): Promise<string> {
+  if (!isAbsolute(source)) throw new Error('Not a file path')
+  const s = await stat(source)
+  const key = createHash('sha1').update(`${source}|${s.size}|${s.mtimeMs}|${range}`).digest('hex').slice(0, 16)
+  const ext = extname(name).toLowerCase() === '.m4a' ? '.m4a' : '.mp4'
+  const stem = basename(name, extname(name)).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/, '').slice(0, 120) || 'Reversed'
+  return join(reversedDir(), key, `${stem}${ext}`)
+}
+
 const writing = new Map<number, { handle: FileHandle; part: string; path: string }>()
 let nextId = 1
 
@@ -37,6 +53,7 @@ async function prune(): Promise<void> {
 
 export function registerProxyIpc(): void {
   allowMediaDir(proxyDir())
+  allowMediaDir(reversedDir())
   void prune()
 
   /** The proxy of a source file, if it exists (and marks it as used). */
@@ -50,6 +67,21 @@ export function registerProxyIpc(): void {
   ipcMain.handle('proxy:create', async (_event, source: string) => {
     const path = await proxyPath(source)
     await mkdir(proxyDir(), { recursive: true })
+    const part = `${path}.part`
+    const handle = await open(part, 'w')
+    const id = nextId++
+    writing.set(id, { handle, part, path })
+    return id
+  })
+  /** A reversed copy made earlier for this source and range, if it exists. */
+  ipcMain.handle('reverse:find', async (_event, source: string, range: string, name: string) => {
+    const path = await reversedPath(source, range, name).catch(() => null)
+    return path && existsSync(path) ? path : null
+  })
+  /** Starts writing a reversed copy; written and finished like a proxy. */
+  ipcMain.handle('reverse:create', async (_event, source: string, range: string, name: string) => {
+    const path = await reversedPath(source, range, name)
+    await mkdir(dirname(path), { recursive: true })
     const part = `${path}.part`
     const handle = await open(part, 'w')
     const id = nextId++

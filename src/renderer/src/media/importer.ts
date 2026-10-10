@@ -223,7 +223,8 @@ async function analyzeMedia(item: MediaItem): Promise<void> {
     imageCache.set(item.id, bitmap)
     const animation = await decodeAnimation(blob, item.name).catch(() => null)
     if (animation) animationCache.set(item.id, animation)
-    updateMedia(item.id, { status: 'ready', width: bitmap.width, height: bitmap.height, hasVideo: true })
+    // The picture is its own poster (media reopened from a project or relinked start without one).
+    updateMedia(item.id, { status: 'ready', width: bitmap.width, height: bitmap.height, hasVideo: true, poster: item.url })
     notifyMediaCache()
     return
   }

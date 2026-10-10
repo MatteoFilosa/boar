@@ -1,15 +1,15 @@
 import * as A from '../core/actions'
 import { type EventAttribute, mediaById, useEditor } from '../core/store'
 import { FLICKS_PER_SECOND, type Flicks, fps, frameFlicks, secondsToFlicks } from '../core/time'
-import { eventEnd, projectEnd, sourceTime } from '../core/timeline'
-import type { TimelineEvent } from '../core/types'
+import { eventEnd, projectEnd, sourceTime, timelineTime } from '../core/timeline'
+import type { MediaItem, TimelineEvent } from '../core/types'
 import { CAPTION_STYLES, alignWords, chunkWords } from '../core/captions'
 import { type TimelineWord, defaultSpeechTrack, hasSpeech, speechTracks, timedWord, wordFlag, wordsOnTimeline } from '../core/transcript'
 import { TEXT_PRESETS } from '../core/text'
-import { normalizeAngle, panCropAt, sourceToOutput } from '../core/pancrop'
+import { fillZoom, framingZoom, normalizeAngle, panCropAt, sourceToOutput, upsertKey } from '../core/pancrop'
 import { DEFAULT_MASK, type EventMask, type MaskPoint, convertMaskSpace } from '../core/mask'
 import { smartOutline, trackOutline } from '../engine/smartMask'
-import { AUDIO_FX, VIDEO_FX } from '../core/fx'
+import { AUDIO_FX, VIDEO_FX, cloneFx } from '../core/fx'
 import { TRANSITIONS } from '../core/transitions'
 import type { Corner } from '../core/layouts'
 import { renderStill } from '../engine/export'
@@ -20,9 +20,13 @@ import { isDirty, saveProject } from '../core/session'
 import { findHighlights, shortDuration } from '../core/shorts'
 import { uid } from '../core/ids'
 import { DEFAULT_SHORT_OPTIONS, type ShortFraming, backToLongVideo, makeShort } from '../engine/makeShort'
-import { bridge } from '../platform'
+import { bridge, mediaPathUrl } from '../platform'
+import { type Source, UrlSource } from 'mediabunny'
+import { inputSource } from '../media/source'
+import { clock, contactSheet, frameImage, probeMedia } from '../engine/inspect'
 import { transcribeMedia } from '../engine/transcribe'
-import { importPaths, kindOfName } from '../media/importer'
+import { reverseEvents } from '../engine/reverse'
+import { importFiles, importPaths, kindOfName } from '../media/importer'
 import { coverFrame, placedFrame } from '../core/layouts'
 import type { PanCropKey, PanCropState } from '../core/pancrop'
 import { THEME_COLORS, addUserTheme, allThemes, parseTheme } from '../ui/themes'
@@ -172,6 +176,7 @@ function describeEvent(e: TimelineEvent, trackIndex: Map<string, number>): Recor
   else {
     out.media = media?.name ?? 'missing media'
     out.sourceIn = sec(e.offset)
+    if (media?.reverseOf) out.reversed = true
   }
   if (e.rate !== 1) out.rate = Math.round(e.rate * 1000) / 1000
   if (e.fadeIn) out.fadeIn = sec(e.fadeIn)
@@ -240,6 +245,86 @@ const framedVideo = (ids: string[]): TimelineEvent[] =>
   get().project.events.filter((e) => ids.includes(e.id) && e.kind === 'video' && !e.text && mediaById(e.mediaId)?.status === 'ready')
 
 const allVideo = (): string[] => A.foregroundVideoEvents().map((e) => e.id)
+
+/** The media an agent names: from Project Media (media_id) or imported from disk (path), ready to place. */
+async function placeableMedia(a: Args): Promise<MediaItem> {
+  let media = a.media_id === undefined ? undefined : mediaById(str(a, 'media_id'))
+  if (!media && a.path !== undefined) {
+    const path = str(a, 'path')
+    media = get().media.find((m) => m.path === path && m.status === 'ready') ?? (await importPaths([path])[0]) ?? undefined
+  }
+  if (!media) throw new ToolError(a.path === undefined ? 'Give media_id (get_project) or path (list_files)' : 'This file could not be imported')
+  if (media.status !== 'ready') throw new ToolError(`${media.name} is not ready: ${media.error || 'still analyzing'}`)
+  return media
+}
+
+/** Why a file read by path failed, in words (the media protocol refuses files that do not exist). */
+const fileError = (err: unknown): string => {
+  const message = err instanceof Error ? err.message : String(err)
+  return /403/.test(message) ? 'not found, or not a video, sound or picture file' : message
+}
+
+/** A file to read without importing it: from Project Media (media_id) or from disk (path). */
+function readableFile(a: Args): { source: Source; name: string } {
+  if (a.media_id !== undefined) {
+    const media = mediaById(str(a, 'media_id'))
+    if (!media) throw new ToolError(`Unknown media ${String(a.media_id)}`)
+    return { source: inputSource(media), name: media.name }
+  }
+  if (a.path === undefined) throw new ToolError('Give media_id (get_project) or path (list_files)')
+  if (!bridge) throw new ToolError('Reading files by path needs the desktop app')
+  const path = str(a, 'path')
+  return { source: new UrlSource(mediaPathUrl(path)), name: path.split(/[\/]/).pop() ?? path }
+}
+
+/**
+ * Tracks for new media (add_media, freeze_frame, timelapse): `track` when
+ * given; otherwise a free overlay track just above the main video (under the
+ * captions) for the picture and a free "Sound Effects" track for the sound.
+ */
+function overlayTargets(a: Args, media: MediaItem, at: Flicks, end: Flicks, soundOnly: boolean): NonNullable<A.PlaceOptions['targets']> {
+  const { project } = get()
+  const free = (id: string): boolean => !project.events.some((e) => e.trackId === id && e.start < end && e.start + e.length > at)
+  const targets: NonNullable<A.PlaceOptions['targets']> = {}
+  const given = trackId(a)
+  const givenKind = project.tracks.find((t) => t.id === given)?.kind
+  if (given && givenKind) targets[givenKind] = given
+  if (!targets.audio && media.hasAudio) {
+    const sfx = project.tracks.find((t) => t.kind === 'audio' && t.name === 'Sound Effects' && free(t.id))
+    targets.audio = sfx ? sfx.id : { index: project.tracks.length, name: 'Sound Effects' }
+  }
+  if (!targets.video && !soundOnly) {
+    // The main video is the lowest video track with clips.
+    const mainIndex = project.tracks.findLastIndex((t) => t.kind === 'video' && project.events.some((e) => e.trackId === t.id && !e.text))
+    if (mainIndex >= 0) {
+      const above = project.tracks.slice(0, mainIndex).reverse()
+      const overlay = above.find((t) => t.kind === 'video' && !project.events.some((e) => e.trackId === t.id && e.text) && free(t.id))
+      targets.video = overlay ? overlay.id : { index: mainIndex, name: 'Overlays' }
+    } else {
+      // Nothing on the timeline yet: this is the main video, with its sound on a normal track.
+      delete targets.audio
+    }
+  }
+  return targets
+}
+
+/** A video or image event with its (ready) media, for the Pan/Crop tools. */
+function panCropTarget(id: string): { event: TimelineEvent; media: MediaItem } {
+  const event = get().project.events.find((e) => e.id === id)
+  if (!event) throw new ToolError(`Unknown event ${id}`)
+  if (event.kind !== 'video' || event.text) throw new ToolError(`${id} is not a video or image event (text moves with add_text's position)`)
+  const media = mediaById(event.mediaId)
+  if (!media || media.status !== 'ready' || !media.width || !media.height) throw new ToolError(`The media of ${id} is not ready`)
+  return { event, media }
+}
+
+/** A framing as the agent reads it: rotation clockwise on screen. */
+const agentState = (k: PanCropState): { x: number; y: number; zoom: number; rotation: number } => ({
+  x: Math.round(k.cx * 1000) / 1000,
+  y: Math.round(k.cy * 1000) / 1000,
+  zoom: Math.round(k.zoom * 1000) / 1000,
+  rotation: Math.round(normalizeAngle(-k.rotation) * 10) / 10
+})
 
 // Tools
 
@@ -654,6 +739,116 @@ const TOOLS: Tool[] = [
     }
   },
   {
+    name: 'get_pan_crop',
+    title: 'Read the Pan/Crop of a clip',
+    description:
+      'Event Pan/Crop of a video or image event: the keyframes (time = seconds from the clip start; x, y = the point of the picture at the center of the frame, fractions 0-1; zoom 1 = whole picture fits, higher = closer; rotation = clockwise degrees on screen) and the zoom that fills the frame.',
+    inputSchema: object({ event_id: S.str('Event id') }, ['event_id']),
+    readOnly: true,
+    run: (a) => {
+      const { event, media } = panCropTarget(str(a, 'event_id'))
+      const { width, height } = get().project.settings
+      return {
+        event: event.id,
+        clipLength: sec(event.length),
+        picture: { width: media.width, height: media.height },
+        frame: { width, height },
+        fillZoom: Math.round(fillZoom(media.width, media.height, width, height) * 1000) / 1000,
+        keyframes: event.panCrop.map((k) => ({
+          time: sec(timelineTime(event, k.time) - event.start),
+          ...agentState(k),
+          ease: k.ease
+        })),
+        note: event.panCrop.length ? undefined : 'No keyframes: the whole picture fits the frame (zoom 1).'
+      }
+    }
+  },
+  {
+    name: 'set_pan_crop',
+    title: 'Pan, zoom and crop clips',
+    description:
+      'Sets Event Pan/Crop keyframes on video or image events: what part of the picture fills the frame over time (Ken Burns moves, slow push-ins, punch-ins, reframing). ' +
+      'Each keyframe: time (seconds from the clip start, or from its end with from_end), x, y (the point of the picture at the center of the frame, 0-1), ' +
+      'zoom (1 = whole picture fits, "fill" = covers the frame, "fit", or a number: 2 = twice as close), rotation (clockwise degrees), ease (smooth, linear or hold until the next key). ' +
+      'Missing values keep the current framing at that time. The same keyframes go on every event given. replace=false keeps the other keyframes; reset=true removes them all (whole picture fitted). Check the result with get_frame.',
+    inputSchema: object(
+      {
+        event_ids: S.ids('Video or image events'),
+        keyframes: {
+          type: 'array',
+          description: 'Keyframes (at least one unless reset)',
+          items: {
+            type: 'object',
+            properties: {
+              time: S.num('Seconds from the clip start (default 0)'),
+              from_end: S.bool('time counts back from the end of the clip (0 = its last frame)'),
+              x: S.num('Picture point at the frame center, 0 = left edge, 1 = right edge'),
+              y: S.num('Picture point at the frame center, 0 = top, 1 = bottom'),
+              zoom: { type: ['number', 'string'], description: '1 = whole picture fits; "fill" covers the frame; "fit"; or a number like 1.5' },
+              rotation: S.num('Clockwise degrees on screen'),
+              ease: S.str('Toward the next keyframe (default smooth)', ['smooth', 'linear', 'hold'])
+            }
+          }
+        },
+        replace: S.bool('Replace every keyframe of the events (default true)'),
+        reset: S.bool('Remove all keyframes instead')
+      },
+      ['event_ids']
+    ),
+    run: (a) => {
+      const ids = eventIds(a)
+      if (ids.length === 0) throw new ToolError('"event_ids" must name at least one event')
+      const targets = ids.map((id) => panCropTarget(id))
+      if (bool(a, 'reset', false)) {
+        A.setPanCropForEvents(new Map(targets.map(({ event }) => [event.id, []])))
+        return `Pan/Crop reset on ${targets.length} event(s): the whole picture fits`
+      }
+      const list = a.keyframes
+      if (!Array.isArray(list) || list.length === 0) throw new ToolError('"keyframes" must be a non-empty array (or use reset=true)')
+      const replace = bool(a, 'replace', true)
+      const { width, height } = get().project.settings
+      const keys = new Map<string, PanCropKey[]>()
+      for (const { event, media } of targets) {
+        let out: PanCropKey[] = replace ? [] : event.panCrop.map((k) => ({ ...k }))
+        for (const [i, raw] of list.entries()) {
+          const k = (raw ?? {}) as Args
+          const at = num(k, 'time', { min: 0, def: 0 })
+          if (at > sec(event.length) + 1e-3) throw new ToolError(`keyframes[${i}]: time ${at} is past the end of ${event.id} (${sec(event.length)} s)`)
+          const t = Math.min(event.length, secondsToFlicks(at))
+          const time = sourceTime(event, event.start + (bool(k, 'from_end', false) ? event.length - t : t))
+          const current = panCropAt(event.panCrop, time)
+          const rotation = k.rotation === undefined ? current.rotation : -num(k, 'rotation', { min: -3600, max: 3600 })
+          let zoom = current.zoom
+          if (k.zoom === 'fill' || k.zoom === 'fit') zoom = framingZoom(k.zoom, rotation, media.width, media.height, width, height)
+          else if (k.zoom !== undefined) zoom = num(k, 'zoom', { min: 0.05, max: 20 })
+          out = upsertKey(out, {
+            time,
+            cx: num(k, 'x', { min: -1, max: 2, def: current.cx }),
+            cy: num(k, 'y', { min: -1, max: 2, def: current.cy }),
+            zoom,
+            rotation,
+            ease: oneOf(k, 'ease', ['smooth', 'linear', 'hold'] as const, 'smooth')
+          })
+        }
+        keys.set(event.id, out)
+      }
+      A.setPanCropForEvents(keys)
+      return `Pan/Crop set on ${keys.size} event(s): ${list.length} keyframe(s) each`
+    }
+  },
+  {
+    name: 'reverse',
+    title: 'Play clips backwards',
+    description:
+      'Reverses video or sound clips (with their grouped picture or sound): they keep their place and length and play backwards, from a reversed copy made on this PC (long clips take a while the first time; Boar shows the progress). Pan/Crop, masks and volume points stay on the same picture. Reversing a reversed clip plays it forward again.',
+    inputSchema: object({ event_ids: S.ids() }, ['event_ids']),
+    run: async (a) => {
+      const changed = await reverseEvents(eventIds(a))
+      if (changed === 0) throw new ToolError(get().status)
+      return get().status
+    }
+  },
+  {
     name: 'rotate',
     title: 'Rotate clips, images or text',
     description:
@@ -906,13 +1101,7 @@ const TOOLS: Tool[] = [
       ['at']
     ),
     run: async (a) => {
-      let media = a.media_id === undefined ? undefined : mediaById(str(a, 'media_id'))
-      if (!media && a.path !== undefined) {
-        const path = str(a, 'path')
-        media = get().media.find((m) => m.path === path && m.status === 'ready') ?? (await importPaths([path])[0]) ?? undefined
-      }
-      if (!media) throw new ToolError(a.path === undefined ? 'Give media_id (get_project) or path (list_files)' : 'This file could not be imported')
-      if (media.status !== 'ready') throw new ToolError(`${media.name} is not ready: ${media.error || 'still analyzing'}`)
+      const media = await placeableMedia(a)
       const { project } = get()
       const { width, height } = project.settings
       const frame = frameFlicks(project.settings.frameRate)
@@ -924,30 +1113,7 @@ const TOOLS: Tool[] = [
       if (available <= frame) throw new ToolError('source_in is past the end of the file')
       const wanted = a.length === undefined ? (picture ? secondsToFlicks(3) : available) : secondsToFlicks(num(a, 'length', { min: 0.05 }))
       const length = Math.max(frame, Math.min(available, wanted))
-      const end = at + length
-      const free = (trackId: string): boolean => !project.events.some((e) => e.trackId === trackId && e.start < end && e.start + e.length > at)
-      // Default tracks: a free overlay track just above the main video (under the
-      // captions) for the picture, a free "Sound Effects" track for the sound.
-      const targets: NonNullable<A.PlaceOptions['targets']> = {}
-      const given = trackId(a)
-      const givenKind = project.tracks.find((t) => t.id === given)?.kind
-      if (given && givenKind) targets[givenKind] = given
-      if (!targets.audio && media.hasAudio) {
-        const sfx = project.tracks.find((t) => t.kind === 'audio' && t.name === 'Sound Effects' && free(t.id))
-        targets.audio = sfx ? sfx.id : { index: project.tracks.length, name: 'Sound Effects' }
-      }
-      if (!targets.video && !soundOnly) {
-        // The main video is the lowest video track with clips.
-        const mainIndex = project.tracks.findLastIndex((t) => t.kind === 'video' && project.events.some((e) => e.trackId === t.id && !e.text))
-        if (mainIndex >= 0) {
-          const above = project.tracks.slice(0, mainIndex).reverse()
-          const overlay = above.find((t) => t.kind === 'video' && !project.events.some((e) => e.trackId === t.id && e.text) && free(t.id))
-          targets.video = overlay ? overlay.id : { index: mainIndex, name: 'Overlays' }
-        } else {
-          // Nothing on the timeline yet: this is the main video, with its sound on a normal track.
-          delete targets.audio
-        }
-      }
+      const targets = overlayTargets(a, media, at, at + length, soundOnly)
       const layout = oneOf(a, 'layout', ['overlay', 'fit', 'full'] as const, picture ? 'overlay' : 'fit')
       const x = num(a, 'x', { min: -0.5, max: 1.5, def: 0.5 })
       const y = num(a, 'y', { min: -0.5, max: 1.5, def: 0.5 })
@@ -981,6 +1147,257 @@ const TOOLS: Tool[] = [
       if (ids.length === 0) throw new ToolError(get().status)
       const track = get().project.tracks.findIndex((t) => t.id === get().project.events.find((e) => e.id === ids[0])?.trackId) + 1
       return `Added ${media.name} at ${sec(at)} s for ${sec(length)} s on track ${track} (event ${ids.join(', ')})`
+    }
+  },
+  {
+    name: 'media_info',
+    title: 'Length and format of files',
+    description:
+      'For video and sound files on disk (absolute paths, e.g. from list_files or a folder of recordings): length, picture size, frame rate and number of audio tracks, without importing them. Up to 100 files per call.',
+    inputSchema: object({ paths: { type: 'array', items: { type: 'string' }, description: 'Absolute file paths' } }, ['paths']),
+    readOnly: true,
+    run: async (a) => {
+      if (!bridge) throw new ToolError('Reading files by path needs the desktop app')
+      const paths = a.paths
+      if (!Array.isArray(paths) || paths.length === 0 || paths.some((p) => typeof p !== 'string')) throw new ToolError('"paths" must be an array of file paths')
+      if (paths.length > 100) throw new ToolError('At most 100 files per call')
+      const out: Record<string, unknown>[] = []
+      for (const path of paths as string[]) {
+        const name = path.split(/[\\/]/).pop() ?? path
+        try {
+          const facts = await probeMedia(new UrlSource(mediaPathUrl(path)))
+          out.push({
+            path,
+            duration: Math.round(facts.duration * 10) / 10,
+            length: clock(facts.duration),
+            size: facts.width ? `${facts.width}x${facts.height}` : undefined,
+            fps: facts.fps || undefined,
+            audioTracks: facts.audioTracks
+          })
+        } catch (err) {
+          out.push({ path, name, error: fileError(err) })
+        }
+      }
+      return out
+    }
+  },
+  {
+    name: 'look_at_media',
+    title: 'Look inside a video file',
+    description:
+      'A contact sheet: frames spread evenly over a video file (or a part of it, from/to in seconds of the file), each labeled with its time, without putting it on the timeline. ' +
+      'Use it to skim long recordings: a wide look first (e.g. 24 frames over the whole file), then narrower ones around what looks interesting, then add_media with source_in. ' +
+      'media_id from get_project or path from list_files.',
+    inputSchema: object({
+      media_id: S.str('Project Media id'),
+      path: S.str('Or an absolute file path'),
+      from: S.num('Seconds into the file (default 0)'),
+      to: S.num('Seconds into the file (default: the end)'),
+      count: S.int('Frames, 1-36 (default 16)'),
+      columns: S.int('Frames per row (default 4)'),
+      width: S.int('Width of each frame in pixels, 120-640 (default 320)')
+    }),
+    readOnly: true,
+    run: async (a) => {
+      const { source, name } = readableFile(a)
+      const count = Math.round(num(a, 'count', { min: 1, max: 36, def: 16 }))
+      const sheet = await contactSheet(source, {
+        from: a.from === undefined ? undefined : num(a, 'from', { min: 0 }),
+        to: a.to === undefined ? undefined : num(a, 'to', { min: 0 }),
+        count,
+        columns: Math.round(num(a, 'columns', { min: 1, max: 12, def: 4 })),
+        cellWidth: Math.round(num(a, 'width', { min: 120, max: 640, def: 320 }))
+      }).catch((err: unknown) => {
+        throw new ToolError(`${name}: ${fileError(err)}`)
+      })
+      const step = sheet.times.length > 1 ? sheet.times[1] - sheet.times[0] : 0
+      return {
+        content: [
+          { type: 'image', data: await blobToBase64(sheet.blob), mimeType: 'image/jpeg' },
+          {
+            type: 'text',
+            text: `${name}, ${clock(sheet.duration)} long. ${count} frames from ${clock(sheet.times[0], true)} to ${clock(sheet.times[sheet.times.length - 1], true)}${step ? `, one every ${Math.round(step * 10) / 10} s` : ''}, left to right, top to bottom.`
+          }
+        ]
+      }
+    }
+  },
+  {
+    name: 'freeze_frame',
+    title: 'Freeze a frame',
+    description:
+      'Holds one frame of a video as a still picture (saved with your media) from `at` for `length` seconds, e.g. to explain what is on screen while the voice goes on; zoom into it with set_pan_crop or point at a detail with spotlight. ' +
+      'From a clip on the timeline (event_id + time on the timeline: the still keeps the clip\'s framing and look and goes on the track above it, at that time unless `at` is given) ' +
+      'or from a file (media_id or path + source_time, placed like add_media).',
+    inputSchema: object({
+      event_id: S.str('A video clip on the timeline'),
+      time: S.num('With event_id: the moment to freeze, seconds on the timeline'),
+      media_id: S.str('Or a Project Media id'),
+      path: S.str('Or an absolute file path'),
+      source_time: S.num('With media_id/path: seconds into the file'),
+      at: S.num('Where the still starts on the timeline (default: time)'),
+      length: S.num('Seconds on the timeline (default 3)'),
+      layout: S.str('From a file: "full" covers the frame (default), "fit" shows it whole', ['full', 'fit']),
+      track: S.int('Track number (default: automatic)')
+    }),
+    run: async (a) => {
+      const { project } = get()
+      const event = a.event_id === undefined ? undefined : project.events.find((e) => e.id === a.event_id)
+      if (a.event_id !== undefined && !event) throw new ToolError(`Unknown event ${String(a.event_id)}`)
+      let source: MediaItem
+      let seconds: number
+      let at: Flicks
+      if (event) {
+        source = panCropTarget(event.id).media
+        if (source.kind !== 'video') throw new ToolError(`${event.id} is not a video clip`)
+        const t = a.time === undefined ? get().cursor : secondsToFlicks(num(a, 'time', { min: 0 }))
+        if (t < event.start || t >= eventEnd(event)) throw new ToolError('`time` must be inside the clip')
+        seconds = sourceTime(event, t) / F
+        at = a.at === undefined ? t : secondsToFlicks(num(a, 'at', { min: 0 }))
+      } else {
+        source = await placeableMedia(a)
+        if (source.kind !== 'video') throw new ToolError(`${source.name} is not a video`)
+        seconds = num(a, 'source_time', { min: 0, def: 0 })
+        at = secondsToFlicks(num(a, 'at', { min: 0 }))
+      }
+      const length = secondsToFlicks(num(a, 'length', { min: 0.1, max: 600, def: 3 }))
+      const still = await frameImage(inputSource(source), seconds)
+      const name = `${source.name.replace(/\.[^.]*$/, '')} ${clock(seconds, true).replace(/:/g, '-')}.png`
+      let picture: MediaItem | null
+      if (bridge) {
+        const path = await bridge.keepMediaFile(name, new Uint8Array(await still.blob.arrayBuffer()))
+        picture = await importPaths([path])[0]
+      } else {
+        picture = await importFiles([new File([still.blob], name, { type: 'image/png' })])[0]
+      }
+      if (!picture) throw new ToolError('The still could not be imported')
+      const { width, height } = get().project.settings
+      let targets = overlayTargets(a, picture, at, at + length, false)
+      if (event && a.track === undefined) {
+        // Over the clip itself: the track just above it when free there, else a new one.
+        const tracks = get().project.tracks
+        const index = tracks.findIndex((t) => t.id === event.trackId)
+        const above = tracks[index - 1]
+        const free = above?.kind === 'video' && !get().project.events.some((e) => e.trackId === above.id && e.start < at + length && eventEnd(e) > at)
+        targets = { video: free ? above.id : { index, name: 'Freeze Frames' } }
+      }
+      const framing = event ? (event.panCrop.length ? panCropAt(event.panCrop, secondsToFlicks(seconds)) : null) : null
+      const layout = oneOf(a, 'layout', ['full', 'fit'] as const, 'full')
+      const ids = A.addMediaToTimeline(picture.id, at, null, {
+        targets,
+        shape: (e) => {
+          e.start = at
+          e.length = length
+          if (event) {
+            e.fx = cloneFx(event.fx)
+            e.panCrop = framing ? [{ time: 0, ...framing, ease: 'smooth' }] : []
+          } else if (layout === 'full') e.panCrop = [{ time: 0, ...coverFrame(picture!.width, picture!.height, width, height), ease: 'smooth' }]
+        }
+      })
+      if (ids.length === 0) throw new ToolError(get().status)
+      return `Frozen ${source.name} at ${clock(seconds, true)}: still ${ids[0]} from ${sec(at)} s for ${sec(length)} s (${still.width}x${still.height})`
+    }
+  },
+  {
+    name: 'timelapse',
+    title: 'Timelapse of a long recording',
+    description:
+      'Shows a long stretch of a video (hours of screen recording) in a few seconds: short pieces taken evenly between from and to (seconds of the file), one after the other, each playing at `speed`, so the work flies by. ' +
+      'Placed like add_media (an overlay track above the main video unless track is given), without sound unless sound=true. One undo step.',
+    inputSchema: object(
+      {
+        media_id: S.str('Project Media id'),
+        path: S.str('Or an absolute file path'),
+        from: S.num('Seconds into the file (default 0)'),
+        to: S.num('Seconds into the file (default: the end)'),
+        at: S.num('Timeline position, seconds'),
+        length: S.num('Seconds on the timeline (default 8)'),
+        piece: S.num('Seconds of each piece on the timeline, 0.1-5 (default 0.4)'),
+        speed: S.num('Speed of each piece, 1-4 (default 2)'),
+        layout: S.str('"full" covers the frame (default), "fit" shows it whole', ['full', 'fit']),
+        sound: S.bool('Keep the sound of the pieces (default false)'),
+        track: S.int('Track number (default: automatic)')
+      },
+      ['at']
+    ),
+    run: async (a) => {
+      const media = await placeableMedia(a)
+      if (media.kind !== 'video') throw new ToolError(`${media.name} is not a video`)
+      const { project } = get()
+      const { width, height } = project.settings
+      const frame = frameFlicks(project.settings.frameRate)
+      const from = secondsToFlicks(num(a, 'from', { min: 0, def: 0 }))
+      const to = Math.min(media.duration, a.to === undefined ? media.duration : secondsToFlicks(num(a, 'to', { min: 0 })))
+      if (to - from < secondsToFlicks(1)) throw new ToolError('from-to must cover at least a second of the file')
+      const at = secondsToFlicks(num(a, 'at', { min: 0 }))
+      const length = secondsToFlicks(num(a, 'length', { min: 0.5, max: 600, def: 8 }))
+      const speed = num(a, 'speed', { min: 1, max: 4, def: 2 })
+      const count = Math.max(2, Math.round(length / secondsToFlicks(num(a, 'piece', { min: 0.1, max: 5, def: 0.4 }))))
+      const piece = Math.max(frame, Math.round(length / count / frame) * frame)
+      const span = (to - from) / count
+      const used = Math.round(piece * speed)
+      if (used > span) throw new ToolError(`The pieces would overlap: use fewer pieces, a lower speed or a longer from-to (each piece reads ${sec(used)} s of a ${sec(Math.round(span))} s slot)`)
+      // Each piece from the middle of its slot of the file.
+      const pieces = Array.from({ length: count }, (_, i) => ({
+        start: at + i * piece,
+        length: piece,
+        offset: Math.min(media.duration - used, Math.round(from + i * span + (span - used) / 2))
+      }))
+      const sound = bool(a, 'sound', false) && media.hasAudio
+      const layout = oneOf(a, 'layout', ['full', 'fit'] as const, 'full')
+      const ids = A.addMediaToTimeline(media.id, at, null, {
+        kinds: sound ? undefined : ['video'],
+        targets: overlayTargets(a, media, at, at + count * piece, !media.hasVideo),
+        pieces,
+        shape: (e) => {
+          e.rate = speed
+          if (e.kind === 'video' && layout === 'full') e.panCrop = [{ time: e.offset, ...coverFrame(media.width, media.height, width, height), ease: 'smooth' }]
+        }
+      })
+      if (ids.length === 0) throw new ToolError(get().status)
+      return `Timelapse of ${media.name} ${clock(from / F)}-${clock(to / F)}: ${count} pieces of ${sec(piece)} s at ${speed}x from ${sec(at)} s to ${sec(at + count * piece)} s`
+    }
+  },
+  {
+    name: 'spotlight',
+    title: 'Point at a detail',
+    description:
+      'Darkens everything but a rectangle of the frame for a while, to point at a detail (a line of code, a value, a button). x, y = center and w, h = size of the rectangle, fractions of the frame as get_frame shows it. ' +
+      'Over the clip event_id from `from` to `to` (seconds on the timeline); it fades in and out. Combine with set_pan_crop to zoom in first.',
+    inputSchema: object(
+      {
+        event_id: S.str('The clip (video, image or text) to spotlight'),
+        from: S.num('Seconds on the timeline (default: the clip start)'),
+        to: S.num('Seconds on the timeline (default: the clip end)'),
+        x: S.num('Center, 0 = left, 1 = right'),
+        y: S.num('Center, 0 = top, 1 = bottom'),
+        w: S.num('Width, fraction of the frame'),
+        h: S.num('Height, fraction of the frame'),
+        dim: S.num('How much darker outside, 0.2-0.9 (default 0.6)'),
+        feather: S.num('Edge softness in px at 1080p (default 16)'),
+        fade: S.num('Fade in and out, seconds (default 0.25)')
+      },
+      ['event_id', 'x', 'y', 'w', 'h']
+    ),
+    run: (a) => {
+      const id = str(a, 'event_id')
+      const event = get().project.events.find((e) => e.id === id)
+      if (!event) throw new ToolError(`Unknown event ${id}`)
+      const from = a.from === undefined ? event.start : secondsToFlicks(num(a, 'from', { min: 0 }))
+      const to = a.to === undefined ? eventEnd(event) : secondsToFlicks(num(a, 'to', { min: 0 }))
+      if (to <= from) throw new ToolError('`to` must be after `from`')
+      const created = A.addSpotlight(
+        id,
+        { start: from, end: to },
+        { x: num(a, 'x', { min: 0, max: 1 }), y: num(a, 'y', { min: 0, max: 1 }), w: num(a, 'w', { min: 0.01, max: 1 }), h: num(a, 'h', { min: 0.01, max: 1 }) },
+        {
+          dim: num(a, 'dim', { min: 0.2, max: 0.9, def: 0.6 }),
+          feather: num(a, 'feather', { min: 0, max: 200, def: 16 }),
+          fade: secondsToFlicks(num(a, 'fade', { min: 0, max: 2, def: 0.25 }))
+        }
+      )
+      if (!created) throw new ToolError(get().status)
+      return `Spotlight ${created} from ${sec(Math.max(from, event.start))} s to ${sec(Math.min(to, eventEnd(event)))} s`
     }
   },
   {

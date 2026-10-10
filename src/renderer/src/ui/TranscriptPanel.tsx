@@ -8,7 +8,7 @@ import { FLICKS_PER_SECOND, type Flicks, formatTimecode } from '../core/time'
 import type { MediaItem } from '../core/types'
 import { type CaptionProgress, type CaptionStatus, bridge } from '../platform'
 import { transcribeMedia } from '../engine/transcribe'
-import { BoarProgress } from './BoarProgress'
+import { BoarProgress, celebrate } from './BoarProgress'
 
 const LANGUAGES = [
   ['auto', 'Auto'],
@@ -239,6 +239,7 @@ export function TranscriptPanel(): React.JSX.Element {
         A.setTranscript(media.id, { language, model, words: alignWords(result) })
       }
       A.setStatus('Transcript ready: select words and press Delete to cut them')
+      celebrate('Transcript ready')
     } catch (err) {
       setError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err))
     } finally {

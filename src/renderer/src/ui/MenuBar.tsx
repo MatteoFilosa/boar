@@ -130,6 +130,7 @@ function useMenus(): Menu[] {
         { label: 'Rotate 90° Clockwise', command: 'rotateClockwise', disabled: !hasSelection },
         { label: 'Rotate 90° Counterclockwise', command: 'rotateCounterclockwise', disabled: !hasSelection },
         { label: 'Reset Rotation', command: 'resetRotation', disabled: !hasSelection },
+        { label: 'Reverse (play backwards)', command: 'reverse', disabled: !hasSelection },
         { label: 'Layout: Blurred Background', command: 'blurredBackground', disabled: !hasSelection },
         { label: 'Layout: Split Screen (top/bottom)', command: 'splitScreen', disabled: !hasSelection },
         { label: 'Layout: Picture in Picture', command: 'pictureInPicture', disabled: !hasSelection },
@@ -160,6 +161,7 @@ function useMenus(): Menu[] {
         { label: 'Check for Updates at Startup', command: 'toggleUpdateCheck', checked: options.checkUpdates },
         { label: 'Proxies for Videos Slow to Seek', command: 'toggleProxies', checked: options.proxies },
         { label: 'Themes...', command: 'themes' },
+        { label: 'Celebrate Finished Tasks', command: 'toggleCelebrations', checked: options.celebrations },
         'separator',
         { label: 'Auto Ripple', command: 'toggleRipple', checked: options.autoRipple },
         ...(['tracks', 'tracksMarkers', 'all'] as const).map(

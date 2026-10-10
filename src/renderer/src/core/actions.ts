@@ -31,7 +31,7 @@ import { DEFAULT_FADE_CURVE, type FadeCurve, clampRate, formatRate } from './fad
 import { type PanCropKey, DEFAULT_PANCROP, framingZoom, normalizeAngle, turnState } from './pancrop'
 import { type TextContent, presetById, retimeWords } from './text'
 import type { CaptionChunk } from './captions'
-import type { EventMask } from './mask'
+import { DEFAULT_MASK, type EventMask } from './mask'
 import { type FxKind, cloneFx, createFx, fxDef } from './fx'
 import {
   type EventTransition,
@@ -207,7 +207,8 @@ const OPTION_LABELS = {
   checkUpdates: 'Check for updates at startup',
   proxies: 'Proxies for videos that are slow to seek',
   spaceReturns: 'Space returns to the start position',
-  linkedCaptions: 'Captions follow clip edits'
+  linkedCaptions: 'Captions follow clip edits',
+  celebrations: 'Celebrate finished tasks'
 } as const
 
 export function toggleOption(key: keyof typeof OPTION_LABELS): void {
@@ -489,6 +490,8 @@ export interface PlaceOptions {
   shape?: (event: Draft<TimelineEvent>) => void
   /** Track for each part: an existing track id, or a new track at this index with this name. */
   targets?: Partial<Record<TrackKind, string | { index: number; name: string }>>
+  /** Several pieces of the file on the same tracks (a timelapse), instead of one event at `at`. */
+  pieces?: { start: Flicks; length: Flicks; offset: Flicks }[]
 }
 
 export function addMediaToTimeline(
@@ -532,23 +535,19 @@ export function addMediaToTimeline(
       }
       return d.tracks.find((t, i) => t.kind === kind && i > below) ?? insertTrack(d, kind)
     }
-    const groupId = media.hasVideo && media.hasAudio ? uid() : null
-    const base = { mediaId, start, length, offset: 0, fadeIn: 0, fadeOut: 0, fadeInCurve: DEFAULT_FADE_CURVE, fadeOutCurve: DEFAULT_FADE_CURVE, rate: 1, groupId, gain: 1, panCrop: [], text: null, mask: null, fx: [], envelope: [], transition: null, transitionOut: null }
-    let videoIndex = -1
     const wanted = (kind: TrackKind): boolean => !place.kinds || place.kinds.includes(kind)
+    const videoTrack = media.hasVideo && wanted('video') ? pick('video', -1) : null
+    const audioTrack = media.hasAudio && wanted('audio') ? pick('audio', videoTrack ? d.tracks.findIndex((t) => t.id === videoTrack.id) : -1) : null
     const add = (event: TimelineEvent): void => {
       d.events.push(event)
       place.shape?.(d.events[d.events.length - 1])
       created.push(event.id)
     }
-    if (media.hasVideo && wanted('video')) {
-      const track = pick('video', -1)
-      videoIndex = d.tracks.findIndex((t) => t.id === track.id)
-      add({ ...base, id: uid(), trackId: track.id, kind: 'video' })
-    }
-    if (media.hasAudio && wanted('audio')) {
-      const track = pick('audio', videoIndex)
-      add({ ...base, id: uid(), trackId: track.id, kind: 'audio' })
+    for (const piece of place.pieces ?? [{ start, length, offset: 0 }]) {
+      const groupId = videoTrack && audioTrack ? uid() : null
+      const base = { mediaId, ...piece, fadeIn: 0, fadeOut: 0, fadeInCurve: DEFAULT_FADE_CURVE, fadeOutCurve: DEFAULT_FADE_CURVE, rate: 1, groupId, gain: 1, panCrop: [], text: null, mask: null, fx: [], envelope: [], transition: null, transitionOut: null }
+      if (videoTrack) add({ ...base, id: uid(), trackId: videoTrack.id, kind: 'video' })
+      if (audioTrack) add({ ...base, id: uid(), trackId: audioTrack.id, kind: 'audio' })
     }
     // A single part of a video file is not grouped with anything.
     if (place.kinds?.length === 1) for (const e of d.events) if (created.includes(e.id)) e.groupId = null
@@ -1074,6 +1073,101 @@ export function setPlaybackRate(eventIds: string[], rate: number): number {
   })
   setStatus(`Playback rate ${formatRate(r)} on ${ids.size} event${ids.size > 1 ? 's' : ''}`)
   return ids.size
+}
+
+/**
+ * Spotlight: from `from` to `to`, everything but a rectangle of the frame (center
+ * x, y and size w, h as fractions) gets darker, to point at a detail. It is a
+ * darkened copy of that part of the clip on the track above, with the
+ * rectangle cut out of it; it fades in and out. Returns the new event id.
+ */
+export function addSpotlight(
+  eventId: string,
+  range: TimeRange,
+  rect: { x: number; y: number; w: number; h: number },
+  o: { dim: number; feather: number; fade: Flicks }
+): string | null {
+  const { project } = get()
+  const source = project.events.find((e) => e.id === eventId)
+  if (!source || source.kind !== 'video') {
+    setStatus('Spotlight needs a video, image or text event')
+    return null
+  }
+  const from = Math.max(range.start, source.start)
+  const to = Math.min(range.end, eventEnd(source))
+  if (to - from < frameFlicks(project.settings.frameRate)) {
+    setStatus('The spotlight must be inside the event')
+    return null
+  }
+  const id = uid()
+  commit((d) => {
+    const index = d.tracks.findIndex((t) => t.id === source.trackId)
+    const above = d.tracks[index - 1]
+    const free = above?.kind === 'video' && !d.events.some((e) => e.trackId === above.id && e.start < to && eventEnd(e) > from)
+    const track = free ? above : insertTrack(d, 'video', index)
+    if (!free) track.name = 'Spotlight'
+    const darken = createFx('colorCorrector')
+    if (darken) darken.params = { ...darken.params, exposure: Math.max(-2, Math.log2(Math.max(0.05, 1 - o.dim))), saturation: -0.3 }
+    const length = to - from
+    const fade = Math.min(o.fade, length / 2)
+    d.events.push({
+      ...source,
+      id,
+      trackId: track.id,
+      start: from,
+      length,
+      offset: sourceTime(source, from),
+      groupId: null,
+      fadeIn: fade,
+      fadeOut: fade,
+      panCrop: source.panCrop.map((k) => ({ ...k })),
+      text: source.text ? { ...source.text } : null,
+      fx: [...cloneFx(source.fx), ...(darken ? [darken] : [])],
+      mask: { ...DEFAULT_MASK, shape: 'rectangle', space: 'frame', cx: rect.x, cy: rect.y, w: rect.w, h: rect.h, feather: o.feather, invert: true },
+      envelope: [],
+      transition: null,
+      transitionOut: null
+    })
+  })
+  setStatus('Spotlight added')
+  return id
+}
+
+/** Keyframes in the other direction: source times flipped, each segment keeping its ease. */
+function reverseKeys(keys: readonly PanCropKey[], flip: (t: Flicks) => Flicks): PanCropKey[] {
+  const n = keys.length
+  return keys.map((_, i) => {
+    const k = keys[n - 1 - i]
+    // A segment's ease is on its first key, which is now at the other end.
+    return { ...k, time: flip(k.time), ease: i < n - 1 ? keys[n - 2 - i].ease : k.ease }
+  })
+}
+
+/**
+ * Moves events onto media that plays theirs backwards (Reverse): source time s
+ * becomes `end - s`. Place and length stay; Pan/Crop keys, mask shapes and
+ * volume points stay on the same picture and sound. Returns the count.
+ */
+export function reverseEventMedia(swaps: ReadonlyMap<string, { mediaId: string; end: Flicks }>): number {
+  let count = 0
+  commit((d) => {
+    for (const e of d.events) {
+      const swap = swaps.get(e.id)
+      if (!swap) continue
+      const flip = (t: Flicks): Flicks => swap.end - t
+      e.offset = Math.max(0, flip(e.offset + sourceLength(e)))
+      e.mediaId = swap.mediaId
+      e.panCrop = reverseKeys(e.panCrop, flip)
+      e.envelope = e.envelope.map((p) => ({ ...p, time: flip(p.time) })).reverse()
+      if (e.mask) {
+        e.mask.path = e.mask.path.map((k) => ({ time: flip(k.time), points: k.points.map(([x, y]) => [x, y] as [number, number]) })).reverse()
+        if (e.mask.smart) e.mask.smart.time = flip(e.mask.smart.time)
+      }
+      count++
+    }
+  })
+  setStatus(count ? `Reversed ${count} event${count > 1 ? 's' : ''}` : 'Nothing to reverse')
+  return count
 }
 
 export function groupSelection(): void {

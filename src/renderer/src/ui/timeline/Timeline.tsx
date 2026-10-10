@@ -9,6 +9,7 @@ import {
   Crop,
   RotateCw,
   Gauge,
+  History,
   LayoutTemplate,
   Locate,
   MapPin,
@@ -903,7 +904,10 @@ function contextEntries(hit: Hit, at: Flicks): MenuEntry[] {
       entries.push({ label: 'Fill Frame', command: 'fillFrame' }, { label: 'Fit Frame', command: 'fitFrame' }, layoutEntry())
     }
     if (ev.kind === 'video') entries.push(rotateEntry())
-    if (A.canStretch(ev)) entries.push(playbackRateEntry(ev))
+    if (A.canStretch(ev)) {
+      const reversed = !!mediaById(ev.mediaId)?.reverseOf
+      entries.push(playbackRateEntry(ev), { label: reversed ? 'Reverse (play forward again)' : 'Reverse (play backwards)', icon: History, command: 'reverse' })
+    }
     entries.push('separator')
     if (!fadeSide && ev.fadeIn > 0) entries.push(fadeTypeEntry(ev, 'in', 'Fade In Type'))
     if (!fadeSide && ev.fadeOut > 0) entries.push(fadeTypeEntry(ev, 'out', 'Fade Out Type'))

@@ -33,6 +33,26 @@ const PROMPTS: Prompt[] = [
       ].join('\n')
   },
   {
+    name: 'voiceover_with_broll',
+    title: 'Voiceover with B-roll',
+    description: 'Builds an explainer from a recorded voiceover: cleans it up, then covers each part with the matching moments of your recordings, stills, zooms and timelapses.',
+    arguments: [
+      { name: 'recordings', description: 'Folder or files with the footage (absolute paths)' },
+      { name: 'script', description: 'The script with shot notes, if there is one (path or pasted text)' }
+    ],
+    text: (a) =>
+      [
+        `Edit an explainer in Boar from the voiceover on the timeline${a.recordings ? ` and the recordings in ${a.recordings}` : ''}:`,
+        '1. get_project. If the voiceover is not transcribed, call transcribe. Then remove_silences with min_silence 0.4 and remove_words fillers=true (check the "maybe" fillers in context).',
+        `2. get_transcript (sentences) and split it into the parts of the story${a.script ? `, following the script and its shot notes: ${a.script}` : ''}.`,
+        '3. media_info on the recordings for their lengths, then skim them with look_at_media: a wide look over each file first, closer looks around what matters.',
+        '4. For each part, add_media the moment that shows what the voice says (source_in; length = the sentences it covers; layout full). timelapse for long stretches of work, freeze_frame then set_pan_crop to zoom into code or values while they are explained, spotlight to point at one detail.',
+        '5. Cut on sentence boundaries and change shot every 4-8 seconds; keep the voice untouched under the pictures.',
+        '6. add_marker at the start of each part (chapters). Captions only if the user asks.',
+        '7. get_frame at a few times per part to check, then summarize the edit part by part, with the parts that still need a shot.'
+      ].join('\n')
+  },
+  {
     name: 'make_shorts',
     title: 'Make Shorts from a long video',
     description: 'Finds the best self-contained moments of a long video, proposes them in the Shorts tab and builds the ones the user wants.',

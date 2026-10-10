@@ -44,6 +44,9 @@ export interface BoarBridge {
   finishProxy(id: number): Promise<string>
   abortProxy(id: number): Promise<void>
   deleteProxy(source: string): Promise<void>
+  /** Reversed copies (Reverse) of a range of a source file in the app's folder, written with writeProxy / finishProxy / abortProxy. */
+  findReversed(source: string, range: string, name: string): Promise<string | null>
+  createReversed(source: string, range: string, name: string): Promise<number>
   /** Progress on the taskbar button: 0..1, above 1 indeterminate, below 0 hidden. */
   setProgress(value: number): void
   /** Media library folders picked by the user (Explorer tab). */

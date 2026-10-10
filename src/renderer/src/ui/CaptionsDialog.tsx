@@ -11,7 +11,7 @@ import { formatDuration, formatTimecode } from '../core/time'
 import type { Project, TimelineEvent } from '../core/types'
 import type { TimeRange } from '../core/store'
 import { type CaptionProgress, type CaptionStatus, bridge } from '../platform'
-import { BoarProgress } from './BoarProgress'
+import { BoarProgress, celebrate } from './BoarProgress'
 import { transcribeMedia } from '../engine/transcribe'
 
 const LANGUAGES = [
@@ -116,6 +116,7 @@ export function CaptionsDialog(): React.JSX.Element {
         return
       }
       A.addCaptionEvents(captions, 0, style)
+      celebrate(`${captions.length} captions added`)
       A.closeDialog()
     } catch (err) {
       setError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err))

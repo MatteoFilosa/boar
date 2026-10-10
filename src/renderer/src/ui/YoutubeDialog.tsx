@@ -4,7 +4,7 @@ import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
 import { importPaths } from '../media/importer'
 import { type LibraryFolder, type YoutubeProgress, type YoutubeStatus, bridge } from '../platform'
-import { BoarProgress } from './BoarProgress'
+import { BoarProgress, celebrate } from './BoarProgress'
 import { FloatingWindow } from './FloatingWindow'
 import { startMediaDrag } from './mediaDrag'
 
@@ -101,6 +101,7 @@ export function YoutubeDialog(): React.JSX.Element {
         if (toTimeline) A.addMediaToTimeline(media.id, useEditor.getState().cursor)
       }
       setMessage({ text: toTimeline && media ? `Added to the timeline: ${path}` : `Saved ${path}`, error: false })
+      celebrate('Download complete')
       setUrl('')
     })
 

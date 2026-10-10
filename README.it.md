@@ -42,11 +42,13 @@
 - **Selezione temporale**: trascina sul righello per lavorare su una porzione: split, elimina, trim, play e render solo di quella parte.
 - **Auto Ripple** (`Ctrl+L`): eliminando, tagliando o incollando i buchi si chiudono da soli, sulle tracce interessate o su tutte; spostando un evento o trascinandone un bordo si sposta anche quello che viene dopo.
 - **Velocità**: `Ctrl` + trascina un bordo per accelerare o rallentare (0.25x–4x, l'audio mantiene l'intonazione).
+- **Reverse** (clic destro su una clip, o *Tools › Reverse*): la clip va al contrario, video e audio, nello stesso punto. La prima volta Boar ne crea una copia invertita sul tuo PC e la tiene con i tuoi media, così dopo è immediato; un secondo Reverse la riporta in avanti.
 - **Paste Event Attributes** (`Ctrl+Shift+V`): copi un evento e dai il suo aspetto a quelli selezionati: Video e Audio FX, Pan/Crop, maschera, livello o volume e stile del testo. *Selectively Paste Event Attributes* ti fa scegliere cosa.
 - **Strumento di selezione** (toolbar o `Ctrl+D`): trascina un rettangolo tratteggiato ovunque, anche sopra gli eventi, per selezionarne tanti insieme senza spostarli (`Shift` aggiunge, `Ctrl` alterna).
 - Split, gruppi, marker, snapping, quantizzazione ai frame, menu contestuali e 200 livelli di annulla.
 - **Anteprima a schermo intero** (`F`): rivedi il montaggio senza distrazioni, con barra di avanzamento e marker al volo (`M`).
 - **Ricerca comandi** (`Ctrl+F`): scrivi quello che ti serve ("export", "subtitles", "blur") per trovare e lanciare qualsiasi comando dei menu, opzione, pannello, effetto o titolo.
+- Quando finisce un lavoro lungo (render, sottotitoli, download, Reverse...) il cinghiale della barra taglia il traguardo e lancia i coriandoli. *Options › Celebrate Finished Tasks* lo spegne.
 
 ### Verticale e social
 
@@ -138,9 +140,9 @@ Gli assistenti e gli agenti AI compatibili con MCP (app desktop, agenti di codin
 
 1. In Boar attiva *Options › AI Agents (MCP)*. Il server ascolta solo su questo PC ed è protetto da un token.
 2. Copia la configurazione adatta al tuo agente: URL con header, comando (JSON) o TOML.
-3. Chiedi, per esempio: "togli gli intercalari e aggiungi i sottotitoli", oppure usa i prompt pronti *make_shorts*, *clean_up_talking_head* e *youtube_chapters*.
+3. Chiedi, per esempio: "togli gli intercalari e aggiungi i sottotitoli", oppure usa i prompt pronti *make_shorts*, *clean_up_talking_head*, *voiceover_with_broll* e *youtube_chapters*.
 
-L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: taglia e riordina il parlato, aggiunge sottotitoli, effetti e titoli, e mette sulla timeline immagini, video ed effetti sonori della tua libreria (sopra chi parla con un effetto pop, o a tutto schermo). Ogni modifica si annulla con `Ctrl+Z` e la finestra mostra tutto quello che ha fatto. Video e audio restano sul tuo PC.
+L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: taglia e riordina il parlato, aggiunge sottotitoli, effetti e titoli, muove e zooma dentro l'inquadratura con i keyframe di Pan/Crop, manda le clip al contrario, e mette sulla timeline immagini, video ed effetti sonori della tua libreria (sopra chi parla con un effetto pop, o a tutto schermo). Per un voiceover sopra registrazioni lunghe può sfogliare file non ancora importati (fotogrammi sparsi lungo il file, durate), trasformare ore di registrazione dello schermo in pochi secondi di timelapse, fermare un fotogramma per spiegarlo e mettere in risalto un dettaglio. Ogni modifica si annulla con `Ctrl+Z` e la finestra mostra tutto quello che ha fatto. Video e audio restano sul tuo PC.
 
 ## Temi
 

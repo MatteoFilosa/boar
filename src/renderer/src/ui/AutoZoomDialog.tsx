@@ -6,7 +6,7 @@ import type { PanCropKey } from '../core/pancrop'
 import { FLICKS_PER_SECOND } from '../core/time'
 import type { TimelineEvent } from '../core/types'
 import { type AutoZoomOptions, ZOOM_MODES, faceAt, loudMoments, zoomKeys } from '../engine/autoZoom'
-import { BoarProgress } from './BoarProgress'
+import { BoarProgress, celebrate } from './BoarProgress'
 
 /** Selected video clips, or every video clip when none is selected. */
 function targets(events: TimelineEvent[], selection: string[]): TimelineEvent[] {
@@ -63,6 +63,7 @@ export function AutoZoomDialog(): React.JSX.Element {
           ? `Auto Zoom: ${punches} punch-in${punches === 1 ? '' : 's'} on ${keys.size} clip${keys.size === 1 ? '' : 's'}`
           : `Auto Zoom on ${keys.size} clip${keys.size === 1 ? '' : 's'}`
       )
+      if (keys.size > 0) celebrate(useEditor.getState().status)
       A.closeDialog()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

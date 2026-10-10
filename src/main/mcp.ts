@@ -40,7 +40,11 @@ export interface McpStatus {
 const INSTRUCTIONS =
   'Boar is a video editor with a multitrack timeline. Times are in seconds. ' +
   'Start with get_project; use get_transcript to read what is said (transcribe first if needed) and get_frame to see the picture. ' +
+  'For files not on the timeline yet, media_info gives their length and look_at_media shows frames from them. ' +
   'Every edit is one undo step in the editor (undo tool or Ctrl+Z). Prefer few, precise edits; tell the user what you changed.'
+
+/** Tools that read files by path (`path` or `paths` arguments). */
+const PATH_TOOLS = new Set(['import_media', 'add_media', 'media_info', 'look_at_media', 'freeze_frame', 'timelapse'])
 
 const newToken = (): string => randomBytes(24).toString('hex')
 const configPath = (): string => join(app.getPath('userData'), 'mcp.json')
@@ -126,10 +130,10 @@ async function handleRpc(message: RpcMessage): Promise<object | null> {
       case 'tools/list':
         return result(id, { tools: await askEditor('list', null, 15_000) })
       case 'tools/call': {
-        // Files an agent imports by path (import_media, add_media) may be read by
-        // the editor: the agent acts for the user, who gave it the token.
+        // Files an agent names by path (import_media, add_media, look_at_media...) may be
+        // read by the editor: the agent acts for the user, who gave it the token.
         const args = (params.arguments ?? {}) as Record<string, unknown>
-        if (params.name === 'import_media' || params.name === 'add_media') {
+        if (typeof params.name === 'string' && PATH_TOOLS.has(params.name)) {
           const paths = [...(Array.isArray(args.paths) ? args.paths : []), args.path]
           allowMediaPaths(paths.filter((p): p is string => typeof p === 'string' && isAbsolute(p) && isMediaFile(p) && existsSync(p)))
         }

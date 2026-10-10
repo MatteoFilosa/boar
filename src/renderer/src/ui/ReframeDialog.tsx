@@ -5,7 +5,7 @@ import { mediaById, useEditor } from '../core/store'
 import type { PanCropKey } from '../core/pancrop'
 import type { TimelineEvent } from '../core/types'
 import { type ReframeOptions, analyzeFaces, reframeKeys } from '../engine/reframe'
-import { BoarProgress } from './BoarProgress'
+import { BoarProgress, celebrate } from './BoarProgress'
 
 /** Selected video clips (or every video clip when none is selected). */
 function targets(events: TimelineEvent[], selection: string[]): TimelineEvent[] {
@@ -47,6 +47,7 @@ export function ReframeDialog(): React.JSX.Element {
       }
       A.setPanCropForEvents(keys)
       A.setStatus(`Reframed ${keys.size} clip${keys.size === 1 ? '' : 's'}${missing ? ` · no face found in ${missing}` : ''}`)
+      if (keys.size > 0) celebrate(`Reframed ${keys.size} clip${keys.size === 1 ? '' : 's'}`)
       A.closeDialog()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

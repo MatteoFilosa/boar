@@ -131,7 +131,8 @@ function loadProject(opened: { path: string; json: string }): void {
     audioCodec: '',
     sampleRate: 0,
     channels: 0,
-    poster: ''
+    poster: '',
+    reverseOf: saved.reverseOf
   }))
   set({
     project: parsed.project,

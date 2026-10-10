@@ -42,11 +42,13 @@
 - **Time selection**: drag on the ruler to work on a portion: split, delete, trim, play and render just that part.
 - **Auto Ripple** (`Ctrl+L`): deleting, cutting or pasting closes the gaps by itself, on the affected tracks or on all of them; moving an event or dragging one of its edges moves what comes after it too.
 - **Speed**: `Ctrl` + drag an edge to speed up or slow down (0.25x–4x, audio keeps its pitch).
+- **Reverse** (right-click a clip, or *Tools › Reverse*): the clip plays backwards, picture and sound, in the same place. The first time Boar makes a reversed copy on your PC and keeps it with your media, so it is instant afterwards; reversing the clip again plays it forward.
 - **Paste Event Attributes** (`Ctrl+Shift+V`): copy an event and give its look to the selected ones: Video and Audio FX, Pan/Crop, mask, level or volume and text style. *Selectively Paste Event Attributes* lets you choose which.
 - **Selection edit tool** (toolbar or `Ctrl+D`): drag a dashed rectangle anywhere, over events too, to select many at once without moving them (`Shift` adds, `Ctrl` toggles).
 - Split, groups, markers, snapping, frame quantization, context menus and 200 undo levels.
 - **Full screen preview** (`F`): review the edit without distractions, with a seek bar and markers on the fly (`M`).
 - **Command search** (`Ctrl+F`): type what you need ("export", "subtitles", "blur") to find and run any menu command, option, panel, effect or title.
+- When a long task is done (render, captions, downloads, Reverse...) the boar of the progress bar crosses the finish line and throws confetti. *Options › Celebrate Finished Tasks* turns it off.
 
 ### Vertical and social
 
@@ -138,9 +140,9 @@ AI assistants and agents that support MCP (desktop apps, coding agents, AI edito
 
 1. In Boar, turn on *Options › AI Agents (MCP)*. The server only listens on this PC and is protected by a token.
 2. Copy the configuration that fits your agent: URL with header, command (JSON) or TOML.
-3. Ask, for example, "remove the filler words and add captions", or use the ready-made prompts *make_shorts*, *clean_up_talking_head* and *youtube_chapters*.
+3. Ask, for example, "remove the filler words and add captions", or use the ready-made prompts *make_shorts*, *clean_up_talking_head*, *voiceover_with_broll* and *youtube_chapters*.
 
-The agent reads the timeline and the transcripts, looks at frames and makes the edits: it cuts and reorders the speech, adds captions, effects and titles, and puts pictures, videos and sound effects from your library on the timeline (over the speaker with a pop, or full screen). Each edit can be undone with `Ctrl+Z`, and the window shows everything it did. Video and audio stay on your PC.
+The agent reads the timeline and the transcripts, looks at frames and makes the edits: it cuts and reorders the speech, adds captions, effects and titles, pans and zooms inside the picture with Pan/Crop keyframes, plays clips backwards, and puts pictures, videos and sound effects from your library on the timeline (over the speaker with a pop, or full screen). For a voiceover over long recordings it can skim files it has not imported yet (frames spread over the file, lengths), turn hours of screen recording into a few seconds of timelapse, freeze a frame to explain it and spotlight a detail. Each edit can be undone with `Ctrl+Z`, and the window shows everything it did. Video and audio stay on your PC.
 
 ## Themes
 
