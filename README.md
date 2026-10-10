@@ -11,7 +11,7 @@
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3fb950">
   <img alt="Windows, macOS, Linux" src="https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-0078d4">
   <img alt="GPU Intel, NVIDIA, AMD" src="https://img.shields.io/badge/GPU-Intel%20%7C%20NVIDIA%20%7C%20AMD-555">
-  <img alt="Version 0.7.5 alpha" src="https://img.shields.io/badge/version-0.7.5%20alpha-f28c28">
+  <img alt="Version 0.7.6 alpha" src="https://img.shields.io/badge/version-0.7.6%20alpha-f28c28">
 </p>
 
 <p align="center">
