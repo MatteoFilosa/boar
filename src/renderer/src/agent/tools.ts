@@ -1401,6 +1401,47 @@ const TOOLS: Tool[] = [
     }
   },
   {
+    name: 'speaker_corner',
+    title: 'Speaker in a corner',
+    description:
+      'For a face-cam video with B-roll on top: shows the speaker in a corner over whatever covers them from `from` to `to` (seconds on the timeline), as a circle (the middle of their picture) or a box. ' +
+      'It is a silent copy of that part of the speaker clip on a track above the B-roll (captions stay on top); the voice keeps playing from the speaker clip. ' +
+      'Without B-roll over the speaker their face fills the frame; with full-frame B-roll and no speaker_corner only the B-roll shows.',
+    inputSchema: object(
+      {
+        event_id: S.str('The video clip of the speaker (face cam)'),
+        from: S.num('Seconds on the timeline (default: the clip start)'),
+        to: S.num('Seconds on the timeline (default: the clip end)'),
+        corner: S.str('Default bottomRight', ['topRight', 'topLeft', 'bottomRight', 'bottomLeft']),
+        size: S.num('Width of the box or circle, fraction of the frame width (default 0.24)'),
+        shape: S.str('Default circle', ['circle', 'box']),
+        fade: S.num('Fade in and out, seconds (default 0.2)')
+      },
+      ['event_id']
+    ),
+    run: (a) => {
+      const id = str(a, 'event_id')
+      const event = get().project.events.find((e) => e.id === id)
+      if (!event) throw new ToolError(`Unknown event ${id}`)
+      const from = a.from === undefined ? event.start : secondsToFlicks(num(a, 'from', { min: 0 }))
+      const to = a.to === undefined ? eventEnd(event) : secondsToFlicks(num(a, 'to', { min: 0 }))
+      if (to <= from) throw new ToolError('`to` must be after `from`')
+      const created = A.addSpeakerCorner(
+        id,
+        { start: from, end: to },
+        {
+          corner: oneOf(a, 'corner', ['topRight', 'topLeft', 'bottomRight', 'bottomLeft'] as const, 'bottomRight'),
+          size: num(a, 'size', { min: 0.08, max: 0.6, def: 0.24 }),
+          shape: oneOf(a, 'shape', ['circle', 'box'] as const, 'circle'),
+          fade: secondsToFlicks(num(a, 'fade', { min: 0, max: 2, def: 0.2 }))
+        }
+      )
+      if (!created) throw new ToolError(get().status)
+      const track = get().project.tracks.findIndex((t) => t.id === get().project.events.find((e) => e.id === created)?.trackId) + 1
+      return `Speaker in the corner (${created}, track ${track}) from ${sec(Math.max(from, event.start))} s to ${sec(Math.min(to, eventEnd(event)))} s`
+    }
+  },
+  {
     name: 'copy_attributes',
     title: 'Copy event attributes',
     description:

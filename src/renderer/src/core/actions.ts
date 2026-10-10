@@ -49,7 +49,7 @@ import {
 import { type MediaTranscript, type TimelineWord, rangesForWords } from './transcript'
 import { addEmoji, emphasizeKeywords } from './captionStyle'
 import type { ShortCandidate } from './shorts'
-import { type Corner, cornerFrame, coverFrame, halfFrame } from './layouts'
+import { type Corner, cornerFrame, coverFrame, halfFrame, placedFrame } from './layouts'
 import { dropMediaCache } from '../media/cache'
 import { followClips } from './linkedCaptions'
 
@@ -1130,6 +1130,87 @@ export function addSpotlight(
     })
   })
   setStatus('Spotlight added')
+  return id
+}
+
+/**
+ * The speaker in a corner over what covers them (screen recordings, B-roll)
+ * from `range.start` to `range.end`: a silent copy of that part of their clip
+ * on a track above every clip there (captions stay on top), framed in a corner
+ * as a box or a circle (the middle of the picture). Returns the new event id.
+ */
+export function addSpeakerCorner(
+  eventId: string,
+  range: TimeRange,
+  o: { corner: Corner; size: number; shape: 'circle' | 'box'; fade: Flicks }
+): string | null {
+  const { project } = get()
+  const source = project.events.find((e) => e.id === eventId)
+  const media = source ? mediaById(source.mediaId) : undefined
+  if (!source || source.kind !== 'video' || source.text || !media?.width || !media.height) {
+    setStatus('Pick the video clip of the speaker')
+    return null
+  }
+  const from = Math.max(range.start, source.start)
+  const to = Math.min(range.end, eventEnd(source))
+  if (to - from < frameFlicks(project.settings.frameRate)) {
+    setStatus('The time range must be inside the speaker clip')
+    return null
+  }
+  const { width, height } = project.settings
+  const overlaps = (e: TimelineEvent): boolean => e.start < to && eventEnd(e) > from
+  // The highest clip above the speaker there (captions do not count).
+  const own = project.tracks.findIndex((t) => t.id === source.trackId)
+  const covering = project.tracks.findIndex(
+    (t, i) => i < own && t.kind === 'video' && project.events.some((e) => e.trackId === t.id && !e.text && overlaps(e))
+  )
+  if (covering < 0) {
+    setStatus('Nothing covers the speaker there: their face already fills the frame')
+    return null
+  }
+  const id = uid()
+  commit((d) => {
+    const top = covering
+    const above = d.tracks[top - 1]
+    const free = above?.kind === 'video' && !d.events.some((e) => e.trackId === above.id && overlaps(e))
+    const track = free ? above : insertTrack(d, 'video', top)
+    if (!free) track.name = 'Speaker'
+    const margin = 0.03 * width
+    let panCrop: PanCropKey[]
+    let mask: EventMask | null = null
+    const at = sourceTime(source, from)
+    if (o.shape === 'circle') {
+      // A circle `size` wide over the middle of the picture, which is scaled so its height fills it.
+      const diameter = o.size * width
+      const x = o.corner.endsWith('Right') ? width - margin - diameter / 2 : margin + diameter / 2
+      const y = o.corner.startsWith('top') ? margin + diameter / 2 : height - margin - diameter / 2
+      const shownWidth = (diameter * media.width) / media.height
+      panCrop = [{ time: at, ...placedFrame(media.width, media.height, width, height, x / width, y / height, shownWidth / width), ease: 'smooth' }]
+      mask = { ...DEFAULT_MASK, shape: 'ellipse', space: 'frame', cx: x / width, cy: y / height, w: diameter / width, h: diameter / height, feather: 3 }
+    } else {
+      panCrop = [{ time: at, ...cornerFrame(media.width, media.height, width, height, o.corner, o.size, 0.03), ease: 'smooth' }]
+    }
+    const length = to - from
+    const fade = Math.min(o.fade, length / 2)
+    d.events.push({
+      ...source,
+      id,
+      trackId: track.id,
+      start: from,
+      length,
+      offset: at,
+      groupId: null,
+      fadeIn: fade,
+      fadeOut: fade,
+      panCrop,
+      mask,
+      fx: cloneFx(source.fx),
+      envelope: [],
+      transition: null,
+      transitionOut: null
+    })
+  })
+  setStatus('Speaker in the corner')
   return id
 }
 
