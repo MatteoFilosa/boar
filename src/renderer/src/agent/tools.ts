@@ -9,7 +9,7 @@ import { TEXT_PRESETS } from '../core/text'
 import { fillZoom, framingZoom, normalizeAngle, panCropAt, sourceToOutput, upsertKey } from '../core/pancrop'
 import { DEFAULT_MASK, type EventMask, type MaskPoint, convertMaskSpace } from '../core/mask'
 import { smartOutline, trackOutline } from '../engine/smartMask'
-import { AUDIO_FX, VIDEO_FX, cloneFx } from '../core/fx'
+import { AUDIO_FX, VIDEO_FX, cloneFx, fxDef, hexToColor } from '../core/fx'
 import { TRANSITIONS } from '../core/transitions'
 import type { Corner } from '../core/layouts'
 import { renderStill } from '../engine/export'
@@ -1006,12 +1006,37 @@ const TOOLS: Tool[] = [
   {
     name: 'add_fx',
     title: 'Add an effect',
-    description: `Adds an effect to events. Video: ${VIDEO_FX.map((f) => f.type).join(', ')}. Audio: ${AUDIO_FX.map((f) => f.type).join(', ')}.`,
-    inputSchema: object({ event_ids: S.ids(), fx: S.str('Effect type') }, ['event_ids', 'fx']),
+    description:
+      `Adds an effect to events. Video: ${VIDEO_FX.map((f) => f.type).join(', ')}. Audio: ${AUDIO_FX.map((f) => f.type).join(', ')}. ` +
+      'params sets its settings (the rest keep their defaults), e.g. chromaKey with {"color": "#ffffff", "tolerance": 0.2} removes a white background ' +
+      '(percentages as 0-1, colors as "#rrggbb"; get_frame shows the colors). A wrong key lists the settings of the effect.',
+    inputSchema: object(
+      {
+        event_ids: S.ids(),
+        fx: S.str('Effect type'),
+        params: { type: 'object', description: 'Settings by key: numbers, or "#rrggbb" for colors', additionalProperties: { type: ['number', 'string'] } }
+      },
+      ['event_ids', 'fx']
+    ),
     run: (a) => {
       const type = str(a, 'fx')
-      if (![...VIDEO_FX, ...AUDIO_FX].some((f) => f.type === type)) throw new ToolError(`Unknown effect "${type}"`)
-      A.addFx(eventIds(a), type)
+      const def = fxDef(type)
+      if (!def) throw new ToolError(`Unknown effect "${type}"`)
+      const settings = (): string =>
+        def.params.map((p) => `${p.key} (${p.color ? '"#rrggbb"' : p.options ? `0-${p.options.length - 1}: ${p.options.join(', ')}` : `${p.min} to ${p.max}`})`).join(', ')
+      let params: Record<string, number> | undefined
+      if (a.params !== undefined) {
+        if (typeof a.params !== 'object' || a.params === null || Array.isArray(a.params)) throw new ToolError('params must be an object')
+        params = {}
+        for (const [key, value] of Object.entries(a.params as Record<string, unknown>)) {
+          const p = def.params.find((x) => x.key === key)
+          if (!p) throw new ToolError(`${type} has no setting "${key}". Its settings: ${settings()}`)
+          const n = p.color && typeof value === 'string' ? hexToColor(value) : typeof value === 'number' && Number.isFinite(value) ? value : null
+          if (n === null) throw new ToolError(`${key}: expected ${p.color ? 'a "#rrggbb" color' : 'a number'}`)
+          params[key] = p.color ? n : Math.min(p.max, Math.max(p.min, n))
+        }
+      }
+      A.addFx(eventIds(a), type, params)
       return get().status
     }
   },

@@ -9,7 +9,8 @@ import {
   RectangleVertical,
   Square
 } from 'lucide-react'
-import { setCursor, setFrameSize, setOption } from '../core/actions'
+import { endColorPick, setCursor, setFrameSize, setFxParam, setOption, setStatus } from '../core/actions'
+import { colorToHex } from '../core/fx'
 import { useEditor, type PreviewQuality } from '../core/store'
 import { projectEnd } from '../core/timeline'
 import { formatTimecode, frameIndex, rateLabel } from '../core/time'
@@ -53,6 +54,56 @@ function SafeAreas({ vertical }: { vertical: boolean }): React.JSX.Element {
       <div className="safe-band" style={{ right: 0, top: '10%', bottom: '22%', width: '14%' }} />
       <div className="safe-rect" style={{ left: '5%', right: '14%', top: '10%', bottom: '22%' }} />
       <span className="safe-label">App UI zones (approx.)</span>
+    </div>
+  )
+}
+
+/** Eyedropper of an effect's color: shows the color under the pointer, a click picks it. */
+function ColorPickOverlay({ width }: { width: number }): React.JSX.Element | null {
+  const pick = useEditor((s) => s.colorPick)
+  const projectWidth = useEditor((s) => s.project.settings.width)
+  const [hover, setHover] = useState<{ x: number; y: number; color: number } | null>(null)
+  useEffect(() => {
+    if (!pick) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      endColorPick()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [pick])
+  if (!pick || width === 0) return null
+  const sample = (e: React.PointerEvent<HTMLDivElement>): { x: number; y: number; color: number | null } => {
+    const r = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - r.left
+    const y = e.clientY - r.top
+    const k = projectWidth / width
+    return { x, y, color: getEngine().pickColor(pick.eventId, x * k, y * k) }
+  }
+  return (
+    <div
+      className="color-pick-overlay"
+      title="Click the color to pick (Esc cancels)"
+      onPointerMove={(e) => {
+        const at = sample(e)
+        setHover(at.color === null ? null : { x: at.x, y: at.y, color: at.color })
+      }}
+      onPointerLeave={() => setHover(null)}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return
+        e.preventDefault()
+        e.stopPropagation()
+        const { color } = sample(e)
+        endColorPick()
+        if (color !== null) {
+          setFxParam(pick.eventId, pick.fxId, pick.key, color)
+          setStatus(`Picked ${colorToHex(color)}`)
+        } else setStatus('Nothing to pick there')
+      }}
+    >
+      {hover && <div className="color-pick-swatch" style={{ left: hover.x + 14, top: hover.y + 14, background: colorToHex(hover.color) }} />}
     </div>
   )
 }
@@ -251,6 +302,7 @@ export function VideoPreview(): React.JSX.Element {
           />
           {!full && safeAreas && <SafeAreas vertical={settings.height > settings.width} />}
           {!full && <TransformOverlay width={display.width} />}
+          {!full && <ColorPickOverlay width={display.width} />}
         </div>
         {full && <FullScreenControls visible={!idle} />}
       </div>

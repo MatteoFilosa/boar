@@ -39,6 +39,7 @@ import { type MenuEntry, openContextMenu } from '../ContextMenu'
 import { fadeCurveIcon } from '../FadeCurveIcon'
 import { onThemeChange } from '../themes'
 import { isMac, MOD } from '../../platform'
+import { uid } from '../../core/ids'
 import type { Corner } from '../../core/layouts'
 import { TrackHeader, useTrackDrag } from './TrackHeader'
 import { type DropPreview, type Rect, drawOverlay, drawRuler, drawTracks, transitionTags } from './draw'
@@ -108,6 +109,10 @@ type Drag =
       clickTime: Flicks
       items: MoveItem[]
       anchorIndex: number
+      /** Tracks as they were when the drag started (the drag can add one at the bottom). */
+      layouts: TrackLayout[]
+      /** Id of the track added when the events are dragged below the last track. */
+      newTrackId: string
       points: Flicks[]
       ripple: Followers | null
     }
@@ -564,6 +569,8 @@ function beginEventDrag(
       clickTime,
       items,
       anchorIndex: hit.layout.index,
+      layouts,
+      newTrackId: uid(),
       points: snapPoints(s.project, s.cursor, new Set([...ids, ...(ripple?.events.map((f) => f.id) ?? [])])),
       ripple
     }
@@ -622,35 +629,46 @@ function applyDrag(drag: Exclude<Drag, { kind: 'rubber' | 'range' }>, x: number,
         snapAt = snap.at
       }
     }
-    const layouts = layoutTracks(s.project.tracks)
-    const over = layoutAt(layouts, y + view.scrollY)
+    const layouts = drag.layouts
+    const contentY = y + view.scrollY
+    const over = layoutAt(layouts, contentY)
     const anchor = layouts[drag.anchorIndex]
     // Vertical moves count tracks of the dragged event's kind (video among video
     // tracks, audio among audio tracks); grouped events of the other kind stay
     // on their track, so a clip with its sound can move to another video track.
+    // Below the last track a new track of that kind is added for the events.
     const sameKind = anchor ? layouts.filter((l) => l.track.kind === anchor.track.kind) : []
     const ordinal = (index: number): number => sameKind.findIndex((l) => l.index === index)
+    const below = !!anchor && layouts.length > 0 && contentY >= tracksHeight(layouts.map((l) => l.track))
     let dOrd = 0
     if (anchor && over && over.track.kind === anchor.track.kind) dOrd = ordinal(over.index) - ordinal(drag.anchorIndex)
+    else if (below) dOrd = sameKind.length - ordinal(drag.anchorIndex)
+    /** Same-kind track `n` places from the first one; one past the last is the new track. */
+    const trackAt = (n: number): string | undefined => (n === sameKind.length && below ? drag.newTrackId : sameKind[n]?.track.id)
     if (
       dOrd !== 0 &&
       !drag.items.every((i) => {
         const from = layouts[i.trackIndex]
         if (!from || from.track.kind !== anchor?.track.kind) return true
-        return sameKind[ordinal(i.trackIndex) + dOrd] !== undefined
+        return trackAt(ordinal(i.trackIndex) + dOrd) !== undefined
       })
     ) {
       dOrd = 0
     }
     A.updateGesture((d) => {
+      let added = false
       for (const item of drag.items) {
         const ev = d.events.find((o) => o.id === item.id)
         if (!ev) continue
         ev.start = item.start + dt
         const from = layouts[item.trackIndex]
         if (!from) continue
-        const target = from.track.kind === anchor?.track.kind ? sameKind[ordinal(item.trackIndex) + dOrd] : from
-        if (target) ev.trackId = target.track.id
+        const target = from.track.kind === anchor?.track.kind ? trackAt(ordinal(item.trackIndex) + dOrd) : from.track.id
+        if (target === drag.newTrackId && !added) {
+          A.insertTrack(d, from.track.kind, d.tracks.length, drag.newTrackId)
+          added = true
+        }
+        if (target) ev.trackId = target
       }
       if (drag.ripple) shiftFollowers(d, drag.ripple, dt)
     })
@@ -765,6 +783,11 @@ function eventToolEntries(ev: TimelineEvent): MenuEntry[] {
   if (partner('video')) entries.push({ label: 'Video FX...', icon: Sparkles, run: () => A.openFxWindow('video', ev.id) })
   if (partner('audio')) entries.push({ label: 'Audio FX...', icon: AudioLines, run: () => A.openFxWindow('audio', ev.id) })
   if (ev.kind === 'video') entries.push({ label: 'Event Mask...', icon: CircleDashed, run: () => A.openMaskEditor(ev.id) })
+  // Also in the time selection's menu: the clip under the pointer is reversed.
+  if (A.canStretch(ev)) {
+    const reversed = !!mediaById(ev.mediaId)?.reverseOf
+    entries.push({ label: reversed ? 'Reverse (play forward again)' : 'Reverse (play backwards)', icon: History, command: 'reverse' })
+  }
   if (partner('video')) {
     entries.push(
       { label: 'Transition In...', icon: Blend, run: () => A.openTransitionWindow(ev.id, 'in') },
@@ -904,10 +927,7 @@ function contextEntries(hit: Hit, at: Flicks): MenuEntry[] {
       entries.push({ label: 'Fill Frame', command: 'fillFrame' }, { label: 'Fit Frame', command: 'fitFrame' }, layoutEntry())
     }
     if (ev.kind === 'video') entries.push(rotateEntry())
-    if (A.canStretch(ev)) {
-      const reversed = !!mediaById(ev.mediaId)?.reverseOf
-      entries.push(playbackRateEntry(ev), { label: reversed ? 'Reverse (play forward again)' : 'Reverse (play backwards)', icon: History, command: 'reverse' })
-    }
+    if (A.canStretch(ev)) entries.push(playbackRateEntry(ev))
     entries.push('separator')
     if (!fadeSide && ev.fadeIn > 0) entries.push(fadeTypeEntry(ev, 'in', 'Fade In Type'))
     if (!fadeSide && ev.fadeOut > 0) entries.push(fadeTypeEntry(ev, 'out', 'Fade Out Type'))

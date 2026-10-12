@@ -25,6 +25,8 @@ export interface FxParam {
   scale?: number
   /** Choice parameter: the value is an index into these labels. */
   options?: string[]
+  /** Color parameter: the value is 0xRRGGBB. */
+  color?: boolean
 }
 
 export interface FxDef {
@@ -64,6 +66,7 @@ const choice = (key: string, label: string, options: string[], def = 0): FxParam
   default: def,
   options
 })
+const color = (key: string, label: string, def: number): FxParam => ({ key, label, min: 0, max: 0xffffff, step: 1, default: def, color: true })
 const center = (): FxParam[] => [pct('cx', 'Center X', 0.5), pct('cy', 'Center Y', 0.5)]
 
 export const LOOKS = ['Vivid', 'Warm', 'Cool', 'Faded', 'Teal & Orange', 'Vintage', 'Noir', 'Cinematic', 'Pastel', 'Golden hour']
@@ -119,8 +122,16 @@ export const VIDEO_FX: FxDef[] = [
     kind: 'video',
     label: 'Chroma Keyer (green screen)',
     category: 'Color',
-    description: 'Makes a green or blue background transparent',
-    params: [num('hue', 'Key hue', 120, 0, 360, 1, '°'), pct('tolerance', 'Tolerance', 0.3), pct('softness', 'Softness', 0.1), pct('spill', 'Spill removal', 0.5)]
+    description: 'Makes one color transparent: a green or blue screen, a white or black background',
+    params: [
+      color('color', 'Key color', 0x00ff00),
+      choice('area', 'Remove', ['Everywhere', 'Background only (keeps it inside the subject)']),
+      // Background only: enclosed areas of the color up to this share of the frame stay (letters of a logo).
+      { key: 'holes', label: 'Keep enclosed areas up to', min: 0, max: 0.1, step: 0.001, default: 0.01, unit: '%', scale: 100 },
+      pct('tolerance', 'Tolerance', 0.3),
+      pct('softness', 'Softness', 0.1),
+      pct('spill', 'Spill removal', 0.5)
+    ]
   },
   // Blur
   { type: 'blur', kind: 'video', label: 'Gaussian Blur', category: 'Blur & Sharpen', description: 'Soft blur', params: [num('radius', 'Radius', 12, 0, 100, 0.5, ' px')] },
@@ -340,7 +351,34 @@ export function activeFx(fx: readonly EventFx[] | undefined, kind: FxKind): Even
 
 export const cloneFx = (fx: readonly EventFx[]): EventFx[] => fx.map((f) => ({ ...f, params: { ...f.params } }))
 
+export const colorToHex = (value: number): string => `#${(Math.round(value) & 0xffffff).toString(16).padStart(6, '0')}`
+
+/** '#rrggbb' (or 'rrggbb') to 0xRRGGBB, null when it is not a color. */
+export function hexToColor(text: string): number | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(text.trim())
+  return m ? parseInt(m[1], 16) : null
+}
+
+/** 0xRRGGBB to red, green and blue in 0-1. */
+export const colorToRgb = (value: number): [number, number, number] => {
+  const v = Math.round(value) & 0xffffff
+  return [(v >> 16) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]
+}
+
+/** Fills in what effects saved by older versions lack (opening a project). */
+export function upgradeFx(fx: EventFx): EventFx {
+  // The Chroma Keyer had a key hue before it had a key color.
+  if (fx.type === 'chromaKey' && typeof fx.params?.hue === 'number' && typeof fx.params.color !== 'number') {
+    const { hue, ...rest } = fx.params
+    const h = (((hue % 360) + 360) % 360) / 60
+    const channel = (n: number): number => Math.round(255 * Math.max(0, Math.min(1, Math.abs(((h + n) % 6) - 3) - 1)))
+    return { ...fx, params: { ...rest, color: (channel(0) << 16) | (channel(4) << 8) | channel(2) } }
+  }
+  return fx
+}
+
 export function formatParam(p: FxParam, value: number): string {
+  if (p.color) return colorToHex(value)
   if (p.options) return p.options[Math.round(value)] ?? ''
   const shown = value * (p.scale ?? 1)
   const digits = p.step * (p.scale ?? 1) >= 1 ? 0 : p.step * (p.scale ?? 1) >= 0.1 ? 1 : 2

@@ -154,6 +154,8 @@ export interface EditorState {
   timeSelection: TimeRange | null
   /** What a tool is about to cut (Remove Silences), shown in red on those tracks. */
   cutPreview: { trackIds: string[]; ranges: TimeRange[] } | null
+  /** Eyedropper of an effect's color parameter: the next click in the Video Preview picks it. */
+  colorPick: { eventId: string; fxId: string; key: string } | null
   /** A render is in progress (the Render As dialog cannot be closed). */
   exporting: boolean
   /** Path of the open .boar file (Electron), or its name in the browser. */
@@ -240,6 +242,7 @@ export const useEditor = create<EditorState>()(() => ({
   editTool: 'normal',
   timeSelection: null,
   cutPreview: null,
+  colorPick: null,
   exporting: false,
   transcripts: noTranscripts,
   savedTranscripts: noTranscripts,

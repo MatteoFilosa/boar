@@ -2621,6 +2621,24 @@ body.dragging-track * {
   inset: 0;
 }
 
+/* Eyedropper over the preview: picks the color of an effect parameter. */
+.color-pick-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  cursor: crosshair;
+}
+
+.color-pick-swatch {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  outline: 1px solid rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
 .xf-box {
   position: absolute;
   border: 1px solid rgba(255, 255, 255, 0.95);

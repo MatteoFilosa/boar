@@ -328,9 +328,9 @@ export function removeUnusedMedia(ids: string[]): number {
 
 // Tracks
 
-function makeTrack(kind: TrackKind, existing: readonly Track[]): Track {
+function makeTrack(kind: TrackKind, existing: readonly Track[], id = uid()): Track {
   return {
-    id: uid(),
+    id,
     kind,
     name: '',
     color: existing.length % TRACK_COLORS.length,
@@ -343,9 +343,12 @@ function makeTrack(kind: TrackKind, existing: readonly Track[]): Track {
   }
 }
 
-/** Video tracks go after the last video track, audio tracks at the bottom. */
-function insertTrack(d: Draft<Project>, kind: TrackKind, index?: number): Track {
-  const track = makeTrack(kind, d.tracks)
+/**
+ * Video tracks go after the last video track, audio tracks at the bottom.
+ * `id`: a fixed id, so a drag can add the same track at every update of its gesture.
+ */
+export function insertTrack(d: Draft<Project>, kind: TrackKind, index?: number, id?: string): Track {
+  const track = makeTrack(kind, d.tracks, id)
   let at = index
   if (at === undefined) {
     if (kind === 'video') {
@@ -1335,12 +1338,14 @@ export function openPanCrop(eventId?: string): void {
   set({ dialog: { kind: 'panCrop', eventId: event.id } })
 }
 
-export function setPanCropKeys(eventId: string, keys: PanCropKey[]): void {
+/** `coalesce`: changes with the same key in a row (arrow key nudges) are one undo step. */
+export function setPanCropKeys(eventId: string, keys: PanCropKey[], coalesce?: string): void {
   const apply = (d: Draft<Project>): void => {
     const event = d.events.find((e) => e.id === eventId)
     if (event) event.panCrop = keys.map((k) => ({ ...k }))
   }
   if (gestureBase) updateGesture(apply)
+  else if (coalesce) commitCoalesced(coalesce, apply)
   else commit(apply)
 }
 
@@ -2203,7 +2208,7 @@ export function openFxWindow(kind: FxKind, eventId?: string, focus?: string): vo
 }
 
 /** Adds an effect to the given events (their grouped partner when the kind differs). Returns the new effect id of the first one. */
-export function addFx(eventIds: string[], type: string): string | null {
+export function addFx(eventIds: string[], type: string, params?: Record<string, number>): string | null {
   const def = fxDef(type)
   if (!def) return null
   const { project } = get()
@@ -2218,6 +2223,7 @@ export function addFx(eventIds: string[], type: string): string | null {
       const event = d.events.find((e) => e.id === id)
       const fx = createFx(type)
       if (!event || !fx) continue
+      if (params) Object.assign(fx.params, params)
       event.fx.push(fx)
       first ??= fx.id
     }
@@ -2272,6 +2278,16 @@ export function setFxParam(eventId: string, fxId: string, key: string, value: nu
     const fx = d.events.find((e) => e.id === eventId)?.fx.find((f) => f.id === fxId)
     if (fx) fx.params[key] = value
   })
+}
+
+/** Eyedropper: the next click in the Video Preview sets this color parameter (Esc cancels). */
+export function startColorPick(eventId: string, fxId: string, key: string): void {
+  set({ colorPick: { eventId, fxId, key } })
+  setStatus('Click the color to pick in the Video Preview (Esc cancels)')
+}
+
+export function endColorPick(): void {
+  if (get().colorPick) set({ colorPick: null })
 }
 
 /** Sets several parameters at once (presets): one undo step. */

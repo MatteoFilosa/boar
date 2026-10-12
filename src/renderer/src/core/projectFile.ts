@@ -5,6 +5,7 @@ import { emptyProject } from './store'
 import { normalizeText } from './text'
 import { normalizeMask } from './mask'
 import { DEFAULT_FADE_CURVE, clampRate, isFadeCurve } from './fades'
+import { upgradeFx } from './fx'
 
 /** On-disk format of a .boar project. Media are referenced by absolute path. */
 export interface ProjectFileV1 {
@@ -89,7 +90,7 @@ export function parseProject(json: string): {
         panCrop: e.panCrop ?? [],
         text: e.text ? normalizeText(e.text) : null,
         mask: e.mask ? normalizeMask(e.mask) : null,
-        fx: Array.isArray(e.fx) ? e.fx : [],
+        fx: Array.isArray(e.fx) ? e.fx.map(upgradeFx) : [],
         envelope: Array.isArray(e.envelope) ? e.envelope : [],
         transition: e.transition ?? null,
         transitionOut: e.transitionOut ?? null

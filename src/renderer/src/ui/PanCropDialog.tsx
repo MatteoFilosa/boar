@@ -44,9 +44,19 @@ interface ViewMap {
   scale: number
   ox: number
   oy: number
+  /** Canvas size (CSS pixels) the view was fitted to. */
+  cw: number
+  ch: number
 }
 
 type DragMode = 'move' | 'scale' | 'rotate'
+
+/** Shift while moving: the frame follows the pointer this much slower, for precise placement. */
+const FINE_DRAG = 0.2
+/** Arrow keys move the frame by one output pixel, ten with Shift. */
+const NUDGE_PX = 1
+const NUDGE_SHIFT_PX = 10
+const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
 
 /** Screen pixels around a corner that scale (on it) or rotate (just outside the frame). */
 const SCALE_RADIUS = 10
@@ -141,11 +151,16 @@ function PanCropWindow({
   cursor: Flicks
 }): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const viewRef = useRef<ViewMap>({ scale: 1, ox: 0, oy: 0 })
+  const viewRef = useRef<ViewMap>({ scale: 1, ox: 0, oy: 0, cw: 0, ch: 0 })
   const dragRef = useRef<{
     mode: DragMode
     x: number
     y: number
+    /** Move: last pointer position and the frame center so far (source pixels; Shift slows it down). */
+    lastX: number
+    lastY: number
+    cx: number
+    cy: number
     start: PanCropState
     dist: number
     /** Rotation: last pointer angle around the frame center and the unwrapped turn so far (radians). */
@@ -175,8 +190,11 @@ function PanCropWindow({
   const outH = settings.height
   const video = useSourceFrame(media, flicksToSeconds(srcTime), redraw)
 
-  /** Writes a change at the cursor, creating a keyframe there when the event already animates. */
-  const edit = (patch: Partial<PanCropState>): void => {
+  /**
+   * Writes a change at the cursor, creating a keyframe there when the event
+   * already animates. Changes with the same `coalesce` key in a row are one undo step.
+   */
+  const edit = (patch: Partial<PanCropState>, coalesce?: string): void => {
     const keys = event.panCrop
     const next = { ...state, ...patch }
     let result: PanCropKey[]
@@ -184,8 +202,40 @@ function PanCropWindow({
     else if (keys.length === 1 && !keyHere) result = [{ ...keys[0], ...patch }]
     else if (keyHere) result = keys.map((k) => (k === keyHere ? { ...k, ...patch } : k))
     else result = upsertKey(keys, { ...next, time: srcTime, ease: 'smooth' })
-    A.setPanCropKeys(event.id, result)
+    A.setPanCropKeys(event.id, result, coalesce)
   }
+
+  // Arrow keys move the frame by one output pixel (Shift: ten) while this window
+  // was the last thing clicked; with Ctrl or Alt they keep their usual commands.
+  const nudgeRef = useRef<(dx: number, dy: number) => void>(() => undefined)
+  nudgeRef.current = (dx, dy) => {
+    const step = frameRect(state, sw, sh, outW, outH).w / outW
+    edit({ cx: state.cx + (dx * step) / sw, cy: state.cy + (dy * step) / sh }, `panCropNudge:${event.id}`)
+  }
+  useEffect(() => {
+    let active = false
+    const onPointerDown = (e: PointerEvent): void => {
+      const win = canvasRef.current?.closest('.floating-window')
+      active = !!win && win.contains(e.target as Node)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (!active || e.ctrlKey || e.metaKey || e.altKey) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      const dir = ARROWS[e.key]
+      if (!dir) return
+      const px = e.shiftKey ? NUDGE_SHIFT_PX : NUDGE_PX
+      nudgeRef.current(dir[0] * px, dir[1] * px)
+      e.preventDefault()
+      e.stopImmediatePropagation()
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [])
 
   // Workspace drawing
   useEffect(() => {
@@ -207,10 +257,29 @@ function PanCropWindow({
     const minY = Math.min(...ys)
     const maxY = Math.max(...ys)
     const pad = 24
-    const scale = Math.min((cw - pad * 2) / (maxX - minX), (ch - pad * 2) / (maxY - minY))
-    const ox = (cw - (maxX - minX) * scale) / 2 - minX * scale
-    const oy = (ch - (maxY - minY) * scale) / 2 - minY * scale
-    viewRef.current = { scale, ox, oy }
+    const fitScale = Math.min((cw - pad * 2) / (maxX - minX), (ch - pad * 2) / (maxY - minY))
+    // The view stays put while the frame is dragged (refitting it under the pointer
+    // made a frame larger than the picture run away) and while it still shows
+    // everything well; otherwise it fits the picture and the frame again.
+    const held = viewRef.current
+    const inView =
+      held.cw === cw &&
+      held.ch === ch &&
+      held.scale >= fitScale * 0.75 &&
+      held.ox + minX * held.scale >= 0 &&
+      held.oy + minY * held.scale >= 0 &&
+      held.ox + maxX * held.scale <= cw &&
+      held.oy + maxY * held.scale <= ch
+    if (!(dragRef.current && held.cw === cw && held.ch === ch) && !inView) {
+      viewRef.current = {
+        scale: fitScale,
+        ox: (cw - (maxX - minX) * fitScale) / 2 - minX * fitScale,
+        oy: (ch - (maxY - minY) * fitScale) / 2 - minY * fitScale,
+        cw,
+        ch
+      }
+    }
+    const { scale, ox, oy } = viewRef.current
     const sx = (x: number): number => ox + x * scale
     const sy = (y: number): number => oy + y * scale
 
@@ -293,6 +362,10 @@ function PanCropWindow({
       mode: hitMode(f, x, y, viewRef.current.scale).mode,
       x,
       y,
+      lastX: x,
+      lastY: y,
+      cx: f.cx,
+      cy: f.cy,
       start: { ...state },
       dist: Math.max(1, Math.hypot(x - f.cx, y - f.cy)),
       angle: Math.atan2(y - f.cy, x - f.cx),
@@ -321,7 +394,13 @@ function PanCropWindow({
       drag.angle = a
       edit({ rotation: snapAngle(drag.start.rotation + (drag.turned * 180) / Math.PI, e) })
     } else if (drag.mode === 'move') {
-      edit({ cx: drag.start.cx + (x - drag.x) / sw, cy: drag.start.cy + (y - drag.y) / sh })
+      // Step by step, so pressing or releasing Shift mid-drag does not make the frame jump.
+      const k = e.shiftKey ? FINE_DRAG : 1
+      drag.cx += (x - drag.lastX) * k
+      drag.cy += (y - drag.lastY) * k
+      drag.lastX = x
+      drag.lastY = y
+      edit({ cx: drag.cx / sw, cy: drag.cy / sh })
     } else {
       const startFrame = frameRect(drag.start, sw, sh, outW, outH)
       const ratio = Math.hypot(x - startFrame.cx, y - startFrame.cy) / drag.dist
@@ -333,6 +412,8 @@ function PanCropWindow({
     if (!dragRef.current) return
     dragRef.current = null
     A.endGesture()
+    // The view held still during the drag: fit it again if the frame left it.
+    redraw()
   }
 
   const f = frameRect(state, sw, sh, outW, outH)
@@ -364,6 +445,7 @@ function PanCropWindow({
               Reset
             </button>
           </div>
+          <p className="dim pc-hint">Arrow keys move the frame by 1 pixel (Shift: 10). Shift+drag moves it slowly.</p>
           <div className="pc-group">Keyframe at cursor</div>
           {keyHere ? (
             <label className="pc-field" title="How the framing moves from this keyframe to the next one">
@@ -394,6 +476,7 @@ function PanCropWindow({
           <canvas
             ref={canvasRef}
             className="pc-canvas"
+            title="Drag to move the frame (Shift: slowly) · corners: size · just outside a corner: rotate · arrow keys: 1 pixel (Shift: 10)"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}

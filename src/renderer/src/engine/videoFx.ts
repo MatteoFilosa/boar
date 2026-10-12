@@ -1,4 +1,4 @@
-import { type EventFx, fxParam } from '../core/fx'
+import { type EventFx, colorToRgb, fxParam } from '../core/fx'
 
 // Video FX in WebGL2: the event is drawn on a 2D canvas, uploaded as a texture,
 // run through the effect passes (ping-pong framebuffers) and drawn back. Colors
@@ -24,7 +24,7 @@ uniform float uTime;
 uniform float uScale;
 uniform float uV[12];
 uniform sampler2D uAux;
-/** Person confidence (Remove Background); the mask is stored top row first. */
+/** Person confidence (Remove Background), or the keyed background (Chroma Keyer); the mask is stored top row first. */
 float personAt(vec2 uv) { return texture(uAux, vec2(uv.x, 1.0 - uv.y)).r; }
 
 vec4 tex(vec2 uv) { return texture(uTex, uv); }
@@ -166,12 +166,21 @@ const PROGRAMS: Record<string, string> = {
   }`,
 
   chromaKey: `void main() {
-    vec4 c = tex(vUv); vec3 rgb = unpremul(c);
-    vec3 hsv = rgb2hsv(clamp(rgb, 0.0, 1.0));
-    float dh = abs(fract(hsv.x - uV[0] / 360.0 + 0.5) - 0.5) * 2.0;
-    float d = dh + (1.0 - smoothstep(0.12, 0.35, hsv.y)) + (1.0 - smoothstep(0.08, 0.25, hsv.z));
-    float a = smoothstep(uV[1], uV[1] + uV[2] + 0.001, d);
-    float spill = uV[3] * (1.0 - smoothstep(0.0, uV[1] + uV[2] + 0.25, dh)) * smoothstep(0.1, 0.3, hsv.y);
+    vec4 c = tex(vUv); vec3 rgb = clamp(unpremul(c), 0.0, 1.0);
+    vec3 key = vec3(uV[3], uV[4], uV[5]);
+    vec3 khsv = rgb2hsv(key);
+    vec3 hsv = rgb2hsv(rgb);
+    // Saturated keys (green and blue screens) go by hue, which shading barely changes.
+    float dh = abs(fract(hsv.x - khsv.x + 0.5) - 0.5) * 2.0;
+    float byHue = dh + (1.0 - smoothstep(0.12, 0.35, hsv.y)) + (1.0 - smoothstep(0.08, 0.25, hsv.z));
+    // Pale, grey or dark keys (a white background) have no hue to go by: color distance.
+    float byColor = distance(rgb, key) * 1.2;
+    float hueKey = smoothstep(0.25, 0.5, khsv.y);
+    float d = mix(byColor, byHue, hueKey);
+    float a = smoothstep(uV[0], uV[0] + uV[1] + 0.001, d);
+    // Background only: the color stays where it is not connected to the edges (engine/keyMask.ts).
+    if (uV[6] > 0.5) a = mix(1.0, a, personAt(vUv));
+    float spill = uV[2] * hueKey * (1.0 - smoothstep(0.0, uV[0] + uV[1] + 0.25, dh)) * smoothstep(0.1, 0.3, hsv.y);
     rgb = mix(rgb, vec3(luma(rgb)), clamp(spill, 0.0, 1.0));
     outColor = premul(rgb, c.a * a);
   }`,
@@ -478,12 +487,12 @@ interface Pass {
 }
 
 /** The passes of one effect. `scale` converts px-at-1080p parameters to output pixels. */
-function passesFor(fx: EventFx, scale: number, hasMask: boolean): Pass[] {
+function passesFor(fx: EventFx, scale: number, mask: VideoFxMask['kind'] | null): Pass[] {
   const p = (key: string): number => fxParam(fx, key)
   switch (fx.type) {
     case 'removeBg': {
       // Without a mask yet (model loading) the picture passes through unchanged.
-      if (!hasMask) return []
+      if (mask !== 'person') return []
       const edge = [p('threshold'), p('softness')]
       const mode = Math.round(p('mode'))
       if (mode === 0) return [{ program: 'bgCut', values: edge }]
@@ -515,7 +524,12 @@ function passesFor(fx: EventFx, scale: number, hasMask: boolean): Pass[] {
     case 'posterize':
       return [{ program: 'posterize', values: [p('levels')] }]
     case 'chromaKey':
-      return [{ program: 'chromaKey', values: [p('hue'), p('tolerance'), p('softness'), p('spill')] }]
+      return [
+        {
+          program: 'chromaKey',
+          values: [p('tolerance'), p('softness'), p('spill'), ...colorToRgb(p('color')), mask === 'key' && p('area') === 1 ? 1 : 0]
+        }
+      ]
     case 'blur': {
       const r = p('radius') * scale
       return [
@@ -719,7 +733,7 @@ class FxRenderer {
   run(source: TexImageSource, fx: EventFx[], width: number, height: number, time: number, mask?: VideoFxMask | null): OffscreenCanvas | null {
     const gl = this.gl
     const scale = Math.min(width, height) / 1080
-    const effects = fx.map((f) => passesFor(f, scale, !!mask)).filter((p) => p.length > 0)
+    const effects = fx.map((f) => passesFor(f, scale, mask ? (mask.kind ?? 'person') : null)).filter((p) => p.length > 0)
     if (effects.length === 0) return null
     if (mask) {
       gl.activeTexture(gl.TEXTURE2)
@@ -792,6 +806,8 @@ export interface VideoFxMask {
   data: Uint8Array
   width: number
   height: number
+  /** Where the person is (Remove Background, the default) or the keyed background (Chroma Keyer). */
+  kind?: 'person' | 'key'
 }
 
 export function applyVideoFx(

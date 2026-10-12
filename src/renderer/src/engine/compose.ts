@@ -6,9 +6,10 @@ import { eventsOnTrack, sourceTime, videoAlpha } from '../core/timeline'
 import type { Project, TimelineEvent } from '../core/types'
 import { imageAt } from '../media/cache'
 import { type EventMask, type MaskPoint, maskCanvas, pathAt, shapeOutline } from '../core/mask'
-import { activeFx } from '../core/fx'
+import { activeFx, fxParam } from '../core/fx'
 import { applyTransition, applyVideoFx } from './videoFx'
 import { personMask } from './vision'
+import { edgeKeyMask } from './keyMask'
 import { type ActiveTransition, transitionAt } from '../core/transitions'
 
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
@@ -118,8 +119,14 @@ function drawEvent(
   if (!drawEventContent(s, ev, t, width, height, 1, frameFor)) return false
   let out: CanvasImageSource = scratch
   const local = flicksToSeconds(t - ev.start)
-  // Remove Background needs where the person is in this frame.
-  const mask = fx.some((f) => f.type === 'removeBg') ? personMask(scratch, ev.id, local) : null
+  // Remove Background needs where the person is in this frame, a Chroma Keyer
+  // that keeps its color inside the subject where the background is (one mask per chain).
+  const edgeKey = fx.find((f) => f.type === 'chromaKey' && fxParam(f, 'area') === 1)
+  const mask = fx.some((f) => f.type === 'removeBg')
+    ? personMask(scratch, ev.id, local)
+    : edgeKey
+      ? edgeKeyMask(scratch, edgeKey)
+      : null
   const processed = fx.length > 0 ? applyVideoFx(scratch, fx, width, height, local, mask) : null
   if (processed) out = processed
   if (ev.mask) {

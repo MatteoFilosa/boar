@@ -1,7 +1,9 @@
 import { useEditor, mediaById, type PreviewQuality } from '../core/store'
 import { onUserSeek, setStatus } from '../core/actions'
 import { type Flicks, flicksToSeconds, secondsToFlicks } from '../core/time'
-import { audioGain, eventsByTrack, projectEnd, sourceTime } from '../core/timeline'
+import { audioGain, eventEnd, eventsByTrack, projectEnd, sourceTime } from '../core/timeline'
+import { panCropAt, sourceToOutput } from '../core/pancrop'
+import { imageAt } from '../media/cache'
 import type { MediaItem, TimelineEvent, Track } from '../core/types'
 import { composeFrame } from './compose'
 import { type AudioFxChain, audioFxKey, buildAudioFxChain, prepareAudioFx } from './audioFx'
@@ -24,10 +26,17 @@ export const QUALITY_SCALE: Record<PreviewQuality, number> = {
 
 /**
  * Keeps a playing element on the timeline clock without fighting its own
- * seeks: a correction aims where the timeline will be when the seek lands
- * (seeks of long files or files read through the media protocol can take
- * longer than the drift allowed), and waits before the next one. Correcting to
- * where the timeline was could seek again and again and never play.
+ * seeks. Elements seek only while paused: a seek aims where the timeline will
+ * be when it lands (seeks of long files or files read through the media
+ * protocol can take longer than the drift allowed), and the element starts
+ * when the timeline reaches it. Seeking a playing element left a gap in the
+ * sound and landed behind the timeline, which took another seek.
+ *
+ * The currentTime of a sound played through Web Audio moves in steps and reads
+ * up to a quarter of a second behind, then catches up: judged reading by
+ * reading, a correction fired about once a second and the sound dropped out
+ * each time. A playing element is judged by its least late reading over a
+ * short window instead; after a jump of the timeline one reading decides.
  */
 interface Drift {
   /** When the running seek started (performance.now), 0 = none. */
@@ -36,9 +45,18 @@ interface Drift {
   seekLag: number
   /** No new correction before this time (performance.now). */
   holdUntil: number
+  /** When the element started playing (performance.now). */
+  since: number
+  /** Recent readings while playing: time (performance.now) and offset from the timeline (seconds), in pairs. */
+  readings: number[]
+  /** The timeline clock jumped: the next reading decides at once. */
+  jumped: boolean
 }
 
-const newDrift = (): Drift => ({ seekStart: 0, seekLag: 0.05, holdUntil: 0 })
+const newDrift = (): Drift => ({ seekStart: 0, seekLag: 0.05, holdUntil: 0, since: 0, readings: [], jumped: false })
+
+/** How long a playing element is watched before a drift counts (ms). */
+const DRIFT_WINDOW = 600
 
 function seekTo(el: HTMLMediaElement, drift: Drift, seconds: number): void {
   drift.seekStart = performance.now()
@@ -50,13 +68,58 @@ function seekLanded(drift: Drift): void {
   drift.seekStart = 0
 }
 
-/** Seeks a playing element that drifted from `src` by more than `tolerance` seconds. */
-function correctDrift(el: HTMLMediaElement, drift: Drift, src: number, rate: number, tolerance: number): void {
-  if (el.seeking || el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return
-  const now = performance.now()
-  if (now < drift.holdUntil || Math.abs(el.currentTime - src) <= tolerance * Math.max(1, rate)) return
-  drift.holdUntil = now + 1000
-  seekTo(el, drift, src + drift.seekLag * rate)
+/** Off by more than this in one reading (seconds of source), a playing element is cued again at once. */
+const JUMP = 1
+/** A cued element starts when the timeline is this close to it (seconds; a tick is about 17 ms). */
+const START_WINDOW = 0.025
+
+/** Whether a playing element is off the timeline by more than `limit` seconds. */
+function drifted(drift: Drift, off: number, limit: number, now: number): boolean {
+  if (drift.jumped) {
+    drift.jumped = false
+    drift.readings.length = 0
+    // Still in step: watch it again from here.
+    drift.since = now
+    return Math.abs(off) > limit
+  }
+  if (Math.abs(off) > JUMP) return true
+  const readings = drift.readings
+  readings.push(now, off)
+  let first = 0
+  while (first < readings.length && readings[first] < now - DRIFT_WINDOW) first += 2
+  if (first > 0) readings.splice(0, first)
+  if (now - drift.since < DRIFT_WINDOW || now < drift.holdUntil) return false
+  let best = -Infinity
+  for (let i = 1; i < readings.length; i += 2) best = Math.max(best, readings[i])
+  return Math.abs(best) > limit
+}
+
+/**
+ * Plays `el` at source time `src` (where the timeline is now). A playing
+ * element that drifted by more than `tolerance` seconds is paused and cued
+ * again; a paused one seeks ahead and starts when the timeline gets there.
+ */
+function playInStep(el: HTMLMediaElement, drift: Drift, src: number, rate: number, tolerance: number): void {
+  const speed = Math.max(1, rate)
+  if (!el.paused) {
+    if (el.seeking || el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return
+    const now = performance.now()
+    if (!drifted(drift, el.currentTime - src, tolerance * speed, now)) return
+    drift.holdUntil = now + 1000
+    el.pause()
+  }
+  if (el.seeking) return
+  const ahead = el.currentTime - src
+  if (Math.abs(ahead) <= START_WINDOW * speed) {
+    drift.since = performance.now()
+    drift.readings.length = 0
+    drift.jumped = false
+    void el.play().catch(() => undefined)
+    return
+  }
+  // Cued ahead: wait for the timeline (the element keeps its frame on screen meanwhile).
+  if (ahead > 0 && ahead <= (drift.seekLag + 0.25) * speed) return
+  seekTo(el, drift, src + (drift.seekLag + 0.05) * rate)
 }
 
 interface VideoSlot {
@@ -98,6 +161,38 @@ const RELEASE_AFTER_MS = 10_000
 const SPARE_AUDIO_PER_MEDIA = 3
 const SPARE_AUDIO_MS = 120_000
 const dbToGain = (db: number): number => (db <= -60 ? 0 : Math.pow(10, db / 20))
+
+/** Side of the square an eyedropper averages, in source pixels (evens out noise and compression). */
+const PICK_SIZE = 5
+let pickCanvas: CanvasRenderingContext2D | null = null
+
+/** Average color (0xRRGGBB) of the pixels around (x, y) in `source`, null where it is transparent. */
+function averageColor(source: CanvasImageSource, x: number, y: number): number | null {
+  if (!pickCanvas) {
+    const canvas = document.createElement('canvas')
+    canvas.width = PICK_SIZE
+    canvas.height = PICK_SIZE
+    pickCanvas = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D
+  }
+  const ctx = pickCanvas
+  ctx.clearRect(0, 0, PICK_SIZE, PICK_SIZE)
+  const half = PICK_SIZE / 2
+  ctx.drawImage(source, x - half, y - half, PICK_SIZE, PICK_SIZE, 0, 0, PICK_SIZE, PICK_SIZE)
+  const data = ctx.getImageData(0, 0, PICK_SIZE, PICK_SIZE).data
+  let r = 0
+  let g = 0
+  let b = 0
+  let w = 0
+  for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3] / 255
+    r += data[i] * a
+    g += data[i + 1] * a
+    b += data[i + 2] * a
+    w += a
+  }
+  if (w < 0.5) return null
+  return (Math.round(r / w) << 16) | (Math.round(g / w) << 8) | Math.round(b / w)
+}
 
 class PreviewEngine {
   private canvas: HTMLCanvasElement | null = null
@@ -143,9 +238,18 @@ class PreviewEngine {
       if (useEditor.getState().playing) {
         this.playStartTime = t
         this.playStartWall = performance.now()
+        this.clockJumped()
       }
     })
     requestAnimationFrame(this.tick)
+  }
+
+  /** The timeline clock jumped while playing: the playing elements follow at once. */
+  private clockJumped(): void {
+    for (const slot of [...this.videos.values(), ...this.audios.values()]) {
+      slot.drift.jumped = true
+      slot.drift.holdUntil = 0
+    }
   }
 
   attach(canvas: HTMLCanvasElement): void {
@@ -183,6 +287,8 @@ class PreviewEngine {
     this.returnTo = start
     this.playStartTime = start
     this.playStartWall = performance.now()
+    // Play from Start while playing: elements still play where the timeline was.
+    this.clockJumped()
     useEditor.setState({ playing: true, cursor: start })
   }
 
@@ -231,6 +337,7 @@ class PreviewEngine {
           t = range.start
           this.playStartTime = range.start
           this.playStartWall = performance.now()
+          this.clockJumped()
         } else {
           useEditor.setState({ playing: false, cursor: range.end })
           this.syncMedia(range.end, false)
@@ -349,12 +456,7 @@ class PreviewEngine {
     const el = slot.el
     if (play) {
       if (el.playbackRate !== rate) el.playbackRate = rate
-      if (el.paused) {
-        if (Math.abs(el.currentTime - src) > 0.04) seekTo(el, slot.drift, src)
-        void el.play().catch(() => undefined)
-      } else {
-        correctDrift(el, slot.drift, src, rate, 0.2)
-      }
+      playInStep(el, slot.drift, src, rate, 0.2)
       return
     }
     if (!el.paused) el.pause()
@@ -491,17 +593,13 @@ class PreviewEngine {
     if (el.playbackRate !== rate) el.playbackRate = rate
     if (!active) {
       if (!el.paused) el.pause()
-      if (Math.abs(el.currentTime - src) > 0.05) el.currentTime = src
+      // Close enough that play starts without another seek.
+      if (!el.seeking && Math.abs(el.currentTime - src) > START_WINDOW) seekTo(el, slot.drift, src)
       slot.gain.gain.value = 0
       return
     }
     slot.gain.gain.setTargetAtTime(gain, graph.ctx.currentTime, 0.012)
-    if (el.paused) {
-      if (Math.abs(el.currentTime - src) > 0.04) seekTo(el, slot.drift, src)
-      void el.play().catch(() => undefined)
-    } else {
-      correctDrift(el, slot.drift, src, rate, 0.15)
-    }
+    playInStep(el, slot.drift, src, rate, 0.15)
   }
 
   /** The event no longer plays: its element waits, loaded, for the next event of the same file. */
@@ -547,6 +645,41 @@ class PreviewEngine {
       }
       this.meter[c] = Math.max(peak, this.meter[c] * 0.9)
     }
+  }
+
+  /**
+   * Eyedropper: the color of the event's own picture (before its effects) at
+   * output point (x, y), in project pixels, at the cursor. Where the event shows
+   * no picture, the color of the preview as it looks.
+   */
+  pickColor(eventId: string, x: number, y: number): number | null {
+    const { project, cursor } = useEditor.getState()
+    const W = project.settings.width
+    const H = project.settings.height
+    const ev = project.events.find((e) => e.id === eventId)
+    const media = ev && !ev.text && ev.start <= cursor && cursor < eventEnd(ev) ? mediaById(ev.mediaId) : undefined
+    if (ev && media?.width && media.height) {
+      const src = sourceTime(ev, cursor)
+      const [px, py] = sourceToOutput(panCropAt(ev.panCrop, src), media.width, media.height, W, H).inverse(x, y)
+      if (px >= 0 && py >= 0 && px < media.width && py < media.height) {
+        if (media.kind === 'image') {
+          const bitmap = imageAt(media.id, flicksToSeconds(src))
+          const color = bitmap ? averageColor(bitmap, px, py) : null
+          if (color !== null) return color
+        } else {
+          // The element may play a proxy, smaller than the file.
+          const el = this.videos.get(ev.id)?.el
+          if (el && el.readyState >= 2 && el.videoWidth) {
+            const k = el.videoWidth / media.width
+            const color = averageColor(el, px * k, py * k)
+            if (color !== null) return color
+          }
+        }
+      }
+    }
+    if (!this.canvas) return null
+    const k = this.canvas.width / W
+    return averageColor(this.canvas, x * k, y * k)
   }
 
   // Compositing

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
 import { textBounds } from '../core/text'
@@ -90,6 +90,25 @@ type Corner = 'nw' | 'ne' | 'sw' | 'se'
 type Handle = 'move' | 'rotate' | Corner | 'w' | 'e'
 const CORNERS: Corner[] = ['nw', 'ne', 'sw', 'se']
 const SNAP = 0.012
+/** Shift while moving: the picture follows the pointer this much slower. */
+const FINE_DRAG = 0.2
+const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
+
+/** Moves the event by (dx, dy) project pixels; nudges in a row are one undo step. */
+function nudge(ev: TimelineEvent, t: Flicks, dx: number, dy: number, W: number, H: number): void {
+  const b = eventBox(ev, t, W, H)
+  if (!b) return
+  const state = panCropAt(ev.panCrop, sourceTime(ev, t))
+  const keys = ev.text ? null : keysWith(ev, t, stateFor(ev, b.cx + dx, b.cy + dy, state.zoom, state.rotation, W, H))
+  A.commitCoalesced(`nudge:${ev.id}`, (d) => {
+    const draft = d.events.find((o) => o.id === ev.id)
+    if (!draft) return
+    if (draft.text) {
+      draft.text.x += dx / W
+      draft.text.y += dy / H
+    } else if (keys) draft.panCrop = keys
+  })
+}
 
 /** `width`: displayed width of the preview frame in CSS pixels. */
 export function TransformOverlay({ width }: { width: number }): React.JSX.Element | null {
@@ -104,6 +123,34 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
   const W = project.settings.width
   const H = project.settings.height
   const k = width / W
+
+  // Arrow keys move the picture by one pixel (Shift: ten) after it was clicked
+  // in the preview, until something else is clicked.
+  useEffect(() => {
+    let active = false
+    const onPointerDown = (e: PointerEvent): void => {
+      active = !!ref.current && ref.current.contains(e.target as Node)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      const dir = ARROWS[e.key]
+      if (!active || !dir || e.ctrlKey || e.metaKey || e.altKey) return
+      const s = useEditor.getState()
+      if (s.playing || s.dialog?.kind === 'panCrop') return
+      const target = editableEvents(s.project, s.selection, s.cursor)[0]
+      if (!target) return
+      const px = e.shiftKey ? 10 : 1
+      nudge(target, s.cursor, dir[0] * px, dir[1] * px, s.project.settings.width, s.project.settings.height)
+      e.preventDefault()
+      e.stopImmediatePropagation()
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [])
+
   if (playing || dialog?.kind === 'panCrop' || width === 0) return null
 
   const target = editableEvents(project, selection, cursor)[0]
@@ -131,11 +178,21 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
     // Rotation: the pointer's angle around the center, unwrapped so it can turn more than once.
     let lastAngle = Math.atan2(start.y - b0.cy, start.x - b0.cx)
     let turned = 0
+    // Move: the offset so far, built step by step so Shift can slow it down mid-drag.
+    let last = start
+    let moved = { x: 0, y: 0 }
     A.beginGesture()
     const move = (pe: PointerEvent): void => {
       const p = toProject(pe)
       let dx = p.x - start.x
       let dy = p.y - start.y
+      if (handle === 'move') {
+        const f = pe.shiftKey ? FINE_DRAG : 1
+        moved = { x: moved.x + (p.x - last.x) * f, y: moved.y + (p.y - last.y) * f }
+        last = p
+        dx = moved.x
+        dy = moved.y
+      }
       if (handle === 'rotate') {
         const a = Math.atan2(p.y - b0.cy, p.x - b0.cx)
         let step = a - lastAngle
@@ -254,7 +311,7 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
           }}
           onPointerDown={(e) => e.button === 0 && startDrag(e, target, 'move')}
           onDoubleClick={() => (target.text ? A.openTextEditor(target.id) : A.openPanCrop(target.id))}
-          title="Drag to move (Alt: no snapping) · corners: scale · just outside a corner: rotate (Shift: 15° steps) · double-click: edit"
+          title="Drag to move (Shift: slowly, Alt: no snapping) · arrow keys: 1 pixel (Shift: 10) · corners: scale · just outside a corner: rotate (Shift: 15° steps) · double-click: edit"
         >
           {CORNERS.map((c) => (
             <div

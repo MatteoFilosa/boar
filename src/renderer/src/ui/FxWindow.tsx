@@ -1,10 +1,22 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, Plus, Power, RotateCcw, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Pipette, Plus, Power, RotateCcw, X } from 'lucide-react'
 import { FloatingWindow } from './FloatingWindow'
 import { type MenuEntry, openContextMenu } from './ContextMenu'
 import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
-import { AUDIO_FX, EQ_BANDS, type EventFx, type FxDef, type FxParam, VIDEO_FX, formatParam, fxDef, fxParam } from '../core/fx'
+import {
+  AUDIO_FX,
+  EQ_BANDS,
+  type EventFx,
+  type FxDef,
+  type FxParam,
+  VIDEO_FX,
+  colorToHex,
+  formatParam,
+  fxDef,
+  fxParam,
+  hexToColor
+} from '../core/fx'
 import { FxThumb } from './FxBrowser'
 
 /** Add-effect menu grouped by category. */
@@ -17,7 +29,47 @@ export function fxMenuEntries(library: FxDef[], add: (type: string) => void): Me
   return entries
 }
 
-function ParamControl({ p, value, onChange }: { p: FxParam; value: number; onChange: (v: number) => void }): React.JSX.Element {
+function ParamControl({
+  p,
+  value,
+  onChange,
+  onPick,
+  picking
+}: {
+  p: FxParam
+  value: number
+  onChange: (v: number) => void
+  /** Color parameters: start the eyedropper. */
+  onPick?: () => void
+  picking?: boolean
+}): React.JSX.Element {
+  if (p.color) {
+    return (
+      <div className="te-field">
+        <span>{p.label}</span>
+        <div className="te-control">
+          <input
+            type="color"
+            value={colorToHex(value)}
+            onChange={(e) => {
+              const color = hexToColor(e.target.value)
+              if (color !== null) onChange(color)
+            }}
+          />
+          {onPick && (
+            <button
+              className={`tool-btn${picking ? ' active' : ''}`}
+              title={picking ? 'Click the color in the Video Preview (Esc cancels)' : 'Pick the color in the Video Preview'}
+              onClick={onPick}
+            >
+              <Pipette size={14} />
+            </button>
+          )}
+          <span className="te-dim te-val fx-val">{picking ? 'Click the preview' : colorToHex(value)}</span>
+        </div>
+      </div>
+    )
+  }
   if (p.options) {
     return (
       <label className="te-field">
@@ -102,6 +154,7 @@ function GraphicEq({
 export function FxWindow({ eventId, focus }: { eventId: string; focus?: string }): React.JSX.Element | null {
   const event = useEditor((s) => s.project.events.find((e) => e.id === eventId))
   const others = useEditor((s) => s.selection.filter((id) => id !== eventId).length)
+  const colorPick = useEditor((s) => s.colorPick)
   const [selected, setSelected] = useState<string | null>(focus ?? null)
   useEffect(() => {
     if (focus) setSelected(focus)
@@ -109,6 +162,8 @@ export function FxWindow({ eventId, focus }: { eventId: string; focus?: string }
   useEffect(() => {
     if (!event) A.closeDialog()
   }, [event])
+  // An eyedropper started here ends with the window (or when it shows another event).
+  useEffect(() => () => A.endColorPick(), [eventId])
   if (!event) return null
 
   const kind = event.kind
@@ -203,7 +258,18 @@ export function FxWindow({ eventId, focus }: { eventId: string; focus?: string }
                   />
                 ) : (
                   def.params.map((p) => (
-                    <ParamControl key={p.key} p={p} value={fxParam(current, p.key)} onChange={(v) => A.setFxParam(event.id, current.id, p.key, v)} />
+                    <ParamControl
+                      key={p.key}
+                      p={p}
+                      value={fxParam(current, p.key)}
+                      onChange={(v) => A.setFxParam(event.id, current.id, p.key, v)}
+                      onPick={
+                        kind === 'video'
+                          ? () => (colorPick?.fxId === current.id && colorPick.key === p.key ? A.endColorPick() : A.startColorPick(event.id, current.id, p.key))
+                          : undefined
+                      }
+                      picking={colorPick?.fxId === current.id && colorPick.key === p.key}
+                    />
                   ))
                 )}
               </div>
