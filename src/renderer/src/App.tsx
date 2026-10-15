@@ -12,7 +12,8 @@ import { Timeline } from './ui/timeline/Timeline'
 import { useGlobalShortcuts } from './ui/shortcuts'
 import { getEngine } from './engine/preview'
 import { useEditor } from './core/store'
-import { isDirty, projectName, saveProject, startLaunchProjects } from './core/session'
+import { isDirty, projectName, recoverAutosave, saveProject, startLaunchProjects } from './core/session'
+import { startAutosave } from './core/autosave'
 import { checkForUpdates } from './ui/updates'
 import { startAgentHost } from './agent/host'
 
@@ -26,7 +27,9 @@ export function App(): React.JSX.Element {
     startAgentHost()
     window.__boarReady = true
     window.__boarSave = () => saveProject(false)
-    startLaunchProjects()
+    startAutosave()
+    // A project left unsaved by a crash first, then the one Boar was opened with.
+    void recoverAutosave().then(startLaunchProjects)
     // A few seconds after opening, so the check never slows down the start.
     const timer = window.setTimeout(() => {
       if (useEditor.getState().options.checkUpdates) void checkForUpdates(false)

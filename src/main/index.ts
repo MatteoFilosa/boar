@@ -11,6 +11,7 @@ import { extendToolPath } from './toolPath'
 import { registerUpdateIpc } from './updates'
 import { blockExternalRequests, disableBackgroundNetworking } from './privacy'
 import { registerProxyIpc } from './proxies'
+import { abandonAutosaveSession, endAutosaveSession, registerAutosaveIpc } from './autosave'
 
 // `--smoke`: load the UI hidden, report renderer errors, exit. Used to verify builds.
 const smoke = process.argv.includes('--smoke')
@@ -103,8 +104,11 @@ function createWindow(): void {
   })
   win.setMenu(null)
   mainWindow = win
+  const pageId = win.webContents.id
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
+    // Closed normally (unsaved changes were asked about): no copy to recover.
+    endAutosaveSession(pageId)
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -116,6 +120,31 @@ function createWindow(): void {
 
   if (smoke) runSmokeTest(win)
   else win.once('ready-to-show', () => win.show())
+
+  // The page crashed or was killed: offer to start it again, which offers the autosaved project back.
+  win.webContents.on('render-process-gone', (_event, details) => {
+    if (smoke || details.reason === 'clean-exit') return
+    abandonAutosaveSession(pageId)
+    void dialog
+      .showMessageBox(win, {
+        type: 'error',
+        buttons: ['Reload', 'Quit'],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+        message: 'The editor stopped unexpectedly.',
+        detail: `Reason: ${details.reason}. Reload it to get back the changes autosaved before it stopped.`
+      })
+      .then(({ response }) => {
+        if (win.isDestroyed()) return
+        if (response === 0) win.webContents.reload()
+        else {
+          // No page left to ask about unsaved changes: they wait in the autosave.
+          win.destroy()
+          app.quit()
+        }
+      })
+  })
 
   // Unsaved changes (the renderer gives the project name): save, discard or stay.
   let closing = false
@@ -164,6 +193,8 @@ function createWindow(): void {
 // The renderer may only write to files the user picked in a save dialog.
 
 const userChosenPaths = new Set<string>()
+/** Project files the user opened or saved: saving writes back to them without a dialog. */
+const projectPaths = new Set<string>()
 const openFiles = new Map<number, FileHandle>()
 let nextFileId = 1
 
@@ -218,6 +249,17 @@ function registerIpc(): void {
     return new Uint8Array(await readFile(path))
   })
 
+  // Help › Report a Problem shows these for the user to copy; nothing is sent.
+  ipcMain.handle('app:systemInfo', () => {
+    const names: Record<string, string> = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }
+    return {
+      os: `${names[process.platform] ?? process.platform} ${process.getSystemVersion()} ${process.arch}`,
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      packaged: app.isPackaged
+    }
+  })
+
   // Theme files: written only where the user picks in the save dialog.
   ipcMain.handle('theme:save', async (event, json: unknown, name: unknown) => {
     if (typeof json !== 'string' || json.length > 200_000) throw new Error('Not a theme')
@@ -236,7 +278,6 @@ function registerIpc(): void {
 
   // Projects (.boar JSON). Saving without a dialog is only allowed to a
   // project path the user already picked or opened.
-  const projectPaths = new Set<string>()
   const filters = [{ name: 'Boar project', extensions: ['boar'] }]
   ipcMain.handle('project:save', async (event, json: string, currentPath: string | null, saveAs: boolean) => {
     let path = currentPath && projectPaths.has(currentPath) && !saveAs ? currentPath : null
@@ -350,9 +391,25 @@ function runSmokeTest(win: BrowserWindow): void {
     const engine = existsSync(whisperPath()) ? ((await whisperRuns()) ? 'ok' : 'fails to start') : 'missing'
     const engineOk = engine === 'ok' || (engine === 'missing' && !process.env.CI)
     console.log(`[smoke] speech engine: ${engine}${engine === 'missing' ? ' (npm run whisper)' : ''}`)
+    // A small generated project rendered and compared with what it must look and sound like (renderCheck.ts).
+    const render = (await win.webContents
+      .executeJavaScript('window.__boarRenderCheck ? window.__boarRenderCheck() : null')
+      .catch((err: unknown) => ({ ok: false, codec: '', failures: [String(err)], skipped: [], ms: 0 }))) as {
+      ok: boolean
+      codec: string
+      failures: string[]
+      skipped: string[]
+      ms: number
+    } | null
+    if (!render) console.log('[smoke] render check: missing')
+    else {
+      const skipped = render.skipped.length ? ` (skipped: ${render.skipped.join(', ')})` : ''
+      console.log(`[smoke] render check: ${render.ok ? 'ok' : 'FAILED'} with ${render.codec} in ${render.ms} ms${skipped}`)
+      for (const failure of render.failures) console.log(`[smoke] render: ${failure}`)
+    }
     console.log(`[smoke] ready=${ready} bridge=${api} consoleErrors=${errors.length}`)
     for (const message of errors) console.log(`[smoke] error: ${message}`)
-    app.exit(ready && api && engineOk && errors.length === 0 ? 0 : 1)
+    app.exit(ready && api && engineOk && render?.ok && errors.length === 0 ? 0 : 1)
   })
 }
 
@@ -369,6 +426,7 @@ app.whenReady().then(() => {
   registerLibraryIpc()
   registerUpdateIpc()
   registerProxyIpc()
+  registerAutosaveIpc(projectPaths, smoke)
   // AI agents (MCP): not in smoke runs, which may overlap a running editor.
   if (!smoke) void registerMcp(() => mainWindow)
   createWindow()

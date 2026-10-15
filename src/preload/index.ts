@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('boar', {
   saveTheme: (json: string, name: string): Promise<string | null> => ipcRenderer.invoke('theme:save', json, name),
   takeLaunchProject: (): Promise<{ path: string; json: string } | null> => ipcRenderer.invoke('project:takeLaunch'),
   openDroppedProject: (path: string): Promise<{ path: string; json: string }> => ipcRenderer.invoke('project:openDropped', path),
+  recoverAutosave: (): Promise<{ path: string | null; json: string; savedAt: number } | null> => ipcRenderer.invoke('autosave:recover'),
+  writeAutosave: (json: string, projectPath: string | null): Promise<void> => ipcRenderer.invoke('autosave:write', json, projectPath),
+  clearAutosave: (): Promise<void> => ipcRenderer.invoke('autosave:clear'),
   onLaunchProject(callback: () => void): () => void {
     const listener = (): void => callback()
     ipcRenderer.on('project:launch', listener)
@@ -43,6 +46,7 @@ contextBridge.exposeInMainWorld('boar', {
     return () => ipcRenderer.removeListener('captions:progress', listener)
   },
   readAsset: (url: string): Promise<Uint8Array> => ipcRenderer.invoke('app:readAsset', url),
+  systemInfo: (): Promise<unknown> => ipcRenderer.invoke('app:systemInfo'),
   findProxy: (source: string): Promise<string | null> => ipcRenderer.invoke('proxy:find', source),
   createProxy: (source: string): Promise<number> => ipcRenderer.invoke('proxy:create', source),
   writeProxy: (id: number, position: number, data: Uint8Array): Promise<void> => ipcRenderer.invoke('proxy:write', id, position, data),

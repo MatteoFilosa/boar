@@ -51,6 +51,7 @@ const KEYWORDS: Partial<Record<CommandId, string>> = {
   normalTool: 'move trim pointer arrow',
   cycleEditTool: 'tool switch select rectangle normal',
   checkForUpdates: 'version update new',
+  reportProblem: 'bug issue crash feedback idea support help github',
   blurredBackground: 'vertical layout',
   splitScreen: 'layout two',
   pictureInPicture: 'pip layout overlay corner',

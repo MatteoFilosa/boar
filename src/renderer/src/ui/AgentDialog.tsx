@@ -5,7 +5,7 @@ import { type AgentStatus, bridge } from '../platform'
 import { shortcutLabel } from './shortcuts'
 import { useAgentActivity } from '../agent/host'
 
-function CopyBox({ label, text }: { label: string; text: string }): React.JSX.Element {
+export function CopyBox({ label, text }: { label: string; text: string }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
   const copy = (): void => {
     void navigator.clipboard.writeText(text).then(() => {

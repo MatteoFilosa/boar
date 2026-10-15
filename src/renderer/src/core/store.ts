@@ -130,6 +130,7 @@ export type Dialog =
   | { kind: 'saveSfx'; eventId: string }
   | { kind: 'shortcuts' }
   | { kind: 'about' }
+  | { kind: 'report' }
   | { kind: 'update'; info: UpdateInfo | null; error?: string }
 
 export interface EditorState {

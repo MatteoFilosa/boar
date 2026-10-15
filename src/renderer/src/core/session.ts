@@ -1,6 +1,7 @@
 import { setStatus, updateMedia } from './actions'
 import { parseProject, serializeProject } from './projectFile'
-import { hasUnsavedChanges, mediaKey, useEditor } from './store'
+import { adoptRecoveredCopy } from './autosave'
+import { emptyProject, hasUnsavedChanges, mediaKey, useEditor } from './store'
 import type { MediaItem } from './types'
 import { dropMediaCache } from '../media/cache'
 import { track } from '../media/importer'
@@ -79,6 +80,22 @@ export async function openDroppedProject(file: File): Promise<void> {
   }
 }
 
+let recovery: Promise<void> | null = null
+
+/** Offers back the project a crash left unsaved (the main process asks); once per page. */
+export function recoverAutosave(): Promise<void> {
+  if (!bridge) return Promise.resolve()
+  recovery ??= bridge
+    .recoverAutosave()
+    .then((copy) => {
+      if (!copy) return
+      adoptRecoveredCopy()
+      loadProject(copy, copy.savedAt)
+    })
+    .catch((err: unknown) => setStatus(`Cannot recover the project: ${err instanceof Error ? err.message : String(err)}`))
+  return recovery
+}
+
 let launchStarted = false
 
 /** Opens the project Boar was started with, and the ones the file manager sends later. */
@@ -99,12 +116,13 @@ export function startLaunchProjects(): void {
   void take()
 }
 
-function loadProject(opened: { path: string; json: string }): void {
+/** Shows a project file; `recoveredAt` marks an autosaved copy, which opens with unsaved changes. */
+function loadProject(opened: { path: string | null; json: string }, recoveredAt?: number): void {
   let parsed: ReturnType<typeof parseProject>
   try {
     parsed = parseProject(opened.json)
   } catch (err) {
-    setStatus(`Cannot open ${opened.path}: ${err instanceof Error ? err.message : String(err)}`)
+    setStatus(`Cannot open ${opened.path ?? 'the project'}: ${err instanceof Error ? err.message : String(err)}`)
     return
   }
   for (const m of get().media) {
@@ -134,9 +152,11 @@ function loadProject(opened: { path: string; json: string }): void {
     poster: '',
     reverseOf: saved.reverseOf
   }))
+  const recovered = recoveredAt !== undefined
   set({
     project: parsed.project,
-    savedProject: parsed.project,
+    // A recovered copy differs from its file (or has none): it opens as unsaved.
+    savedProject: recovered ? emptyProject() : parsed.project,
     past: [],
     future: [],
     media,
@@ -153,7 +173,11 @@ function loadProject(opened: { path: string; json: string }): void {
     savedMediaKey: mediaKey(media),
     longVideo: null
   })
-  setStatus(`Opened ${opened.path}`)
+  setStatus(
+    recovered
+      ? `Recovered ${projectName(opened.path)} as autosaved on ${new Date(recoveredAt).toLocaleString()}: save it to keep it`
+      : `Opened ${opened.path}`
+  )
   for (const m of media) {
     if (!canRead(m)) {
       updateMedia(m.id, { status: 'error', error: 'file not available — import it again to relink' })

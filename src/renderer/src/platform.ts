@@ -22,6 +22,15 @@ export interface BoarBridge {
   takeLaunchProject(): Promise<{ path: string; json: string } | null>
   /** Reads a .boar file dropped on the window. */
   openDroppedProject(path: string): Promise<{ path: string; json: string }>
+  /**
+   * Starts this page's autosave session and offers the copy a crash left behind
+   * (the main process asks the user); null when there is none or it was declined.
+   */
+  recoverAutosave(): Promise<{ path: string | null; json: string; savedAt: number } | null>
+  /** Keeps a copy of the project with unsaved changes for crash recovery (src/main/autosave.ts). */
+  writeAutosave(json: string, projectPath: string | null): Promise<void>
+  /** Nothing unsaved any more: deletes the copy. */
+  clearAutosave(): Promise<void>
   /** Called when the file manager asks the running app to open a project. */
   onLaunchProject(callback: () => void): () => void
   captionsStatus(): Promise<CaptionStatus>
@@ -35,6 +44,8 @@ export interface BoarBridge {
   finishTranscription(id: number): Promise<Transcript>
   cancelTranscription(id: number): Promise<void>
   onCaptionProgress(callback: (progress: CaptionProgress) => void): () => void
+  /** System and app versions for problem reports (Help › Report a Problem). */
+  systemInfo(): Promise<SystemInfo>
   /** Bytes of a bundled file:// asset (packaged app). */
   readAsset(url: string): Promise<Uint8Array>
   /** Proxies of slow-to-seek videos, kept by the main process (path of the source file). */
@@ -82,6 +93,15 @@ export interface BoarBridge {
   installUpdate(now: boolean): Promise<void>
   openUpdatePage(): Promise<void>
   onUpdateProgress(callback: (progress: number) => void): () => void
+}
+
+export interface SystemInfo {
+  /** Operating system, version and processor architecture. */
+  os: string
+  electron: string
+  chrome: string
+  /** Installed app (false: running from the sources). */
+  packaged: boolean
 }
 
 /** Keep in sync with src/main/updates.ts. */
@@ -189,6 +209,8 @@ declare global {
     __boarUnsaved?: string | null
     /** Saves the project (asking for a path if it has none); false if cancelled. */
     __boarSave?: () => Promise<boolean>
+    /** Renders a project made of generated media and compares it with the expected output (smoke test). */
+    __boarRenderCheck?: (codec?: 'avc' | 'vp9', audioCodec?: 'aac' | 'opus') => Promise<import('./renderCheck').RenderCheckResult>
   }
 }
 

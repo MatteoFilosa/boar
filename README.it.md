@@ -22,7 +22,7 @@
   <img src="docs/screenshot.png" alt="Boar: progetto verticale con sfondo sfocato, titolo d'aggancio, sottotitoli karaoke e montaggio dal testo">
 </p>
 
-> **Alpha.** Si usa già per montare davvero, ma è giovane: salva spesso e segnala quello che non va.
+> **Alpha.** Si usa già per montare davvero, ma è giovane: salva spesso e segnala quello che non va (*Help › Report a Problem*).
 
 ## Perché Boar
 
@@ -46,6 +46,7 @@
 - **Paste Event Attributes** (`Ctrl+Shift+V`): copi un evento e dai il suo aspetto a quelli selezionati: Video e Audio FX, Pan/Crop, maschera, livello o volume e stile del testo. *Selectively Paste Event Attributes* ti fa scegliere cosa.
 - **Strumento di selezione** (toolbar o `Ctrl+D`): trascina un rettangolo tratteggiato ovunque, anche sopra gli eventi, per selezionarne tanti insieme senza spostarli (`Shift` aggiunge, `Ctrl` alterna).
 - Split, gruppi, marker, snapping, quantizzazione ai frame, menu contestuali e 200 livelli di annulla.
+- **Salvataggio automatico**: finché ci sono modifiche non salvate Boar tiene una copia del progetto sul tuo PC. Se si chiude senza salvare (un crash, la corrente che salta), al successivo avvio ti propone di recuperarle.
 - **Anteprima a schermo intero** (`F`): rivedi il montaggio senza distrazioni, con barra di avanzamento e marker al volo (`M`).
 - **Ricerca comandi** (`Ctrl+F`): scrivi quello che ti serve ("export", "subtitles", "blur") per trovare e lanciare qualsiasi comando dei menu, opzione, pannello, effetto o titolo.
 - Quando finisce un lavoro lungo (render, sottotitoli, download, Reverse...) il cinghiale della barra taglia il traguardo e lancia i coriandoli. *Options › Celebrate Finished Tasks* lo spegne.
@@ -102,6 +103,10 @@
 ### Aggiornamenti
 
 All'avvio Boar controlla se c'è una nuova versione e propone di installarla: su Windows e con l'AppImage si aggiorna da solo e riparte; su macOS e con il .deb scarica il nuovo file da installare. *Help › Check for Updates* controlla quando vuoi, *Options › Check for Updates at Startup* disattiva il controllo all'avvio.
+
+### Problemi e idee
+
+*Help › Report a Problem* mostra i dettagli che servono a una segnalazione (versione di Boar, sistema, scheda video e i suoi encoder) da copiare, e apre la pagina delle segnalazioni di Boar su GitHub. Boar non invia niente da solo.
 
 ### Sottotitoli e Transcript
 
@@ -169,6 +174,17 @@ L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: 
 
 Il modo più veloce per crearne uno: scegli il tema più vicino a quello che vuoi, premi *Export Theme* (il file elenca tutti i colori con il loro nome), cambia quello che ti piace e caricalo con *Load Theme File* o trascinandolo sulla finestra. I file dei temi sono solo dati: non possono caricare immagini, font o altro da internet. Anche un agente AI collegato via MCP può crearne uno per te con il tool `set_theme`.
 
+## Cosa Boar non è
+
+Boar resta piccolo per restare veloce, stabile e gratuito da portare avanti. Queste cose non sono in programma:
+
+- Strumenti di finitura da cinema: color grading con scope e pipeline colore, compositing a nodi, 3D.
+- Montaggio multicamera, sequenze annidate, più timeline nello stesso progetto.
+- Account, sincronizzazione cloud, render online, AI con chiavi API a pagamento (gli agenti AI usano il tuo piano, via MCP).
+- Plugin fatti per altri programmi.
+
+Le idee che rendono più veloce il montaggio di tutti i giorni di video parlati, Shorts e sottotitoli sono le benvenute: apri una *Idea* nella pagina delle segnalazioni.
+
 ## Funzioni opzionali
 
 **Download da link (yt-dlp).** Spento di default: si attiva da *Options*. Scarica video o audio dai siti supportati da [yt-dlp](https://github.com/yt-dlp/yt-dlp), che non è incluso in Boar e viene scaricato al primo uso. La finestra resta aperta accanto alla timeline: *Download and Add to Timeline* mette il file al cursore, oppure lo trascini dalla finestra. Dalla maggior parte dei siti video e audio arrivano separati e Boar li unisce da solo, quindi FFmpeg non serve. Scarica solo contenuti che hai il diritto di usare: i termini di molti siti vietano il download.
@@ -211,7 +227,8 @@ Su Mac usa ⌘ al posto di Ctrl e ⌥ al posto di Alt. `F1` (o il pulsante con l
 | `npm run samples` | genera media di prova in `dev-samples/` (serve FFmpeg) |
 | `npm run whisper` | scarica il motore vocale per il tuo sistema dall'ultima build della CI |
 | `npm run typecheck` | controllo TypeScript |
-| `npm run smoke` | build e avvio nascosto: errori, encoder hardware, protocollo media |
+| `npm test` | test della logica di montaggio (`test/`) |
+| `npm run smoke` | build e avvio nascosto: errori, encoder hardware, protocollo media e un controllo del render (un progetto generato, renderizzato e confrontato con come deve apparire e suonare) |
 | `npm run icons` | rigenera le icone da `resources/icon.svg` |
 | `npm run dist` | installer per il tuo sistema in `dist/` (GitHub Actions crea i tre installer a ogni release) |
 

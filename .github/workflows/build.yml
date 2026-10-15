@@ -91,6 +91,8 @@ jobs:
 
       - run: npm run typecheck
 
+      - run: npm test
+
       - name: Smoke test
         run: |
           npx electron-vite build

@@ -15,7 +15,8 @@
     "dev:web": "vite --config vite.web.config.ts",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false && tsc --noEmit -p tsconfig.test.json --composite false",
+    "test": "vitest run",
     "smoke": "electron-vite build && electron . --smoke",
     "samples": "node scripts/make-samples.mjs",
     "icons": "node scripts/make-icons.mjs",
@@ -79,6 +80,7 @@
     "react-dom": "^19.3.0",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
+    "vitest": "^5.0.3",
     "zustand": "^5.0.15"
   }
 }

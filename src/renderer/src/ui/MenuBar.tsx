@@ -181,6 +181,7 @@ function useMenus(): Menu[] {
         ...(import.meta.env.DEV ? [{ label: 'Load Demo Media', command: 'loadDemoMedia' } as Item] : []),
         'separator',
         { label: 'Check for Updates...', command: 'checkForUpdates' },
+        { label: 'Report a Problem...', command: 'reportProblem' },
         { label: 'About Boar', command: 'about' }
       ]
     }

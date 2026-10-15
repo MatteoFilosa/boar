@@ -22,7 +22,7 @@
   <img src="docs/screenshot.png" alt="Boar: vertical project with blurred background, hook title, karaoke captions and text-based editing">
 </p>
 
-> **Alpha.** It is already good for real editing, but it is young: save often and report what goes wrong.
+> **Alpha.** It is already good for real editing, but it is young: save often and report what goes wrong (*Help › Report a Problem*).
 
 ## Why Boar
 
@@ -46,6 +46,7 @@
 - **Paste Event Attributes** (`Ctrl+Shift+V`): copy an event and give its look to the selected ones: Video and Audio FX, Pan/Crop, mask, level or volume and text style. *Selectively Paste Event Attributes* lets you choose which.
 - **Selection edit tool** (toolbar or `Ctrl+D`): drag a dashed rectangle anywhere, over events too, to select many at once without moving them (`Shift` adds, `Ctrl` toggles).
 - Split, groups, markers, snapping, frame quantization, context menus and 200 undo levels.
+- **Autosave**: while there are unsaved changes Boar keeps a copy of the project on your PC. If it closes without saving (a crash, a power cut), it offers the changes back the next time it starts.
 - **Full screen preview** (`F`): review the edit without distractions, with a seek bar and markers on the fly (`M`).
 - **Command search** (`Ctrl+F`): type what you need ("export", "subtitles", "blur") to find and run any menu command, option, panel, effect or title.
 - When a long task is done (render, captions, downloads, Reverse...) the boar of the progress bar crosses the finish line and throws confetti. *Options › Celebrate Finished Tasks* turns it off.
@@ -102,6 +103,10 @@
 ### Updates
 
 Boar looks for a new release when it starts and offers to install it: on Windows and with the AppImage it updates itself and starts again; on macOS and with the .deb it downloads the new file for you to install. *Help › Check for Updates* checks at any time, *Options › Check for Updates at Startup* turns the startup check off.
+
+### Problems and ideas
+
+*Help › Report a Problem* shows the details a report needs (Boar version, system, graphics card and its encoders) to copy, and opens Boar's issue page on GitHub. Boar sends nothing by itself.
 
 ### Captions and Transcript
 
@@ -169,6 +174,17 @@ The agent reads the timeline and the transcripts, looks at frames and makes the 
 
 The quickest way to make one: pick the theme closest to what you want, press *Export Theme* (the file lists every color with its name), change what you like and load it with *Load Theme File* or by dropping it on the window. Theme files are plain data: they cannot load images, fonts or anything from the internet. An AI agent connected through MCP can also make one for you with the `set_theme` tool.
 
+## What Boar is not
+
+Boar stays small so that it stays fast, stable and free to keep working on. These are not planned:
+
+- Finishing tools for film work: grading with scopes and color pipelines, node compositing, 3D.
+- Multicamera editing, nested sequences, several timelines in one project.
+- Accounts, cloud sync, online rendering, AI that needs paid API keys (AI agents use your own plan, through MCP).
+- Plugins made for other programs.
+
+Ideas that make everyday editing of spoken videos, Shorts and captions quicker fit best: open an *Idea* on the issue page.
+
 ## Optional features
 
 **Download from Link (yt-dlp).** Off by default: turn it on in *Options*. It downloads video or audio from the sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp), which is not included in Boar and is downloaded on first use. The window stays open beside the timeline: *Download and Add to Timeline* puts the file at the cursor, or drag it from the window. Video and sound come as separate streams from most sites and Boar joins them itself, so FFmpeg is not needed. Only download content you have the right to use: the terms of many sites forbid downloading.
@@ -211,7 +227,8 @@ On a Mac, use ⌘ instead of Ctrl and ⌥ instead of Alt. `F1` (or the keyboard 
 | `npm run samples` | generates test media in `dev-samples/` (needs FFmpeg) |
 | `npm run whisper` | downloads the speech engine for your system from the latest CI build |
 | `npm run typecheck` | TypeScript check |
-| `npm run smoke` | build and hidden run: errors, hardware encoders, media protocol |
+| `npm test` | unit tests of the editing logic (`test/`) |
+| `npm run smoke` | build and hidden run: errors, hardware encoders, media protocol, and a render check (a generated project rendered and compared with what it must look and sound like) |
 | `npm run icons` | regenerates the icons from `resources/icon.svg` |
 | `npm run dist` | installer for your system in `dist/` (GitHub Actions builds all three for each release) |
 

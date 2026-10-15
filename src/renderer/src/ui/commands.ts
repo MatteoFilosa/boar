@@ -149,6 +149,7 @@ export const commands = {
   shortcuts: (): void => (useEditor.getState().dialog?.kind === 'shortcuts' ? A.closeDialog() : A.openDialog({ kind: 'shortcuts' })),
   searchCommands: (): void => document.querySelector<HTMLInputElement>('#command-search')?.select(),
   about: (): void => A.openDialog({ kind: 'about' }),
+  reportProblem: (): void => A.openDialog({ kind: 'report' }),
   checkForUpdates: (): void => void checkForUpdates(true),
   toggleUpdateCheck: (): void => A.toggleOption('checkUpdates'),
   toggleProxies: (): void => A.toggleOption('proxies'),

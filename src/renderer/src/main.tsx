@@ -11,6 +11,8 @@ startThemes()
 startInterfaceScale()
 
 if (import.meta.env.DEV) void import('./devtools')
+// Render check of the smoke test (src/main/index.ts): loaded only when called.
+window.__boarRenderCheck = (codec, audioCodec) => import('./renderCheck').then((m) => m.runRenderCheck(codec, audioCodec))
 
 createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>

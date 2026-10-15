@@ -1,0 +1,20 @@
+name: Idea
+description: Something Boar could do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Boar stays small on purpose, so it stays fast and easy to keep working: see "What Boar is not" in the README first.
+        Ideas that make everyday editing of spoken videos, Shorts and captions quicker fit best.
+  - type: textarea
+    id: need
+    attributes:
+      label: What you are trying to do
+      description: The video you are making and where Boar gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How Boar could help

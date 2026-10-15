@@ -1,0 +1,35 @@
+name: Problem
+description: Something in Boar does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting it. One problem per report, please.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. Import a vertical phone video
+        2. Split it at the cursor
+        3. ...
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: In Boar, Help › Report a Problem › Copy, then paste them here.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Screen recording, screenshots, project file
+      description: Drag files here. Leave out anything private.
