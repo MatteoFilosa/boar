@@ -76,7 +76,7 @@
 
 ### Effetti, transizioni, export
 
-- 24 effetti video sulla GPU: look colore pronti, correzione colore, chroma key, sfocatura, glow, vignettatura, grana, VHS, glitch e altri. **Rimozione dello sfondo** con AI, senza green screen.
+- 25 effetti video sulla GPU: look colore pronti, luminosità e contrasto, correzione colore, chroma key, sfocatura, glow, vignettatura, grana, VHS, glitch e altri. **Rimozione dello sfondo** con AI, senza green screen.
 - **Chroma key con contagocce**: clicchi nell'anteprima il colore da togliere, un green o blue screen o uno sfondo bianco o nero. *Background only* lo toglie solo attorno al soggetto, così un logo bianco su un prodotto fotografato sul bianco resta.
 - Transizioni: zoom, whip pan, spin, glitch, flash, dissolvenza al nero, blur, pixel. Trascinale sull'inizio o sulla fine di una clip, o dove due clip si sovrappongono: tutta la sovrapposizione diventa la transizione e il suo nome compare sulla timeline. Clic sul nome per cambiarne tipo o durata.
 - Maschere: ellisse, rettangolo o forma custom disegnata a punti e animata con i keyframe. La forma fa parte dell'immagine: spostandola con Pan/Crop la parte mascherata si sposta con lei. **Smart Select** scontorna un oggetto con un clic (altri clic aggiungono o tolgono parti) e *Track Motion* lo segue per tutta la clip.

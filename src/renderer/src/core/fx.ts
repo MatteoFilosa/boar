@@ -89,11 +89,19 @@ export const VIDEO_FX: FxDef[] = [
   // Color
   { type: 'look', kind: 'video', label: 'Looks (filters)', category: 'Color', description: 'One-click color filters, Instagram style', params: [choice('look', 'Look', LOOKS), pct('intensity', 'Intensity', 1)] },
   {
+    type: 'brightnessContrast',
+    kind: 'video',
+    label: 'Brightness and Contrast',
+    category: 'Color',
+    description: 'Makes the picture lighter or darker, with more or less contrast',
+    params: [pct('brightness', 'Brightness', 0, -1, 1), pct('contrast', 'Contrast', 0, -1, 1)]
+  },
+  {
     type: 'colorCorrector',
     kind: 'video',
     label: 'Color Corrector',
     category: 'Color',
-    description: 'Exposure, contrast, saturation, temperature and more',
+    description: 'Brightness, contrast, exposure, saturation, temperature and more',
     params: [
       num('exposure', 'Exposure', 0, -2, 2, 0.01, ' EV'),
       pct('brightness', 'Brightness', 0, -1, 1),

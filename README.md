@@ -76,7 +76,7 @@
 
 ### Effects, transitions, export
 
-- 24 GPU video effects: ready-made color looks, color correction, chroma key, blur, glow, vignette, grain, VHS, glitch and more. AI **background removal**, no green screen needed.
+- 25 GPU video effects: ready-made color looks, brightness and contrast, color correction, chroma key, blur, glow, vignette, grain, VHS, glitch and more. AI **background removal**, no green screen needed.
 - **Chroma key with an eyedropper**: click the color to remove in the preview, a green or blue screen or a white or black background. *Background only* removes it just around the subject, so a white logo on a product shot on white stays.
 - Transitions: zoom, whip pan, spin, glitch, flash, dip to black, blur, pixelate. Drag one onto the start or the end of a clip, or where two clips overlap: the whole overlap becomes the transition, and its name shows on the timeline. Click the name to change the type or the length.
 - Masks: ellipse, rectangle or a custom shape drawn with points and animated with keyframes. The shape is part of the picture, so moving it with Pan/Crop takes the masked part along. **Smart Select** cuts out an object with a click (more clicks add or leave out parts) and *Track Motion* follows it through the clip.

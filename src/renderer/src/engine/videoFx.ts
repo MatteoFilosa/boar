@@ -487,7 +487,7 @@ interface Pass {
 }
 
 /** The passes of one effect. `scale` converts px-at-1080p parameters to output pixels. */
-function passesFor(fx: EventFx, scale: number, mask: VideoFxMask['kind'] | null): Pass[] {
+export function passesFor(fx: EventFx, scale: number, mask: VideoFxMask['kind'] | null): Pass[] {
   const p = (key: string): number => fxParam(fx, key)
   switch (fx.type) {
     case 'removeBg': {
@@ -517,6 +517,9 @@ function passesFor(fx: EventFx, scale: number, mask: VideoFxMask['kind'] | null)
           values: [p('exposure'), p('brightness'), p('contrast'), p('saturation'), p('gamma'), p('hue'), p('temperature'), p('tint')]
         }
       ]
+    case 'brightnessContrast':
+      // The Color Corrector with everything else neutral.
+      return [{ program: 'colorCorrector', values: [0, p('brightness'), p('contrast'), 0, 1, 0, 0, 0] }]
     case 'look':
       return [{ program: 'look', values: [p('look'), p('intensity')] }]
     case 'colorize':
