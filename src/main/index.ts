@@ -394,17 +394,19 @@ function runSmokeTest(win: BrowserWindow): void {
     // A small generated project rendered and compared with what it must look and sound like (renderCheck.ts).
     const render = (await win.webContents
       .executeJavaScript('window.__boarRenderCheck ? window.__boarRenderCheck() : null')
-      .catch((err: unknown) => ({ ok: false, codec: '', failures: [String(err)], skipped: [], ms: 0 }))) as {
+      .catch((err: unknown) => ({ ok: false, codec: '', failures: [String(err)], skipped: [], audioOffsetMs: null, ms: 0 }))) as {
       ok: boolean
       codec: string
       failures: string[]
       skipped: string[]
+      audioOffsetMs: number | null
       ms: number
     } | null
     if (!render) console.log('[smoke] render check: missing')
     else {
       const skipped = render.skipped.length ? ` (skipped: ${render.skipped.join(', ')})` : ''
-      console.log(`[smoke] render check: ${render.ok ? 'ok' : 'FAILED'} with ${render.codec} in ${render.ms} ms${skipped}`)
+      const sync = render.audioOffsetMs === null ? '' : `, sound ${render.audioOffsetMs} ms after the picture`
+      console.log(`[smoke] render check: ${render.ok ? 'ok' : 'FAILED'} with ${render.codec}${sync} in ${render.ms} ms${skipped}`)
       for (const failure of render.failures) console.log(`[smoke] render: ${failure}`)
     }
     console.log(`[smoke] ready=${ready} bridge=${api} consoleErrors=${errors.length}`)

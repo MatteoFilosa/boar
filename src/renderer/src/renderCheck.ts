@@ -25,6 +25,8 @@ export interface RenderCheckResult {
   failures: string[]
   /** Checks left out on this machine (no WebGL2: Video FX). */
   skipped: string[]
+  /** Measured delay of the sound after the picture, in ms (null when it could not be measured). */
+  audioOffsetMs: number | null
   ms: number
 }
 
@@ -155,6 +157,7 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
   const skipped: string[] = []
   // The check's media have no path: no proxies, nothing written to the app's folders.
   const added: MediaItem[] = []
+  let offsetMs: number | null = null
   try {
     codec ??= (await canEncodeVideo('avc', { width: W, height: H }).catch(() => false)) ? 'avc' : 'vp9'
     const clip = await addMedia(await makeClip(codec))
@@ -257,27 +260,51 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
       }
 
       if (audio) {
-        const sums: number[] = []
-        const counts: number[] = []
+        // The left channel of the whole render, placed by packet time.
+        const rate = audio.sampleRate
+        const pcm = new Float32Array(Math.ceil(5.5 * rate))
         for await (const { buffer, timestamp } of new AudioBufferSink(audio).buffers()) {
+          const at = Math.round(timestamp * rate)
           const data = buffer.getChannelData(0)
-          for (let i = 0; i < data.length; i++) {
-            const bucket = Math.floor((timestamp + i / buffer.sampleRate) * 2)
-            sums[bucket] = (sums[bucket] ?? 0) + data[i] * data[i]
-            counts[bucket] = (counts[bucket] ?? 0) + 1
-          }
+          pcm.set(data.subarray(Math.max(0, -at), Math.max(0, Math.min(data.length, pcm.length - at))), Math.max(0, at))
         }
-        const level = (half: number): number => 10 * Math.log10((sums[half] ?? 0) / Math.max(1, counts[half] ?? 0) + 1e-12)
-        const expectLevel = (what: string, half: number, db: number): void => {
-          const got = level(half)
-          if (Math.abs(got - db) > LEVEL_TOLERANCE_DB) failures.push(`${what} at ${half / 2}-${half / 2 + 0.5} s: ${got.toFixed(1)} dBFS, want ${db.toFixed(1)}`)
+        const rms = (from: number, to: number): number => {
+          const a = Math.max(0, Math.round(from * rate))
+          const b = Math.min(pcm.length, Math.round(to * rate))
+          let sum = 0
+          for (let i = a; i < b; i++) sum += pcm[i] * pcm[i]
+          return Math.sqrt(sum / Math.max(1, b - a))
         }
-        const tone = 20 * Math.log10(0.5 / Math.SQRT2)
-        expectLevel('tone', 1, tone)
-        expectLevel('tone', 2, tone)
-        if (level(4) > -45) failures.push(`gap at 2-2.5 s: ${level(4).toFixed(1)} dBFS, want silence`)
-        expectLevel('tone at -12 dB and Audio FX -6 dB', 6, tone - 12 - 6)
-        if (level(9) > -45) failures.push(`end at 4.5-5 s: ${level(9).toFixed(1)} dBFS, want silence`)
+        const db = (v: number): number => 20 * Math.log10(v + 1e-9)
+        const toneRms = 0.5 / Math.SQRT2
+        const quietRms = toneRms * 0.25 * Math.pow(10, -6 / 20)
+        // Where a fade passes half its level (10 ms windows): the out of the first tone at 1.95 s, the in of the second at 2.55 s.
+        const crossing = (from: number, to: number, level: number, falling: boolean): number | null => {
+          for (let t = from; t <= to; t += 0.001) if (falling ? rms(t - 0.005, t + 0.005) < level : rms(t - 0.005, t + 0.005) > level) return t
+          return null
+        }
+        const out = crossing(1.8, 2.3, toneRms / 2, true)
+        const into = crossing(2.3, 2.8, quietRms / 2, false)
+        if (out === null || into === null) failures.push('sound: the fades between the tones were not found')
+        else {
+          // Sound later than the picture (positive) is noticed far later than sound ahead of it.
+          offsetMs = Math.round(((out - 1.95 + (into - 2.55)) / 2) * 1000)
+          if (offsetMs < -25 || offsetMs > 60) failures.push(`sound ${offsetMs} ms ${offsetMs > 0 ? 'behind' : 'ahead of'} the picture`)
+        }
+        // Levels away from the fades, through the measured offset.
+        const o = (offsetMs ?? 0) / 1000
+        const expectLevel = (what: string, from: number, to: number, want: number): void => {
+          const got = db(rms(from + o, to + o))
+          if (Math.abs(got - want) > LEVEL_TOLERANCE_DB) failures.push(`${what} at ${from}-${to} s: ${got.toFixed(1)} dBFS, want ${want.toFixed(1)}`)
+        }
+        const expectSilence = (what: string, from: number, to: number): void => {
+          const got = db(rms(from + o, to + o))
+          if (got > -45) failures.push(`${what} at ${from}-${to} s: ${got.toFixed(1)} dBFS, want silence`)
+        }
+        expectLevel('tone', 0.5, 1.5, db(toneRms))
+        expectSilence('gap', 2.05, 2.45)
+        expectLevel('tone at -12 dB and Audio FX -6 dB', 3, 3.5, db(quietRms))
+        expectSilence('end', 4.1, 4.9)
       }
     } finally {
       input.dispose()
@@ -292,5 +319,5 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
     const ids = new Set(added.map((m) => m.id))
     useEditor.setState((st) => ({ media: st.media.filter((m) => !ids.has(m.id)) }))
   }
-  return { ok: failures.length === 0, codec: codec ?? '', failures, skipped, ms: Math.round(performance.now() - started) }
+  return { ok: failures.length === 0, codec: codec ?? '', failures, skipped, audioOffsetMs: offsetMs, ms: Math.round(performance.now() - started) }
 }
