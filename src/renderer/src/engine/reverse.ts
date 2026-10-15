@@ -29,6 +29,7 @@ import type { MediaItem, ReverseLink, TimelineEvent } from '../core/types'
 import { canRead, inputSource } from '../media/source'
 import { importFiles, importPaths } from '../media/importer'
 import { bridge } from '../platform'
+import { encoderDelay } from './export'
 
 // Reverse: a clip plays backwards from a reversed copy of the part of its media
 // file it uses (picture and sound), made here with WebCodecs and kept in the
@@ -195,8 +196,11 @@ async function openReversal(media: MediaItem, start: number, end: number, withVi
       if (audio) {
         const aac = await canEncodeAudio('aac', { numberOfChannels: channels, sampleRate: audio.sampleRate }).catch(() => false)
         // Without an AAC encoder: Opus, which needs 48 kHz.
+        const encodedRate = aac ? audio.sampleRate : 48000
+        const delay = await encoderDelay(aac ? 'aac' : 'opus', encodedRate)
         audioSource = new AudioBufferSource(
-          aac ? { codec: 'aac', bitrate: QUALITY_HIGH } : { codec: 'opus', bitrate: QUALITY_HIGH, transform: { sampleRate: 48000 } }
+          aac ? { codec: 'aac', bitrate: QUALITY_HIGH } : { codec: 'opus', bitrate: QUALITY_HIGH, transform: { sampleRate: 48000 } },
+          { startTimestamp: -delay / encodedRate }
         )
         output.addAudioTrack(audioSource)
       }

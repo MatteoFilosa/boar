@@ -2,6 +2,8 @@ import {
   ALL_FORMATS,
   AudioBufferSink,
   AudioBufferSource,
+  BufferSource,
+  BufferTarget,
   CanvasSink,
   CanvasSource,
   Input,
@@ -51,6 +53,8 @@ export interface ExportSettings {
 export interface ExportResult {
   /** Set when the audio was normalized. */
   loudness: LoudnessResult | null
+  /** The sound's codec and the encoder delay taken out of it, in samples (null without sound). */
+  audio: { codec: ExportAudioCodec; encoderDelay: number } | null
 }
 
 export interface ExportProgress {
@@ -94,6 +98,91 @@ export async function audioSupport(): Promise<Record<ExportAudioCodec, boolean>>
     canEncodeAudio(codec, { numberOfChannels: 2, sampleRate: 48000 }).catch(() => false)
   const [aac, opus] = await Promise.all([check('aac'), check('opus')])
   return { aac, opus }
+}
+
+const encoderDelays = new Map<string, Promise<number>>()
+
+/**
+ * Samples an audio encoder puts before the sound without moving the packet
+ * times back (some AAC encoders start with 2112 samples of priming at time 0,
+ * so every player hears the sound that much late). Measured once per codec
+ * and sample rate; 0 when the encoder marks its delay itself or has none.
+ */
+export function encoderDelay(codec: ExportAudioCodec, sampleRate: number): Promise<number> {
+  const key = `${codec}/${sampleRate}`
+  let delay = encoderDelays.get(key)
+  if (!delay) {
+    delay = measureEncoderDelay(codec, sampleRate).catch(() => 0)
+    encoderDelays.set(key, delay)
+  }
+  return delay
+}
+
+/** 0.1 s chirp from 200 Hz to 8 kHz with a Hann window, at `rate`. */
+function chirp(rate: number): Float32Array {
+  const out = new Float32Array(Math.round(rate * 0.1))
+  const seconds = out.length / rate
+  for (let n = 0; n < out.length; n++) {
+    const t = n / rate
+    const phase = 2 * Math.PI * (200 * t + ((8000 - 200) * t * t) / (2 * seconds))
+    out[n] = 0.5 * Math.sin(phase) * (0.5 - 0.5 * Math.cos((2 * Math.PI * n) / (out.length - 1)))
+  }
+  return out
+}
+
+/**
+ * Encodes a chirp 50 ms in, decodes it and finds where it came out by
+ * cross-correlation (at the decoded rate: Opus always decodes at 48 kHz).
+ */
+async function measureEncoderDelay(codec: ExportAudioCodec, rate: number): Promise<number> {
+  const sound = new AudioBuffer({ length: Math.round(rate * 0.4), numberOfChannels: 2, sampleRate: rate })
+  for (let c = 0; c < 2; c++) sound.getChannelData(c).set(chirp(rate), Math.round(rate * 0.05))
+  const target = new BufferTarget()
+  const output = new Output({ format: new Mp4OutputFormat(), target })
+  const source = new AudioBufferSource({ codec, quality: QUALITY_HIGH })
+  output.addAudioTrack(source)
+  await output.start()
+  await source.add(sound)
+  await output.finalize()
+  if (!target.buffer) return 0
+
+  const input = new Input({ formats: ALL_FORMATS, source: new BufferSource(target.buffer) })
+  let pcm: Float32Array
+  let decodedRate: number
+  try {
+    const track = await input.getPrimaryAudioTrack()
+    if (!track) return 0
+    decodedRate = track.sampleRate
+    pcm = new Float32Array(Math.round(decodedRate * 0.5))
+    for await (const { buffer, timestamp } of new AudioBufferSink(track).buffers()) {
+      const at = Math.round(timestamp * decodedRate)
+      const data = buffer.getChannelData(0)
+      const from = Math.max(0, -at)
+      const to = Math.min(data.length, pcm.length - at)
+      if (to > from) pcm.set(data.subarray(from, to), at + from)
+    }
+  } finally {
+    input.dispose()
+  }
+
+  const reference = chirp(decodedRate)
+  const lead = Math.round(decodedRate * 0.05)
+  const maxLag = Math.round(decodedRate * 0.1)
+  let energy = 0
+  for (const v of reference) energy += v * v
+  let best = 0
+  let bestScore = 0
+  for (let lag = -lead; lag <= maxLag; lag++) {
+    let sum = 0
+    for (let n = 0; n < reference.length; n++) sum += reference[n] * pcm[lead + lag + n]
+    if (sum > bestScore) {
+      bestScore = sum
+      best = lag
+    }
+  }
+  // A weak match is no measurement; under a millisecond is no delay.
+  if (bestScore < energy * 0.5 || best < decodedRate / 1000) return 0
+  return Math.round((best * rate) / decodedRate)
 }
 
 const ACCELERATION = { auto: 'no-preference', gpu: 'prefer-hardware', cpu: 'prefer-software' } as const
@@ -426,10 +515,15 @@ export async function exportProject(
   })
   output.addVideoTrack(video, { frameRate: rate })
   let audio: AudioBufferSource | null = null
+  let audioInfo: ExportResult['audio'] = null
   if (mix) {
     const codec = settings.audioCodec === 'opus' || !(await canEncodeAudio('aac')) ? 'opus' : 'aac'
-    audio = new AudioBufferSource({ codec, quality: QUALITY_HIGH })
+    // Starting before 0 by the encoder's delay puts the sound under the picture:
+    // the muxer writes an edit list, so players skip the priming.
+    const delay = await encoderDelay(codec, mix.sampleRate)
+    audio = new AudioBufferSource({ codec, quality: QUALITY_HIGH }, { startTimestamp: -delay / mix.sampleRate })
     output.addAudioTrack(audio)
+    audioInfo = { codec, encoderDelay: delay }
   }
 
   const decoder = new FrameDecoder()
@@ -469,5 +563,5 @@ export async function exportProject(
     await decoder.dispose()
     if (!finished) await output.cancel().catch(() => undefined)
   }
-  return { loudness }
+  return { loudness, audio: audioInfo }
 }

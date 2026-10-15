@@ -16,7 +16,7 @@ import { DEFAULT_FADE_CURVE } from './core/fades'
 import { dropMediaCache } from './media/cache'
 import { track as analyze } from './media/importer'
 import { encodeWav } from './media/wav'
-import { exportProject } from './engine/export'
+import { type ExportResult, exportProject } from './engine/export'
 
 export interface RenderCheckResult {
   ok: boolean
@@ -27,6 +27,9 @@ export interface RenderCheckResult {
   skipped: string[]
   /** Measured delay of the sound after the picture, in ms (null when it could not be measured). */
   audioOffsetMs: number | null
+  /** Audio codec of the render and the encoder delay the export took out, in samples. */
+  audioCodec: string
+  encoderDelay: number
   ms: number
 }
 
@@ -158,6 +161,7 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
   // The check's media have no path: no proxies, nothing written to the app's folders.
   const added: MediaItem[] = []
   let offsetMs: number | null = null
+  let rendered: ExportResult['audio'] = null
   try {
     codec ??= (await canEncodeVideo('avc', { width: W, height: H }).catch(() => false)) ? 'avc' : 'vp9'
     const clip = await addMedia(await makeClip(codec))
@@ -194,13 +198,14 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
     }
 
     const target = new BufferTarget()
-    await exportProject(
+    const result = await exportProject(
       project,
       target,
       { codec, quality: 'high', encoder: 'auto', includeAudio: true, audioCodec, masterDb: 0, autoCrossfade: true, loudness: null },
       () => undefined,
       () => false
     )
+    rendered = result.audio
     if (!target.buffer) throw new Error('the render produced no file')
     const input = new Input({ formats: ALL_FORMATS, source: new BufferSource(target.buffer) })
     try {
@@ -319,5 +324,14 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
     const ids = new Set(added.map((m) => m.id))
     useEditor.setState((st) => ({ media: st.media.filter((m) => !ids.has(m.id)) }))
   }
-  return { ok: failures.length === 0, codec: codec ?? '', failures, skipped, audioOffsetMs: offsetMs, ms: Math.round(performance.now() - started) }
+  return {
+    ok: failures.length === 0,
+    codec: codec ?? '',
+    failures,
+    skipped,
+    audioOffsetMs: offsetMs,
+    audioCodec: rendered?.codec ?? '',
+    encoderDelay: rendered?.encoderDelay ?? 0,
+    ms: Math.round(performance.now() - started)
+  }
 }
