@@ -3300,6 +3300,40 @@ body.dragging-track * {
   margin: 6px 0 10px;
 }
 
+.agent-bundle {
+  margin: 10px 0;
+  padding: 8px 10px 2px;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--panel-2);
+}
+
+.agent-bundle-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.agent-bundle p {
+  margin: 6px 0;
+}
+
+.agent-bundle-actions {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.agent-manual {
+  margin: 8px 0 10px;
+}
+
+.agent-manual summary {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
 .agent-log {
   max-height: 160px;
   overflow-y: auto;

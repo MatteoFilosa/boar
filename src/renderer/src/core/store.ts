@@ -43,6 +43,12 @@ export interface EditorOptions {
   renderCodec: 'avc' | 'hevc' | 'av1' | 'vp9'
   renderEncoder: 'auto' | 'gpu' | 'cpu'
   renderAudio: 'aac' | 'opus' | 'none'
+  /** What Render As makes: a video, an animated GIF or sound only. */
+  renderKind: 'video' | 'gif' | 'sound'
+  renderSound: 'mp3' | 'wav' | 'flac' | 'm4a' | 'ogg'
+  /** Animated GIF width in pixels and frames per second. */
+  gifWidth: number
+  gifFps: number
   /** Optional feature: Download from Link through yt-dlp (off until the user enables it). */
   linkDownloads: boolean
   /** Look for a new release when Boar starts. */
@@ -77,6 +83,10 @@ const DEFAULT_OPTIONS: EditorOptions = {
   renderCodec: 'avc',
   renderEncoder: 'auto',
   renderAudio: 'aac',
+  renderKind: 'video',
+  renderSound: 'mp3',
+  gifWidth: 480,
+  gifFps: 15,
   linkDownloads: false,
   checkUpdates: true,
   proxies: true,

@@ -12,7 +12,10 @@ import { smartOutline, trackOutline } from '../engine/smartMask'
 import { AUDIO_FX, VIDEO_FX, cloneFx, fxDef, hexToColor } from '../core/fx'
 import { TRANSITIONS } from '../core/transitions'
 import type { Corner } from '../core/layouts'
-import { renderStill } from '../engine/export'
+import { renderStill, supportedCodecs } from '../engine/export'
+import { type RenderKind, renderFileType, renderProject } from '../engine/render'
+import { type SoundFormat, soundSupport } from '../engine/exportSound'
+import { chooseDestination, withExtension } from '../engine/targets'
 import { autoThreshold, eventLevels, findSilences, mediaLevels } from '../engine/analysis'
 import { analyzeFaces, reframeKeys } from '../engine/reframe'
 import { type ZoomMode, faceAt, loudMoments, zoomKeys } from '../engine/autoZoom'
@@ -327,6 +330,8 @@ const agentState = (k: PanCropState): { x: number; y: number; zoom: number; rota
 })
 
 // Tools
+
+const RENDER_FORMATS = ['mp4', 'gif', 'mp3', 'wav', 'flac', 'm4a', 'ogg'] as const
 
 const TOOLS: Tool[] = [
   {
@@ -1708,6 +1713,89 @@ const TOOLS: Tool[] = [
       if (!theme) throw new ToolError(`No theme "${wanted}". Installed: ${themes.map((t) => t.name).join(', ')}`)
       A.setOption('theme', theme.id)
       return `Theme "${theme.name}" applied`
+    }
+  },
+  {
+    name: 'render',
+    title: 'Render to a file',
+    description:
+      'Renders the timeline (or a range of it) to a file: MP4 video, animated GIF (no sound), or sound only (MP3, WAV, FLAC, M4A, OGG), also of one audio track alone. Boar shows its save dialog and the user picks where the file goes: tell them to look at Boar. MP4 uses the Render As choices (codec, encoder, audio); loudness follows Render As too (-14 LUFS by default).',
+    inputSchema: object(
+      {
+        format: S.str('mp4 = video; gif = animated picture without sound; mp3, wav, flac, m4a, ogg = sound only', RENDER_FORMATS),
+        name: S.str('Suggested file name (the extension follows the format)'),
+        start: S.num('Seconds (default 0)'),
+        end: S.num('Seconds (default: the end of the timeline)'),
+        track: S.int('Sound only: render this audio track alone, whatever its mute and solo (default: every track that is heard)'),
+        quality: S.str('Default high. GIF: medium = 64 colors, very_high = dithered. WAV/FLAC: very_high = 24-bit', ['medium', 'high', 'very_high']),
+        gif_width: S.int('GIF width in pixels (default 480, at most the project width)'),
+        gif_fps: S.int('GIF frames per second (default 15)'),
+        loop: S.bool('GIF: loop forever (default true)')
+      },
+      ['format']
+    ),
+    run: async (a) => {
+      const state = get()
+      if (state.exporting) throw new ToolError('A render is already running')
+      const format = oneOf(a, 'format', RENDER_FORMATS, 'mp4')
+      const kind: RenderKind = format === 'mp4' ? 'video' : format === 'gif' ? 'gif' : 'sound'
+      const start = secondsToFlicks(num(a, 'start', { min: 0, def: 0 }))
+      const end = a.end === undefined ? projectEnd(state.project) : secondsToFlicks(num(a, 'end', { min: 0 }))
+      if (end <= start) throw new ToolError('Nothing to render: the range is empty')
+      const quality = oneOf(a, 'quality', ['medium', 'high', 'very_high'] as const, 'high')
+      const options = { ...state.options, renderKind: kind }
+      if (kind === 'gif') {
+        options.gifWidth = Math.round(num(a, 'gif_width', { min: 16, max: 4096, def: state.options.gifWidth }))
+        options.gifFps = num(a, 'gif_fps', { min: 1, max: 50, def: state.options.gifFps })
+      }
+      if (kind === 'sound') {
+        options.renderSound = format as SoundFormat
+        if (!(await soundSupport())[options.renderSound]) throw new ToolError(`This system cannot encode ${format}: use mp3, wav or flac`)
+      }
+      if (kind === 'video') {
+        const { width, height } = state.project.settings
+        const codecs = await supportedCodecs(width, height)
+        if (!codecs.length) throw new ToolError('This system has no video encoder for the project size')
+        if (!codecs.includes(options.renderCodec)) options.renderCodec = codecs[0]
+      }
+      let tracks: string[] | undefined
+      if (a.track !== undefined) {
+        if (kind !== 'sound') throw new ToolError('"track" is for sound only formats (mp3, wav, flac, m4a, ogg)')
+        const id = trackId(a)!
+        if (state.project.tracks.find((t) => t.id === id)?.kind !== 'audio') throw new ToolError(`Track ${a.track} is not an audio track`)
+        tracks = [id]
+      }
+      const type = renderFileType(options)
+      const destination = await chooseDestination(withExtension(str(a, 'name', 'Boar render'), type.extension), type)
+      if (!destination) throw new ToolError('The user closed the save dialog without choosing a file')
+      useEditor.setState({ playing: false, exporting: true })
+      const began = performance.now()
+      let shown = -1
+      try {
+        const result = await renderProject(
+          state.project,
+          destination,
+          options,
+          { quality: quality === 'very_high' ? 'veryHigh' : quality, range: { start, end }, tracks, once: !bool(a, 'loop', true) },
+          (p) => {
+            const tenth = Math.floor(p.progress * 10)
+            if (tenth === shown) return
+            shown = tenth
+            A.setStatus(`Rendering ${type.extension.toUpperCase()}… ${Math.round(p.progress * 100)}%`)
+          },
+          () => false
+        )
+        await destination.finish()
+        const seconds = ((performance.now() - began) / 1000).toFixed(1)
+        A.setStatus(`Rendered ${destination.label} in ${seconds} s`)
+        const level = result.loudness ? `; loudness ${result.loudness.before.toFixed(1)} → ${result.loudness.after.toFixed(1)} LUFS` : ''
+        return `Rendered ${destination.label} in ${seconds} s (${sec(end - start)} s of the timeline${level})`
+      } catch (err) {
+        await destination.discard().catch(() => undefined)
+        throw err
+      } finally {
+        useEditor.setState({ exporting: false })
+      }
     }
   },
   {

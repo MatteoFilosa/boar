@@ -82,6 +82,8 @@
 - Masks: ellipse, rectangle or a custom shape drawn with points and animated with keyframes. The shape is part of the picture, so moving it with Pan/Crop takes the masked part along. **Smart Select** cuts out an object with a click (more clicks add or leave out parts) and *Track Motion* follows it through the clip.
 - Event Pan/Crop with keyframes: click, `Ctrl`+click or `Shift`+click them on the keyframe bar to select, drag to move, `Delete` to remove, `Ctrl+C` / `Ctrl+V` to copy them to the cursor or to another event. The arrow keys move the frame (or, in the preview, the clicked picture) by one pixel, ten with `Shift`; `Shift`+drag moves it slowly.
 - **Render As** MP4 (H.264, HEVC, AV1, VP9): you choose who encodes, the graphics card (NVENC, Quick Sync, AMF, VideoToolbox) or the processor, and the audio (AAC or Opus). Preview and export use the same engine: what you see is what you export.
+- **Sound only** renders to MP3, WAV, FLAC, M4A (AAC) or OGG (Opus): the whole mix or one audio track alone, with the same loudness targets as videos.
+- **Animated GIF** renders: size, frame rate and colors to choose, looping; with a time selection it makes a short loop of any moment.
 
 ## Installation
 
@@ -145,10 +147,12 @@ Up-to-date graphics drivers make everything work better, especially the hardware
 AI assistants and agents that support MCP (desktop apps, coding agents, AI editors) can use Boar with your subscription: Boar asks for no API key and costs nothing extra.
 
 1. In Boar, turn on *Options › AI Agents (MCP)*. The server only listens on this PC and is protected by a token.
-2. Copy the configuration that fits your agent: URL with header, command (JSON) or TOML.
-3. Ask, for example, "remove the filler words and add captions", or use the ready-made prompts *make_shorts*, *clean_up_talking_head*, *voiceover_with_broll* and *youtube_chapters*.
+2. Desktop assistant apps that install MCP bundles (free plans included): press *Install Boar.mcpb* and confirm in the assistant. Other agents: copy the configuration that fits them, URL with header, command (JSON) or TOML.
+3. Ask, for example, "remove the filler words and add captions", or use the ready-made prompts *edit_in_boar*, *make_shorts*, *clean_up_talking_head*, *voiceover_with_broll* and *youtube_chapters*.
 
-The agent reads the timeline and the transcripts, looks at frames and makes the edits: it cuts and reorders the speech, adds captions, effects and titles, pans and zooms inside the picture with Pan/Crop keyframes, plays clips backwards, and puts pictures, videos and sound effects from your library on the timeline (over the speaker with a pop, or full screen). For a voiceover over long recordings it can skim files it has not imported yet (frames spread over the file, lengths), turn hours of screen recording into a few seconds of timelapse, freeze a frame to explain it, spotlight a detail and keep a face cam in a corner over the B-roll. Each edit can be undone with `Ctrl+Z`, and the window shows everything it did. Video and audio stay on your PC.
+The assistant's own app is needed: tools on your PC do not work from a web page. If a new chat answers that it does not know Boar, it looked for tools before they had loaded: send the message again, or start from the *edit_in_boar* prompt. Agents started before Boar still see its tools, and when Boar is closed the first tool they use opens it (installed copies).
+
+The agent reads the timeline and the transcripts, looks at frames and makes the edits: it cuts and reorders the speech, adds captions, effects and titles, pans and zooms inside the picture with Pan/Crop keyframes, plays clips backwards, and puts pictures, videos and sound effects from your library on the timeline (over the speaker with a pop, or full screen). For a voiceover over long recordings it can skim files it has not imported yet (frames spread over the file, lengths), turn hours of screen recording into a few seconds of timelapse, freeze a frame to explain it, spotlight a detail and keep a face cam in a corner over the B-roll. Each edit can be undone with `Ctrl+Z`, and the window shows everything it did. It can also render the result (video, GIF or sound only): Boar asks you where to save it. Video and audio stay on your PC.
 
 ## Themes
 

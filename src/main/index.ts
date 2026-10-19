@@ -192,6 +192,17 @@ function createWindow(): void {
 // Render output files
 // The renderer may only write to files the user picked in a save dialog.
 
+/** Render As file types by extension: the save dialog's filter and the folder it opens in. */
+const RENDER_TYPES: Record<string, { name: string; folder: 'videos' | 'music' | 'pictures' }> = {
+  mp4: { name: 'MP4 video', folder: 'videos' },
+  gif: { name: 'Animated GIF', folder: 'pictures' },
+  mp3: { name: 'MP3 audio', folder: 'music' },
+  wav: { name: 'WAV audio', folder: 'music' },
+  flac: { name: 'FLAC audio', folder: 'music' },
+  m4a: { name: 'M4A audio', folder: 'music' },
+  ogg: { name: 'OGG audio', folder: 'music' }
+}
+
 const userChosenPaths = new Set<string>()
 /** Project files the user opened or saved: saving writes back to them without a dialog. */
 const projectPaths = new Set<string>()
@@ -200,10 +211,12 @@ let nextFileId = 1
 
 function registerIpc(): void {
   ipcMain.handle('export:pick', async (event, suggestedName: string) => {
+    const extension = extname(String(suggestedName)).slice(1).toLowerCase()
+    const type = RENDER_TYPES[extension] ?? RENDER_TYPES.mp4
     const options = {
       title: 'Render As',
-      defaultPath: join(app.getPath('videos'), suggestedName),
-      filters: [{ name: 'MP4 video', extensions: ['mp4'] }]
+      defaultPath: join(app.getPath(type.folder), suggestedName),
+      filters: [{ name: type.name, extensions: [RENDER_TYPES[extension] ? extension : 'mp4'] }]
     }
     const win = BrowserWindow.fromWebContents(event.sender)
     const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
@@ -394,7 +407,7 @@ function runSmokeTest(win: BrowserWindow): void {
     // A small generated project rendered and compared with what it must look and sound like (renderCheck.ts).
     const render = (await win.webContents
       .executeJavaScript('window.__boarRenderCheck ? window.__boarRenderCheck() : null')
-      .catch((err: unknown) => ({ ok: false, codec: '', failures: [String(err)], skipped: [], audioOffsetMs: null, audioCodec: '', encoderDelay: 0, ms: 0 }))) as {
+      .catch((err: unknown) => ({ ok: false, codec: '', failures: [String(err)], skipped: [], audioOffsetMs: null, audioCodec: '', encoderDelay: 0, formats: [], ms: 0 }))) as {
       ok: boolean
       codec: string
       failures: string[]
@@ -402,6 +415,7 @@ function runSmokeTest(win: BrowserWindow): void {
       audioOffsetMs: number | null
       audioCodec: string
       encoderDelay: number
+      formats: string[]
       ms: number
     } | null
     if (!render) console.log('[smoke] render check: missing')
@@ -409,7 +423,8 @@ function runSmokeTest(win: BrowserWindow): void {
       const skipped = render.skipped.length ? ` (skipped: ${render.skipped.join(', ')})` : ''
       const sync = render.audioOffsetMs === null ? '' : `, sound ${render.audioOffsetMs} ms after the picture`
       const delay = render.encoderDelay ? ` (${render.encoderDelay} samples of encoder delay taken out)` : ''
-      console.log(`[smoke] render check: ${render.ok ? 'ok' : 'FAILED'} with ${render.codec}/${render.audioCodec}${sync}${delay} in ${render.ms} ms${skipped}`)
+      const others = render.formats.length ? `, also ${render.formats.join(', ')}` : ''
+      console.log(`[smoke] render check: ${render.ok ? 'ok' : 'FAILED'} with ${render.codec}/${render.audioCodec}${others}${sync}${delay} in ${render.ms} ms${skipped}`)
       for (const failure of render.failures) console.log(`[smoke] render: ${failure}`)
     }
     console.log(`[smoke] ready=${ready} bridge=${api} consoleErrors=${errors.length}`)

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bot, Check, Copy, RefreshCw, X } from 'lucide-react'
+import { Bot, Check, Copy, FolderOpen, Package, RefreshCw, X } from 'lucide-react'
 import * as A from '../core/actions'
 import { type AgentStatus, bridge } from '../platform'
 import { shortcutLabel } from './shortcuts'
@@ -33,6 +33,7 @@ export function AgentDialog(): React.JSX.Element {
   const [status, setStatus] = useState<AgentStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [showToken, setShowToken] = useState(false)
+  const [bundle, setBundle] = useState<{ path: string; opened: boolean; error: string } | null>(null)
   const log = useAgentActivity((s) => s.log)
 
   useEffect(() => {
@@ -47,6 +48,15 @@ export function AgentDialog(): React.JSX.Element {
     setBusy(true)
     setStatus(await bridge.agentSetEnabled(enabled))
     setBusy(false)
+  }
+
+  const makeBundle = async (open: boolean): Promise<void> => {
+    if (!bridge) return
+    try {
+      setBundle(await bridge.agentBundle(open))
+    } catch (err) {
+      setBundle({ path: '', opened: false, error: err instanceof Error ? err.message : String(err) })
+    }
   }
 
   const renew = async (): Promise<void> => {
@@ -115,15 +125,52 @@ export function AgentDialog(): React.JSX.Element {
                       <RefreshCw size={13} /> New
                     </button>
                   </div>
-                  <CopyBox label="Agents that connect to a URL (HTTP): add to their MCP configuration" text={httpConfig} />
-                  <CopyBox label="Agents that start a command (JSON configuration)" text={commandConfig} />
-                  <CopyBox label="Agents with a TOML configuration" text={tomlConfig} />
-                  <p className="dim agent-note">
-                    Command-based agents start a small bridge{' '}
-                    {hasEnv ? 'with Boar itself (no Node.js needed)' : 'with Node.js (node must be installed)'}; it reads the
-                    port and token from {status.configPath}. Keep Boar open while the agent works. Try asking: "Remove the
-                    fillers and add captions", or use the prompts make_shorts, clean_up_talking_head and youtube_chapters.
-                  </p>
+                  <div className="agent-bundle">
+                    <div className="agent-bundle-head">
+                      <Package size={15} /> Desktop assistants with extensions (free plans too)
+                    </div>
+                    <p className="dim">
+                      One step for assistant apps that install MCP bundles (.mcpb): open the bundle and confirm Install in the
+                      assistant. Its own app is needed (local tools do not work in a web page).
+                    </p>
+                    <div className="agent-bundle-actions">
+                      <button className="btn primary small" onClick={() => void makeBundle(true)}>
+                        <Package size={13} /> Install Boar.mcpb
+                      </button>
+                      <button className="btn small" onClick={() => void makeBundle(false)}>
+                        <FolderOpen size={13} /> Show the file
+                      </button>
+                    </div>
+                    {bundle && (
+                      <div className={`render-result ${bundle.error ? 'error' : 'ok'}`}>
+                        {bundle.error
+                          ? bundle.path
+                            ? `No app opens .mcpb files here. In the assistant's settings, Extensions › Install Extension…, pick ${bundle.path}`
+                            : `The bundle could not be made: ${bundle.error}`
+                          : bundle.opened
+                            ? `Opened ${bundle.path}: confirm the install in the assistant. Nothing appeared? Install it from the assistant's settings, Extensions › Install Extension…`
+                            : `Saved ${bundle.path}: drag it onto the assistant's Extensions settings.`}
+                      </div>
+                    )}
+                    <p className="dim agent-note">
+                      Then start a new chat and ask, for example: "In Boar, cut the long pauses and add captions". If the
+                      assistant says it does not know Boar, it looked for tools before they were ready: send the message again,
+                      or start from the Boar prompts in its + menu. After turning this option on, quit the assistant fully
+                      (also from the tray) and open it again. When Boar is closed, the first Boar tool the assistant uses opens it.
+                    </p>
+                  </div>
+                  <details className="agent-manual">
+                    <summary>Other agents: set up by hand</summary>
+                    <CopyBox label="Agents that connect to a URL (HTTP): add to their MCP configuration" text={httpConfig} />
+                    <CopyBox label="Agents that start a command (JSON configuration)" text={commandConfig} />
+                    <CopyBox label="Agents with a TOML configuration" text={tomlConfig} />
+                    <p className="dim agent-note">
+                      Command-based agents start a small bridge{' '}
+                      {hasEnv ? 'with Boar itself (no Node.js needed)' : 'with Node.js (node must be installed)'}; it reads the
+                      port and token from {status.configPath}. Try asking: "Remove the fillers and add captions", or use the
+                      prompts edit_in_boar, make_shorts, clean_up_talking_head and youtube_chapters.
+                    </p>
+                  </details>
                 </>
               )}
               <div className="agent-log">

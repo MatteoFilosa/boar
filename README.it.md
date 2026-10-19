@@ -82,6 +82,8 @@
 - Maschere: ellisse, rettangolo o forma custom disegnata a punti e animata con i keyframe. La forma fa parte dell'immagine: spostandola con Pan/Crop la parte mascherata si sposta con lei. **Smart Select** scontorna un oggetto con un clic (altri clic aggiungono o tolgono parti) e *Track Motion* lo segue per tutta la clip.
 - Event Pan/Crop con keyframe: sulla barra dei keyframe clic, `Ctrl`+clic o `Shift`+clic per selezionarli, trascina per spostarli, `Canc` per eliminarli, `Ctrl+C` / `Ctrl+V` per copiarli al cursore o in un altro evento. Le frecce spostano il riquadro (o, nell'anteprima, l'immagine cliccata) di un pixel, dieci con `Shift`; `Shift`+trascina lo sposta lentamente.
 - **Render As** in MP4 (H.264, HEVC, AV1, VP9): scegli chi codifica, la scheda video (NVENC, Quick Sync, AMF, VideoToolbox) o il processore, e l'audio (AAC o Opus). L'anteprima e l'export usano lo stesso motore: quello che vedi è quello che esporti.
+- Render **solo audio** in MP3, WAV, FLAC, M4A (AAC) o OGG (Opus): tutto il mix o una sola traccia audio, con gli stessi livelli di loudness dei video.
+- Render in **GIF animata**: dimensione, frame rate e colori a scelta, in loop; con una selezione temporale diventa un breve loop di qualsiasi momento.
 
 ## Installazione
 
@@ -145,10 +147,12 @@ Con driver video aggiornati va tutto meglio, soprattutto per l'encoder hardware.
 Gli assistenti e gli agenti AI compatibili con MCP (app desktop, agenti di coding, editor AI) possono usare Boar con il tuo abbonamento: Boar non chiede chiavi API e non costa nulla in più.
 
 1. In Boar attiva *Options › AI Agents (MCP)*. Il server ascolta solo su questo PC ed è protetto da un token.
-2. Copia la configurazione adatta al tuo agente: URL con header, comando (JSON) o TOML.
-3. Chiedi, per esempio: "togli gli intercalari e aggiungi i sottotitoli", oppure usa i prompt pronti *make_shorts*, *clean_up_talking_head*, *voiceover_with_broll* e *youtube_chapters*.
+2. App desktop di assistenti che installano i bundle MCP (anche con i piani gratuiti): premi *Install Boar.mcpb* e conferma nell'assistente. Altri agenti: copia la configurazione adatta, URL con header, comando (JSON) o TOML.
+3. Chiedi, per esempio: "togli gli intercalari e aggiungi i sottotitoli", oppure usa i prompt pronti *edit_in_boar*, *make_shorts*, *clean_up_talking_head*, *voiceover_with_broll* e *youtube_chapters*.
 
-L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: taglia e riordina il parlato, aggiunge sottotitoli, effetti e titoli, muove e zooma dentro l'inquadratura con i keyframe di Pan/Crop, manda le clip al contrario, e mette sulla timeline immagini, video ed effetti sonori della tua libreria (sopra chi parla con un effetto pop, o a tutto schermo). Per un voiceover sopra registrazioni lunghe può sfogliare file non ancora importati (fotogrammi sparsi lungo il file, durate), trasformare ore di registrazione dello schermo in pochi secondi di timelapse, fermare un fotogramma per spiegarlo, mettere in risalto un dettaglio e tenere la webcam in un angolo sopra le immagini. Ogni modifica si annulla con `Ctrl+Z` e la finestra mostra tutto quello che ha fatto. Video e audio restano sul tuo PC.
+Serve l'app dell'assistente: gli strumenti sul tuo PC non funzionano da una pagina web. Se una chat nuova risponde che non conosce Boar, ha cercato gli strumenti prima che fossero caricati: rimanda il messaggio, oppure parti dal prompt *edit_in_boar*. Gli agenti avviati prima di Boar vedono comunque i suoi strumenti, e se Boar è chiuso il primo strumento usato lo apre (copie installate).
+
+L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: taglia e riordina il parlato, aggiunge sottotitoli, effetti e titoli, muove e zooma dentro l'inquadratura con i keyframe di Pan/Crop, manda le clip al contrario, e mette sulla timeline immagini, video ed effetti sonori della tua libreria (sopra chi parla con un effetto pop, o a tutto schermo). Per un voiceover sopra registrazioni lunghe può sfogliare file non ancora importati (fotogrammi sparsi lungo il file, durate), trasformare ore di registrazione dello schermo in pochi secondi di timelapse, fermare un fotogramma per spiegarlo, mettere in risalto un dettaglio e tenere la webcam in un angolo sopra le immagini. Ogni modifica si annulla con `Ctrl+Z` e la finestra mostra tutto quello che ha fatto. Può anche fare il render del risultato (video, GIF o solo audio): Boar ti chiede dove salvarlo. Video e audio restano sul tuo PC.
 
 ## Temi
 

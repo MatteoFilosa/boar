@@ -85,6 +85,8 @@ export interface BoarBridge {
   agentStatus(): Promise<AgentStatus>
   agentSetEnabled(enabled: boolean): Promise<AgentStatus>
   agentNewToken(): Promise<AgentStatus>
+  /** Writes Boar.mcpb (the bridge as an MCP bundle) and opens it, or shows it in its folder. */
+  agentBundle(open: boolean): Promise<{ path: string; opened: boolean; error: string }>
   /** Latest release on GitHub compared with this version; null when running from the sources. */
   checkUpdate(): Promise<UpdateInfo | null>
   downloadUpdate(): Promise<void>

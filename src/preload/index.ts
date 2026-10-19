@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld('boar', {
   agentStatus: (): Promise<unknown> => ipcRenderer.invoke('agent:status'),
   agentSetEnabled: (enabled: boolean): Promise<unknown> => ipcRenderer.invoke('agent:setEnabled', enabled),
   agentNewToken: (): Promise<unknown> => ipcRenderer.invoke('agent:newToken'),
+  agentBundle: (open: boolean): Promise<unknown> => ipcRenderer.invoke('agent:bundle', open),
   checkUpdate: (): Promise<unknown> => ipcRenderer.invoke('update:check'),
   downloadUpdate: (): Promise<void> => ipcRenderer.invoke('update:download'),
   cancelUpdate: (): Promise<void> => ipcRenderer.invoke('update:cancel'),

@@ -3,6 +3,8 @@ import { bridge } from '../platform'
 
 export interface ExportDestination {
   target: Target
+  /** Writes a whole file made without Mediabunny (GIF); use instead of `target`. */
+  writeAll(data: Uint8Array<ArrayBuffer>): Promise<void>
   /** Where the file goes, for messages. */
   label: string
   /** Called after a successful render (browser fallback downloads here). */
@@ -19,8 +21,17 @@ interface SaveFilePickerWindow {
   }) => Promise<{ name: string; createWritable(): Promise<WritableStream<StreamTargetChunk>> }>
 }
 
+/** What is being saved, for the save dialog's file type. */
+export interface FileType {
+  description: string
+  mimeType: string
+  extension: string
+}
+
+export const MP4_FILE: FileType = { description: 'MP4 video', mimeType: 'video/mp4', extension: 'mp4' }
+
 /** Asks where to save the render. Returns null if the user cancels. */
-export async function chooseDestination(suggestedName: string): Promise<ExportDestination | null> {
+export async function chooseDestination(suggestedName: string, type: FileType = MP4_FILE): Promise<ExportDestination | null> {
   if (bridge) {
     const path = await bridge.pickExportPath(suggestedName)
     if (!path) return null
@@ -38,6 +49,7 @@ export async function chooseDestination(suggestedName: string): Promise<ExportDe
     })
     return {
       target: new StreamTarget(writable, { chunked: true }),
+      writeAll: (data) => bridge!.writeFile(id, 0, data),
       label: path,
       finish: close,
       discard: async () => {
@@ -53,11 +65,16 @@ export async function chooseDestination(suggestedName: string): Promise<ExportDe
     try {
       const handle = await picker({
         suggestedName,
-        types: [{ description: 'MP4 video', accept: { 'video/mp4': ['.mp4'] } }]
+        types: [{ description: type.description, accept: { [type.mimeType]: [`.${type.extension}`] } }]
       })
       const writable = await handle.createWritable()
       return {
         target: new StreamTarget(writable, { chunked: true }),
+        writeAll: async (data) => {
+          const writer = writable.getWriter()
+          await writer.write({ type: 'write', data, position: 0 })
+          await writer.close()
+        },
         label: handle.name,
         finish: async () => undefined,
         discard: async () => undefined
@@ -70,12 +87,17 @@ export async function chooseDestination(suggestedName: string): Promise<ExportDe
 
   // Last resort: render in memory, then download.
   const target = new BufferTarget()
+  let whole: Uint8Array<ArrayBuffer> | null = null
   return {
     target,
+    writeAll: async (data) => {
+      whole = data
+    },
     label: suggestedName,
     finish: async () => {
-      if (!target.buffer) return
-      const url = URL.createObjectURL(new Blob([target.buffer], { type: 'video/mp4' }))
+      const data = whole ?? target.buffer
+      if (!data) return
+      const url = URL.createObjectURL(new Blob([data], { type: type.mimeType }))
       const a = document.createElement('a')
       a.href = url
       a.download = suggestedName
@@ -84,4 +106,14 @@ export async function chooseDestination(suggestedName: string): Promise<ExportDe
     },
     discard: async () => undefined
   }
+}
+
+const RENDER_EXTENSIONS = ['mp4', 'gif', 'mp3', 'wav', 'flac', 'm4a', 'ogg']
+
+/** `name` with the extension of the chosen format, replacing a render extension it already has. */
+export function withExtension(name: string, extension: string): string {
+  const trimmed = name.trim() || 'Boar render'
+  const match = /\.([a-z0-9]+)$/i.exec(trimmed)
+  const base = match && RENDER_EXTENSIONS.includes(match[1].toLowerCase()) ? trimmed.slice(0, -match[0].length) : trimmed
+  return `${base || 'Boar render'}.${extension}`
 }

@@ -4,7 +4,20 @@
 // like. Run by the smoke test (npm run smoke, every CI system, packaged apps),
 // so a change that breaks the output fails the build. Loaded only when asked.
 
-import { ALL_FORMATS, AudioBufferSink, BufferSource, BufferTarget, CanvasSink, CanvasSource, Input, Mp4OutputFormat, Output, QUALITY_HIGH, canEncodeVideo } from 'mediabunny'
+import {
+  ALL_FORMATS,
+  AudioBufferSink,
+  BufferSource,
+  BufferTarget,
+  CanvasSink,
+  CanvasSource,
+  Input,
+  type InputAudioTrack,
+  Mp4OutputFormat,
+  Output,
+  QUALITY_HIGH,
+  canEncodeVideo
+} from 'mediabunny'
 import { addMediaItem } from './core/actions'
 import { createFx } from './core/fx'
 import { emptyProject, useEditor } from './core/store'
@@ -17,6 +30,8 @@ import { dropMediaCache } from './media/cache'
 import { track as analyze } from './media/importer'
 import { encodeWav } from './media/wav'
 import { type ExportResult, exportProject } from './engine/export'
+import { SOUND_FORMATS, exportSound, soundSupport } from './engine/exportSound'
+import { exportGif } from './engine/exportGif'
 
 export interface RenderCheckResult {
   ok: boolean
@@ -30,6 +45,8 @@ export interface RenderCheckResult {
   /** Audio codec of the render and the encoder delay the export took out, in samples. */
   audioCodec: string
   encoderDelay: number
+  /** Other renders checked: sound only formats and GIF. */
+  formats: string[]
   ms: number
 }
 
@@ -151,6 +168,107 @@ function event(id: string, trackId: string, mediaId: string, kind: 'video' | 'au
 }
 
 const near = (a: RGB, b: RGB): boolean => a.every((v, i) => Math.abs(v - b[i]) <= COLOR_TOLERANCE)
+const db = (v: number): number => 20 * Math.log10(v + 1e-9)
+const TONE_RMS = 0.5 / Math.SQRT2
+/** The second tone: -12 dB of event gain and -6 dB of Audio FX. */
+const QUIET_RMS = TONE_RMS * 0.25 * Math.pow(10, -6 / 20)
+
+/** RMS of the left channel between two times, from the whole track placed by packet time. */
+async function levels(audio: InputAudioTrack, seconds: number): Promise<(from: number, to: number) => number> {
+  const rate = audio.sampleRate
+  const pcm = new Float32Array(Math.ceil(seconds * rate))
+  for await (const { buffer, timestamp } of new AudioBufferSink(audio).buffers()) {
+    const at = Math.round(timestamp * rate)
+    const data = buffer.getChannelData(0)
+    pcm.set(data.subarray(Math.max(0, -at), Math.max(0, Math.min(data.length, pcm.length - at))), Math.max(0, at))
+  }
+  return (from, to) => {
+    const a = Math.max(0, Math.round(from * rate))
+    const b = Math.min(pcm.length, Math.round(to * rate))
+    let sum = 0
+    for (let i = a; i < b; i++) sum += pcm[i] * pcm[i]
+    return Math.sqrt(sum / Math.max(1, b - a))
+  }
+}
+
+/** Sound only renders of the tone track in every format this system writes: length and levels. */
+async function checkSoundFormats(project: Project, failures: string[]): Promise<string[]> {
+  const support = await soundSupport()
+  const checked: string[] = []
+  for (const format of SOUND_FORMATS.filter((f) => support[f])) {
+    const target = new BufferTarget()
+    try {
+      // Only the audio track, even though the timeline goes on to 5 s with pictures.
+      const settings = { format, quality: 'high' as const, masterDb: 0, autoCrossfade: true, loudness: null, tracks: ['A1'] }
+      await exportSound(project, target, settings, () => undefined, () => false)
+      if (!target.buffer) throw new Error('no file')
+      const input = new Input({ formats: ALL_FORMATS, source: new BufferSource(target.buffer) })
+      try {
+        const duration = await input.computeDuration()
+        if (Math.abs(duration - 5) > 0.1) failures.push(`${format}: length ${duration.toFixed(2)} s instead of 5 s`)
+        const audio = await input.getPrimaryAudioTrack()
+        if (!audio) throw new Error('no sound in the file')
+        const rms = await levels(audio, 5.5)
+        const expect = (what: string, from: number, to: number, want: number | null): void => {
+          const got = db(rms(from, to))
+          if (want === null ? got > -45 : Math.abs(got - want) > LEVEL_TOLERANCE_DB)
+            failures.push(`${format}: ${what} at ${from}-${to} s: ${got.toFixed(1)} dBFS, want ${want === null ? 'silence' : want.toFixed(1)}`)
+        }
+        expect('tone', 0.5, 1.5, db(TONE_RMS))
+        expect('gap', 2.1, 2.4, null)
+        expect('tone at -12 dB and Audio FX -6 dB', 3, 3.5, db(QUIET_RMS))
+        expect('end', 4.2, 4.9, null)
+      } finally {
+        input.dispose()
+      }
+      checked.push(format)
+    } catch (err) {
+      failures.push(`${format}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  return checked
+}
+
+/** A GIF of the project: length from the frame delays, and colors of the clip at 0.75 s. */
+async function checkGif(project: Project, failures: string[]): Promise<boolean> {
+  if (typeof ImageDecoder === 'undefined') return false
+  try {
+    const file = await exportGif(project, { width: 160, fps: 10, quality: 'high', autoCrossfade: true }, () => undefined, () => false)
+    const decoder = new ImageDecoder({ data: file, type: 'image/gif' })
+    try {
+      await decoder.tracks.ready
+      const count = decoder.tracks.selectedTrack?.frameCount ?? 0
+      if (count < 5 || count > 50) failures.push(`gif: ${count} frames, want 5-50 (10 fps over 5 s, still frames folded)`)
+      let at = 0
+      let checked = false
+      for (let i = 0; i < count; i++) {
+        const { image } = await decoder.decode({ frameIndex: i })
+        const length = (image.duration ?? 0) / 1e6
+        if (!checked && at + length > 0.75) {
+          checked = true
+          const canvas = new OffscreenCanvas(image.displayWidth, image.displayHeight)
+          const ctx = canvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D
+          ctx.drawImage(image, 0, 0)
+          const color = (fx: number): RGB => {
+            const d = ctx.getImageData(Math.round((canvas.width - 1) * fx), canvas.height >> 1, 1, 1).data
+            return [d[0], d[1], d[2]]
+          }
+          if (!near(color(0.1), RED)) failures.push(`gif: clip at 0.75 s (0.1, 0.5): rgb(${color(0.1).join(', ')}), want red`)
+          if (!near(color(0.9), BLUE)) failures.push(`gif: clip at 0.75 s (0.9, 0.5): rgb(${color(0.9).join(', ')}), want blue`)
+        }
+        at += length
+        image.close()
+      }
+      if (Math.abs(at - 5) > 0.05) failures.push(`gif: plays ${at.toFixed(2)} s instead of 5 s`)
+    } finally {
+      decoder.close()
+    }
+    return true
+  } catch (err) {
+    failures.push(`gif: ${err instanceof Error ? err.message : String(err)}`)
+    return false
+  }
+}
 const mix = (a: RGB, b: RGB, t: number): RGB => a.map((v, i) => Math.round(v + (b[i] - v) * t)) as RGB
 
 /** `codec` and `audioCodec` force the paths of other systems (VP9 and Opus where H.264 or AAC cannot be encoded). */
@@ -162,6 +280,7 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
   const added: MediaItem[] = []
   let offsetMs: number | null = null
   let rendered: ExportResult['audio'] = null
+  const formats: string[] = []
   try {
     codec ??= (await canEncodeVideo('avc', { width: W, height: H }).catch(() => false)) ? 'avc' : 'vp9'
     const clip = await addMedia(await makeClip(codec))
@@ -266,23 +385,9 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
 
       if (audio) {
         // The left channel of the whole render, placed by packet time.
-        const rate = audio.sampleRate
-        const pcm = new Float32Array(Math.ceil(5.5 * rate))
-        for await (const { buffer, timestamp } of new AudioBufferSink(audio).buffers()) {
-          const at = Math.round(timestamp * rate)
-          const data = buffer.getChannelData(0)
-          pcm.set(data.subarray(Math.max(0, -at), Math.max(0, Math.min(data.length, pcm.length - at))), Math.max(0, at))
-        }
-        const rms = (from: number, to: number): number => {
-          const a = Math.max(0, Math.round(from * rate))
-          const b = Math.min(pcm.length, Math.round(to * rate))
-          let sum = 0
-          for (let i = a; i < b; i++) sum += pcm[i] * pcm[i]
-          return Math.sqrt(sum / Math.max(1, b - a))
-        }
-        const db = (v: number): number => 20 * Math.log10(v + 1e-9)
-        const toneRms = 0.5 / Math.SQRT2
-        const quietRms = toneRms * 0.25 * Math.pow(10, -6 / 20)
+        const rms = await levels(audio, 5.5)
+        const toneRms = TONE_RMS
+        const quietRms = QUIET_RMS
         // Where a fade passes half its level (10 ms windows): the out of the first tone at 1.95 s, the in of the second at 2.55 s.
         const crossing = (from: number, to: number, level: number, falling: boolean): number | null => {
           for (let t = from; t <= to; t += 0.001) if (falling ? rms(t - 0.005, t + 0.005) < level : rms(t - 0.005, t + 0.005) > level) return t
@@ -314,6 +419,8 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
     } finally {
       input.dispose()
     }
+    formats.push(...(await checkSoundFormats(project, failures)))
+    if (await checkGif(project, failures)) formats.push('gif')
   } catch (err) {
     failures.push(err instanceof Error ? err.message : String(err))
   } finally {
@@ -332,6 +439,7 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
     audioOffsetMs: offsetMs,
     audioCodec: rendered?.codec ?? '',
     encoderDelay: rendered?.encoderDelay ?? 0,
+    formats,
     ms: Math.round(performance.now() - started)
   }
 }

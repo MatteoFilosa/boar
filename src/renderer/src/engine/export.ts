@@ -19,7 +19,7 @@ import {
 } from 'mediabunny'
 import { mediaById } from '../core/store'
 import { type Flicks, flicksToSeconds, fps, frameFlicks } from '../core/time'
-import { audioGain, eventsByTrack, projectEnd, sourceTime } from '../core/timeline'
+import { audioGain, eventsByTrack, mixedTracks, projectEnd, sourceTime } from '../core/timeline'
 import type { MediaItem, Project, TimelineEvent } from '../core/types'
 import { composeFrame } from './compose'
 import { inputSource } from '../media/source'
@@ -216,7 +216,7 @@ interface OpenMedia {
 }
 
 /** Opens each media file once and decodes frames sequentially for every event. */
-class FrameDecoder {
+export class FrameDecoder {
   private readonly media = new Map<string, Promise<OpenMedia>>()
   private readonly streams = new Map<
     string,
@@ -324,10 +324,17 @@ async function decodeAudio(media: MediaItem, offset: number, length: number): Pr
   }
 }
 
+export interface MixSettings {
+  masterDb: number
+  autoCrossfade: boolean
+  /** Audio tracks to mix whatever their mute and solo (default: the ones that are heard). */
+  tracks?: string[]
+}
+
 /** Mixes every audible audio event in [range.start, range.end) offline, with the same gains as the preview. */
-async function mixAudio(
+export async function mixAudio(
   project: Project,
-  settings: ExportSettings,
+  settings: MixSettings,
   range: { start: Flicks; end: Flicks },
   onProgress: (fraction: number) => void,
   isCancelled: () => boolean
@@ -338,15 +345,13 @@ async function mixAudio(
   const master = ctx.createGain()
   master.gain.value = dbToGain(settings.masterDb)
   master.connect(ctx.destination)
-  const audioTracks = project.tracks.filter((t) => t.kind === 'audio')
-  const anySolo = audioTracks.some((t) => t.solo)
+  const tracks = mixedTracks(project, settings.tracks)
   const byTrack = eventsByTrack(project)
-  const events = project.events.filter((e) => e.kind === 'audio')
+  const events = tracks.flatMap((t) => byTrack.get(t.id) ?? [])
   if (events.some((e) => activeFx(e.fx, 'audio').length > 0)) await prepareAudioFx(ctx)
   const chains: AudioFxChain[] = []
   let done = 0
-  for (const track of audioTracks) {
-    if (track.muted || (anySolo && !track.solo)) continue
+  for (const track of tracks) {
     const bus = ctx.createGain()
     bus.gain.value = dbToGain(track.volumeDb)
     const pan = ctx.createStereoPanner()
@@ -458,7 +463,7 @@ export async function renderStill(project: Project, t: Flicks, width: number, au
   return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 })
 }
 
-function sliceAudio(buffer: AudioBuffer, from: number, to: number): AudioBuffer | null {
+export function sliceAudio(buffer: AudioBuffer, from: number, to: number): AudioBuffer | null {
   const a = Math.max(0, Math.min(buffer.length, from))
   const b = Math.max(a, Math.min(buffer.length, to))
   if (b <= a) return null

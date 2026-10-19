@@ -1,5 +1,5 @@
 import type { Flicks } from './time'
-import type { Project, TimelineEvent, VolumePoint } from './types'
+import type { Project, TimelineEvent, Track, VolumePoint } from './types'
 import { fadeShape } from './fades'
 
 export const eventEnd = (e: TimelineEvent): Flicks => e.start + e.length
@@ -45,6 +45,17 @@ export function eventsByTrack(p: Project): Map<string, TimelineEvent[]> {
 
 export const eventsOnTrack = (p: Project, trackId: string): TimelineEvent[] =>
   eventsByTrack(p).get(trackId) ?? NO_EVENTS
+
+/**
+ * The audio tracks a render mixes: the ones `only` names (whatever their mute
+ * and solo), otherwise every track that is heard (solo wins, muted ones stay out).
+ */
+export function mixedTracks(p: Project, only?: readonly string[]): Track[] {
+  const audio = p.tracks.filter((t) => t.kind === 'audio')
+  if (only?.length) return audio.filter((t) => only.includes(t.id))
+  const anySolo = audio.some((t) => t.solo)
+  return audio.filter((t) => !t.muted && (!anySolo || t.solo))
+}
 
 const isEarlier = (o: TimelineEvent, e: TimelineEvent): boolean => byStart(o, e) < 0
 

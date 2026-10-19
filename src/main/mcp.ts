@@ -1,4 +1,4 @@
-import { app, type BrowserWindow, ipcMain } from 'electron'
+import { app, type BrowserWindow, ipcMain, shell } from 'electron'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { allowMediaPaths } from './media-protocol'
 import { isMediaFile } from './library'
+import { mcpBundle } from './mcpBundle'
 
 // MCP server (Streamable HTTP, stateless, JSON responses) on 127.0.0.1 with a
 // bearer token, off by default. The tools run in the renderer (agent/tools.ts);
@@ -19,6 +20,14 @@ interface McpConfig {
   enabled: boolean
   port: number
   token: string
+}
+
+/** Tool and prompt lists kept for the bridge, which answers with them while Boar is closed. */
+interface ToolCache {
+  version: string
+  instructions: string
+  tools: unknown[]
+  prompts: unknown[]
 }
 
 export interface McpStatus {
@@ -48,6 +57,9 @@ const PATH_TOOLS = new Set(['import_media', 'add_media', 'media_info', 'look_at_
 
 const newToken = (): string => randomBytes(24).toString('hex')
 const configPath = (): string => join(app.getPath('userData'), 'mcp.json')
+const cachePath = (): string => join(app.getPath('userData'), 'mcp-tools.json')
+/** Installed copies: what the bridge starts when an agent calls a tool while Boar is closed. */
+const appExecutable = (): string | undefined => (app.isPackaged ? (process.env.APPIMAGE ?? process.execPath) : undefined)
 
 let config: McpConfig = { enabled: false, port: DEFAULT_PORT, token: newToken() }
 let server: Server | null = null
@@ -71,7 +83,32 @@ async function loadConfig(): Promise<void> {
 
 async function saveConfig(): Promise<void> {
   await mkdir(app.getPath('userData'), { recursive: true })
-  await writeFile(configPath(), JSON.stringify(config, null, 1), 'utf8')
+  await writeFile(configPath(), JSON.stringify({ ...config, app: appExecutable() }, null, 1), 'utf8')
+}
+
+let cache: ToolCache = { version: '', instructions: INSTRUCTIONS, tools: [], prompts: [] }
+let cacheText = ''
+
+/** Keeps the lists the editor answered for the bridge (written only when they change). */
+async function updateCache(patch: Partial<ToolCache>): Promise<void> {
+  cache = { ...cache, ...patch, version: app.getVersion(), instructions: INSTRUCTIONS }
+  const text = JSON.stringify(cache)
+  if (text === cacheText) return
+  cacheText = text
+  await writeFile(cachePath(), text, 'utf8').catch(() => undefined)
+}
+
+/** Asks the editor for its lists once it is ready (a few tries while the window loads). */
+async function refreshCache(): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      const [tools, prompts] = await Promise.all([askEditor('list', null, 3000), askEditor('prompts', null, 3000)])
+      await updateCache({ tools: tools as unknown[], prompts: prompts as unknown[] })
+      return
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+    }
+  }
 }
 
 // Renderer link
@@ -127,8 +164,11 @@ async function handleRpc(message: RpcMessage): Promise<object | null> {
       }
       case 'ping':
         return result(id, {})
-      case 'tools/list':
-        return result(id, { tools: await askEditor('list', null, 15_000) })
+      case 'tools/list': {
+        const tools = await askEditor('list', null, 15_000)
+        void updateCache({ tools: tools as unknown[] })
+        return result(id, { tools })
+      }
       case 'tools/call': {
         // Files an agent names by path (import_media, add_media, look_at_media...) may be
         // read by the editor: the agent acts for the user, who gave it the token.
@@ -140,8 +180,11 @@ async function handleRpc(message: RpcMessage): Promise<object | null> {
         // Long tools (transcription, analysis) may take minutes.
         return result(id, await askEditor('call', { name: params.name, arguments: args }, 20 * 60_000))
       }
-      case 'prompts/list':
-        return result(id, { prompts: await askEditor('prompts', null, 15_000) })
+      case 'prompts/list': {
+        const prompts = await askEditor('prompts', null, 15_000)
+        void updateCache({ prompts: prompts as unknown[] })
+        return result(id, { prompts })
+      }
       case 'prompts/get':
         return result(id, await askEditor('prompt', { name: params.name, arguments: params.arguments ?? {} }, 15_000))
       default:
@@ -259,6 +302,32 @@ async function prepareBridge(): Promise<void> {
   }
 }
 
+/**
+ * Writes Boar.mcpb (the bridge as an MCP bundle) into the app's folder and opens it,
+ * so the desktop assistant that handles .mcpb files offers to install it.
+ */
+async function makeBundle(open: boolean): Promise<{ path: string; opened: boolean; error: string }> {
+  const tools = ((await askEditor('list', null, 15_000).catch(() => cache.tools)) as { name: string; description: string }[]) ?? []
+  const icon = await readFile(join(app.getAppPath(), 'resources', 'icon.png')).catch(() => undefined)
+  // The bridge finds mcp.json in the usual place by itself: name it only when it is elsewhere.
+  const usual = configPath() === join(app.getPath('appData'), 'Boar', 'mcp.json')
+  const data = mcpBundle({
+    version: app.getVersion(),
+    bridge: await readFile(bridgeFile, 'utf8'),
+    configPath: usual ? '' : configPath(),
+    tools,
+    icon
+  })
+  const path = join(app.getPath('userData'), 'Boar.mcpb')
+  await writeFile(path, data)
+  if (!open) {
+    shell.showItemInFolder(path)
+    return { path, opened: false, error: '' }
+  }
+  const error = await shell.openPath(path)
+  return { path, opened: !error, error }
+}
+
 function status(): McpStatus {
   return {
     enabled: config.enabled,
@@ -292,8 +361,10 @@ export async function registerMcp(window: () => BrowserWindow | null): Promise<v
   ipcMain.handle('agent:setEnabled', async (_event, enabled: boolean) => {
     config.enabled = enabled === true
     await saveConfig()
-    if (config.enabled) await start()
-    else await stop()
+    if (config.enabled) {
+      await start()
+      void refreshCache()
+    } else await stop()
     return status()
   })
   ipcMain.handle('agent:newToken', async () => {
@@ -301,8 +372,18 @@ export async function registerMcp(window: () => BrowserWindow | null): Promise<v
     await saveConfig()
     return status()
   })
+  ipcMain.handle('agent:bundle', (_event, open: boolean) => makeBundle(open === true))
   await loadConfig()
   // The bridge needs the token even before the first start.
   await saveConfig()
-  if (config.enabled) await start()
+  cacheText = await readFile(cachePath(), 'utf8').catch(() => '')
+  try {
+    cache = { ...cache, ...(JSON.parse(cacheText) as Partial<ToolCache>) }
+  } catch {
+    // No lists kept yet.
+  }
+  if (config.enabled) {
+    await start()
+    void refreshCache()
+  }
 }

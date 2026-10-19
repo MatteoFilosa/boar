@@ -17,6 +17,20 @@ interface Prompt {
 
 const PROMPTS: Prompt[] = [
   {
+    name: 'edit_in_boar',
+    title: 'Edit with Boar',
+    description: 'Starts a chat that edits the video open in Boar with its tools.',
+    arguments: [{ name: 'request', description: 'What to do with the video', required: true }],
+    text: (a) =>
+      [
+        'Use the Boar tools (the video editor open on this computer) for this request:',
+        a.request || 'Tell me what is on the timeline.',
+        '',
+        'Start with get_project. Read what is said with get_transcript (transcribe first if needed) and look with get_frame only where the picture matters.',
+        'Make few, precise edits; each is one undo step. At the end, say what you changed. To save a file, use render: Boar asks the user where.'
+      ].join('\n')
+  },
+  {
     name: 'clean_up_talking_head',
     title: 'Clean up a talking-head video',
     description: 'Removes fillers and long pauses, adds styled captions and punch-in zooms.',
