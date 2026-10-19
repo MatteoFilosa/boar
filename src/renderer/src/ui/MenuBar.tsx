@@ -114,7 +114,10 @@ function useMenus(): Menu[] {
         { label: 'Audio Track', command: 'addAudioTrack' },
         'separator',
         { label: 'Marker', command: 'addMarker' },
-        { label: 'Text Media', command: 'insertText' }
+        { label: 'Text Media', command: 'insertText' },
+        { label: 'Rectangle', command: 'insertRectangle' },
+        { label: 'Ellipse', command: 'insertEllipse' },
+        { label: 'Arrow', command: 'insertArrow' }
       ]
     },
     {

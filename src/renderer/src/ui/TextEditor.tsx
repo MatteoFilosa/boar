@@ -50,7 +50,7 @@ export function PresetThumb({ preset }: { preset: TextPreset }): React.JSX.Eleme
   return <canvas ref={ref} className="preset-thumb" />
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
+export function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
   return (
     <label className="te-field">
       <span>{label}</span>

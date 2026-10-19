@@ -24,7 +24,7 @@ import {
 import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
 import { type Flicks, flicksToSeconds, secondsToFlicks } from '../core/time'
-import { sourceLength } from '../core/timeline'
+import { isGenerated, sourceLength } from '../core/timeline'
 import type { MediaItem, ReverseLink, TimelineEvent } from '../core/types'
 import { canRead, inputSource } from '../media/source'
 import { importFiles, importPaths } from '../media/importer'
@@ -380,7 +380,7 @@ useEditor.subscribe((s, prev) => {
 
 /** Media events that can play backwards: video and sound clips (not stills or text). */
 const reversible = (e: TimelineEvent): boolean => {
-  if (e.text) return false
+  if (isGenerated(e)) return false
   const media = mediaById(e.mediaId)
   return !!media && media.kind !== 'image' && media.status === 'ready'
 }

@@ -18,8 +18,9 @@ import {
 } from '../core/mask'
 import { frameRect, panCropAt } from '../core/pancrop'
 import { drawText } from '../core/text'
+import { drawShape } from '../core/shapes'
 import { type Flicks, flicksToSeconds, frameFlicks } from '../core/time'
-import { sourceLength, sourceTime } from '../core/timeline'
+import { isGenerated, sourceLength, sourceTime } from '../core/timeline'
 import type { MediaItem, ProjectSettings, TimelineEvent } from '../core/types'
 import { imageCache } from '../media/cache'
 import { smartOutline, trackOutline } from '../engine/smartMask'
@@ -75,7 +76,7 @@ export function MaskDialog({ eventId }: { eventId: string }): React.JSX.Element 
   const mask = event.mask
   const update = (patch: Partial<EventMask>, field: string): void => A.setMask(event.id, { ...(mask ?? DEFAULT_MASK), ...patch }, field)
   // Text has no picture of its own: its shapes are always over the frame.
-  const media = event.text ? undefined : mediaById(event.mediaId)
+  const media = isGenerated(event) ? undefined : mediaById(event.mediaId)
   const follow = mask && media && media.width > 0 && media.height > 0 ? (
     <label className="te-check" title="On: the shape is part of the picture, so moving, zooming or turning it with Event Pan/Crop (or the preview handles) takes the masked part along. Off: a fixed window over the frame that the picture moves behind.">
       <input
@@ -209,7 +210,7 @@ function CustomMaskEditor({
   cursor: Flicks
   children: React.ReactNode
 }): React.JSX.Element {
-  const media: MediaItem | undefined = event.text ? undefined : mediaById(event.mediaId)
+  const media: MediaItem | undefined = isGenerated(event) ? undefined : mediaById(event.mediaId)
   const canSmart = !!media && !!media.width
   const [tool, setTool] = useState<Tool>(canSmart && (mask.path.length === 0 || mask.smart) ? 'smart' : 'points')
   const [busy, setBusy] = useState<{ label: string; progress: number | null } | null>(null)
@@ -276,6 +277,12 @@ function CustomMaskEditor({
       ctx.scale(scale, scale)
       drawText(ctx, event.text, sw, sh, 1)
       ctx.restore()
+    } else if (event.shape) {
+      ctx.save()
+      ctx.translate(ox, oy)
+      ctx.scale(scale, scale)
+      drawShape(ctx, event.shape, sw, sh, 1)
+      ctx.restore()
     } else if (media) {
       const source: CanvasImageSource | null =
         media.kind === 'image' ? (imageCache.get(media.id) ?? null) : canDraw(video) ? video : null
@@ -288,8 +295,11 @@ function CustomMaskEditor({
     const lw = 1 / scale
     // What the output frame shows of the source (Event Pan/Crop).
     if (media && event.panCrop.length > 0) {
-      const f = frameRect(panCropAt(event.panCrop, srcTime), sw, sh, settings.width, settings.height)
+      const state = panCropAt(event.panCrop, srcTime)
+      const f = frameRect(state, sw, sh, settings.width, settings.height)
       ctx.save()
+      // The frame lies over the stretched picture; this window shows it unstretched.
+      ctx.scale(1 / state.stretch, 1)
       ctx.translate(f.cx, f.cy)
       ctx.rotate((f.rotation * Math.PI) / 180)
       ctx.setLineDash([6 * lw, 4 * lw])

@@ -5,8 +5,10 @@ import { type EventAttribute, mediaById, useEditor } from '../core/store'
 import { fxDef } from '../core/fx'
 import { type FrameRate, STANDARD_RATES, nearestStandardRate, rateLabel } from '../core/time'
 import type { ProjectSettings } from '../core/types'
+import { isGenerated } from '../core/timeline'
 import { PanCropDialog } from './PanCropDialog'
 import { TextEditor } from './TextEditor'
+import { ShapeEditor } from './ShapeEditor'
 import { RenderDialog } from './RenderDialog'
 import logo from '../assets/logo.png'
 import { CaptionsDialog } from './CaptionsDialog'
@@ -209,7 +211,7 @@ function MatchMediaDialog({ mediaId }: { mediaId: string }): React.JSX.Element {
 /** What the copied events would paste, per attribute. */
 function copiedSummary(key: EventAttribute): string {
   const events = A.copiedEvents()
-  const media = events.filter((e) => !e.text)
+  const media = events.filter((e) => !isGenerated(e))
   switch (key) {
     case 'fx': {
       const names = [...new Set(events.flatMap((e) => e.fx.map((f) => fxDef(f.type)?.label ?? f.type)))]
@@ -227,7 +229,9 @@ function copiedSummary(key: EventAttribute): string {
       return events.map((e) => `${e.kind === 'video' ? 'level' : 'volume'} ${Math.round(e.gain * 100)}%`).filter((v, i, a) => a.indexOf(v) === i).join(', ')
     case 'textStyle': {
       const text = events.find((e) => e.text)?.text
-      return text ? `${text.font}, ${text.size} px` : 'no text event copied'
+      const shape = events.find((e) => e.shape)?.shape
+      if (text) return `${text.font}, ${text.size} px`
+      return shape ? `${shape.kind}, ${shape.color}` : 'no text or shape event copied'
     }
   }
 }
@@ -310,6 +314,8 @@ export function Dialogs(): React.JSX.Element | null {
       return <PanCropDialog eventId={dialog.eventId} />
     case 'text':
       return <TextEditor eventId={dialog.eventId} />
+    case 'shape':
+      return <ShapeEditor eventId={dialog.eventId} />
     case 'render':
       return <RenderDialog />
     case 'captions':

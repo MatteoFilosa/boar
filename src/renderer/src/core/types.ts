@@ -1,6 +1,7 @@
 import type { Flicks, FrameRate } from './time'
 import type { PanCropKey } from './pancrop'
 import type { TextContent } from './text'
+import type { ShapeContent } from './shapes'
 import type { EventMask } from './mask'
 import type { EventFx } from './fx'
 import type { EventTransition } from './transitions'
@@ -68,6 +69,8 @@ export interface TimelineEvent {
   panCrop: PanCropKey[]
   /** Set for generated text events, which have no media file (mediaId is ''). */
   text: TextContent | null
+  /** Set for generated shape events (rectangle, ellipse, arrow), which have no media file either. */
+  shape: ShapeContent | null
   /** Shape mask (video events). */
   mask: EventMask | null
   /** Event FX chain (video effects on video events, audio effects on audio events). */

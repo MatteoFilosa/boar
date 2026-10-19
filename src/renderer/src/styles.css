@@ -2690,6 +2690,22 @@ body.dragging-track * {
   border-radius: 5px;
   cursor: ew-resize;
 }
+.xf-handle.n {
+  left: 50%;
+  top: 0;
+  border-radius: 5px;
+  cursor: ns-resize;
+}
+.xf-handle.s {
+  left: 50%;
+  top: 100%;
+  border-radius: 5px;
+  cursor: ns-resize;
+}
+/* The ends of an arrow. */
+.xf-handle.end {
+  cursor: crosshair;
+}
 
 /* Rotation zones: just outside each corner, under the scale handle. */
 .xf-rotate {

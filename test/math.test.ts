@@ -1,6 +1,21 @@
 import { describe, expect, test } from 'vitest'
 import { integratedLoudness, truePeak } from '@/engine/loudness'
-import { DEFAULT_PANCROP, type PanCropKey, fillZoom, fitFrame, normalizeAngle, panCropAt, sourcePlacement, turnState } from '@/core/pancrop'
+import {
+  DEFAULT_PANCROP,
+  type PanCropKey,
+  fillZoom,
+  fitFrame,
+  framingZoom,
+  normalizeAngle,
+  panCropAt,
+  placeBox,
+  sourcePlacement,
+  sourceToOutput,
+  stretchBox,
+  turnState,
+  withStretch
+} from '@/core/pancrop'
+import { DEFAULT_MASK, convertMaskSpace } from '@/core/mask'
 import { s } from './helpers'
 
 const sine = (freq: number, amplitude: number, seconds: number, rate = 48000, phase = 0): Float32Array =>
@@ -43,12 +58,13 @@ describe('loudness (BS.1770)', () => {
 })
 
 describe('Pan/Crop', () => {
-  const key = (t: number, zoom: number, ease: PanCropKey['ease'], cx = 0.5): PanCropKey => ({
+  const key = (t: number, zoom: number, ease: PanCropKey['ease'], cx = 0.5, stretch = 1): PanCropKey => ({
     time: s(t),
     cx,
     cy: 0.5,
     zoom,
     rotation: 0,
+    stretch,
     ease
   })
 
@@ -92,14 +108,111 @@ describe('Pan/Crop', () => {
   })
 
   test('a quarter turn keeps the picture centered where it was', () => {
-    const state = { cx: 0.3, cy: 0.6, zoom: 1.5, rotation: 0 }
+    const state = { cx: 0.3, cy: 0.6, zoom: 1.5, rotation: 0, stretch: 1 }
     const before = sourcePlacement(state, 1920, 1080, 1920, 1080)
     const after = sourcePlacement(turnState(state, 90, 1920, 1080, 1920, 1080), 1920, 1080, 1920, 1080)
     expect(after.x).toBeCloseTo(before.x)
     expect(after.y).toBeCloseTo(before.y)
   })
 
+  test('stretch moves at an even pace, like zoom', () => {
+    expect(panCropAt([key(0, 1, 'linear', 0.5, 1), key(2, 1, 'linear', 0.5, 4)], s(1)).stretch).toBeCloseTo(2)
+  })
+
+  test('a picture placed as a box of any shape reads back as that box', () => {
+    // A 400x300 picture shown 800 wide and 200 high: three times as wide as its own proportions.
+    const state = placeBox(700, 400, 800, 200, 0, 400, 300, 1920, 1080)
+    expect(state.stretch).toBeCloseTo(3)
+    const at = sourcePlacement(state, 400, 300, 1920, 1080)
+    expect([at.x, at.y, at.w, at.h].map((v) => Math.round(v * 1000) / 1000)).toEqual([700, 400, 800, 200])
+  })
+
+  test('a turned stretched picture stays a rectangle along its own sides', () => {
+    const state = placeBox(900, 500, 600, 150, -30, 400, 300, 1920, 1080)
+    const { map, inverse } = sourceToOutput(state, 400, 300, 1920, 1080)
+    const [a, b, c] = [map(0, 0), map(400, 0), map(0, 300)]
+    expect(Math.hypot(b[0] - a[0], b[1] - a[1])).toBeCloseTo(600)
+    expect(Math.hypot(c[0] - a[0], c[1] - a[1])).toBeCloseTo(150)
+    // The sides stay square to each other, turned 30° clockwise on screen.
+    expect((b[0] - a[0]) * (c[0] - a[0]) + (b[1] - a[1]) * (c[1] - a[1])).toBeCloseTo(0)
+    expect((Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI).toBeCloseTo(30)
+    const back = inverse(...map(123, 45))
+    expect(back[0]).toBeCloseTo(123)
+    expect(back[1]).toBeCloseTo(45)
+  })
+
+  test('a mask over the whole stretched picture covers its box on screen', () => {
+    const state = placeBox(700, 400, 800, 200, 0, 400, 300, 1920, 1080)
+    const mask = { ...DEFAULT_MASK, shape: 'rectangle' as const, space: 'picture' as const, cx: 0.5, cy: 0.5, w: 1, h: 1 }
+    const framed = convertMaskSpace(mask, 'frame', state, 400, 300, 1920, 1080)
+    expect([framed.cx * 1920, framed.cy * 1080, framed.w * 1920, framed.h * 1080].map((v) => Math.round(v * 1000) / 1000)).toEqual([700, 400, 800, 200])
+    const back = convertMaskSpace(framed, 'picture', state, 400, 300, 1920, 1080)
+    expect(back.w).toBeCloseTo(1)
+    expect(back.h).toBeCloseTo(1)
+  })
+
+  test('a new stretch keeps the center and height on screen', () => {
+    const state = withStretch(placeBox(700, 400, 400, 300, 0, 400, 300, 1920, 1080), 2, 400, 300, 1920, 1080)
+    const at = sourcePlacement(state, 400, 300, 1920, 1080)
+    expect([at.x, at.y, at.w, at.h].map((v) => Math.round(v * 1000) / 1000)).toEqual([700, 400, 800, 300])
+  })
+
+  test('fit and fill count on the stretched picture', () => {
+    // A square stretched to 16:9 fills a 16:9 frame exactly.
+    expect(framingZoom('fill', 0, 1080, 1080, 1920, 1080, 16 / 9)).toBeCloseTo(1)
+    expect(framingZoom('fit', 0, 1080, 1080, 1920, 1080, 16 / 9)).toBeCloseTo(1)
+    expect(framingZoom('fill', 0, 1080, 1080, 1920, 1080, 1)).toBeCloseTo(16 / 9)
+  })
+
+  test('a quarter turn keeps the stretch, the center and the size', () => {
+    const state = placeBox(600, 300, 500, 100, 0, 400, 300, 1920, 1080)
+    const turned = turnState(state, 90, 400, 300, 1920, 1080)
+    expect(turned.stretch).toBeCloseTo(state.stretch)
+    const at = sourcePlacement(turned, 400, 300, 1920, 1080)
+    expect([at.x, at.y, at.w, at.h].map((v) => Math.round(v * 1000) / 1000)).toEqual([600, 300, 500, 100])
+  })
+
   test('angles normalize into (-180, 180]', () => {
     expect([normalizeAngle(270), normalizeAngle(-180), normalizeAngle(540), normalizeAngle(-90)]).toEqual([-90, 180, 180, -90])
+  })
+})
+
+describe('stretch handles', () => {
+  const box = { cx: 500, cy: 300, w: 200, h: 100, angle: 0 }
+  const src = { w: 1000, h: 1000 }
+  const round = (b: { cx: number; cy: number; w: number; h: number }): number[] => [b.cx, b.cy, b.w, b.h].map((v) => Math.round(v * 1000) / 1000)
+
+  test('a side handle moves that side only', () => {
+    // Right side 100 px to the right: the left side stays at 400.
+    expect(round(stretchBox(box, 'e', 100, 37, src, 'snap'))).toEqual([550, 300, 300, 100])
+    // Top side 50 px up: the bottom stays at 350.
+    expect(round(stretchBox(box, 'n', 12, -50, src, 'snap'))).toEqual([500, 275, 200, 150])
+  })
+
+  test('a corner moves its two sides, the opposite corner stays', () => {
+    expect(round(stretchBox(box, 'nw', -50, -20, src, 'snap'))).toEqual([475, 290, 250, 120])
+  })
+
+  test('a corner can keep the box\'s proportions', () => {
+    // Twice as wide as tall: the pointer 100 px right and 20 down gives a box 1.44 times as big.
+    expect(round(stretchBox(box, 'se', 100, 20, src, 'keep'))).toEqual([544, 322, 288, 144])
+  })
+
+  test('on a turned box the sides move along its own axes', () => {
+    // Turned a quarter clockwise: its right side faces down on screen.
+    expect(round(stretchBox({ ...box, angle: Math.PI / 2 }, 'e', 0, 100, src, 'snap'))).toEqual([500, 350, 300, 100])
+  })
+
+  test('near its own proportions the picture snaps to them, unless free', () => {
+    const own = { w: 400, h: 300 }
+    const b = { ...box, w: 200, h: 150 }
+    const snapped = stretchBox(b, 'e', 4, 0, own, 'snap')
+    expect(snapped.snapped).toBe(true)
+    expect(snapped.w).toBeCloseTo(200)
+    expect(stretchBox(b, 'e', 4, 0, own, 'free').w).toBeCloseTo(204)
+  })
+
+  test('a side never shrinks past a few pixels or flips', () => {
+    expect(stretchBox(box, 'e', -500, 0, src, 'free').w).toBe(4)
   })
 })

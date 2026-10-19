@@ -144,6 +144,7 @@ export function reframeKeys(samples: FaceSample[], media: MediaItem, settings: P
     cy: y,
     zoom,
     rotation: 0,
+    stretch: 1,
     ease
   })
   if (o.mode === 'static' || samples.length < 3) {

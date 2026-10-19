@@ -282,8 +282,8 @@ describe('clipboard', () => {
 
   test('Paste Event Attributes moves keyframes to the same moment of each clip', () => {
     const keys = [
-      { time: s(10), cx: 0.5, cy: 0.5, zoom: 1, rotation: 0, ease: 'smooth' as const },
-      { time: s(12), cx: 0.3, cy: 0.5, zoom: 2, rotation: 0, ease: 'smooth' as const }
+      { time: s(10), cx: 0.5, cy: 0.5, zoom: 1, rotation: 0, stretch: 1, ease: 'smooth' as const },
+      { time: s(12), cx: 0.3, cy: 0.5, zoom: 2, rotation: 0, stretch: 1.5, ease: 'smooth' as const }
     ]
     load(
       project(
@@ -329,5 +329,28 @@ describe('speed', () => {
   test('stills and text cannot change speed', () => {
     load(project([track('v')], [clip('a', 'v', 0, 4)]), { media: [media('m', { kind: 'image', duration: 0 })] })
     expect(A.setPlaybackRate(['a'], 2)).toBe(0)
+  })
+})
+
+describe('stretched pictures', () => {
+  const stretched = { time: 0, cx: 0.5, cy: 0.5, zoom: 0.5, rotation: 0, stretch: 2, ease: 'smooth' as const }
+
+  test('Fit Frame and quarter turns keep the stretch', () => {
+    load(project([track('v')], [clip('a', 'v', 0, 4, { panCrop: [stretched] }), clip('b', 'v', 4, 4, { panCrop: [stretched] })]), {
+      media: [media('m', { kind: 'image', duration: 0, width: 400, height: 300 })],
+      selection: ['a']
+    })
+    A.reframeVideoEvents('fit')
+    expect(ev('a').panCrop).toHaveLength(1)
+    expect(ev('a').panCrop[0]).toMatchObject({ stretch: 2, zoom: 1, cx: 0.5, cy: 0.5 })
+    expect(A.rotateEvents(['b'], 90)).toBe(1)
+    expect(ev('b').panCrop[0].stretch).toBe(2)
+    expect(ev('b').panCrop[0].rotation).toBe(-90)
+  })
+
+  test('Fit Frame on a picture with its own proportions removes the framing', () => {
+    load(project([track('v')], [clip('a', 'v', 0, 4, { panCrop: [{ ...stretched, stretch: 1 }] })]), { selection: ['a'], media: [media('m')] })
+    A.reframeVideoEvents('fit')
+    expect(ev('a').panCrop).toEqual([])
   })
 })

@@ -2,19 +2,24 @@ import { useEffect, useRef, useState } from 'react'
 import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
 import { textBounds } from '../core/text'
-import { type PanCropKey, type PanCropState, normalizeAngle, panCropAt, placeSource, sourcePlacement, upsertKey } from '../core/pancrop'
+import { type PanCropKey, type PanCropState, normalizeAngle, panCropAt, placeBox, placeSource, sourcePlacement, stretchBox, upsertKey } from '../core/pancrop'
 import { eventEnd, sourceTime } from '../core/timeline'
+import { moveShape, shapeBox, shapeFromBox } from '../core/shapes'
 import type { Project, TimelineEvent } from '../core/types'
 import type { Flicks } from '../core/time'
 import { getEngine } from '../engine/preview'
 import { CORNER_CURSOR_ANGLE, rotateCursor, snapAngle } from './rotateCursor'
+import { MOD } from '../platform'
 
-// Direct manipulation in the Video Preview: the selected text / image / video
-// event at the cursor gets a box with handles. Dragging moves it, corners scale
-// it, just outside a corner rotates it, the side handles of a text change its
-// wrap width. Media events are moved, scaled and rotated through their Event
-// Pan/Crop (a keyframe at the cursor when the event already has several), so
-// the export matches exactly.
+// Direct manipulation in the Video Preview: the selected text / shape / image /
+// video event at the cursor gets a box with handles. Dragging moves it, corners
+// scale it, just outside a corner rotates it, the side handles of a text change
+// its wrap width. The side handles of a picture stretch it one way (the
+// opposite side stays put), and Ctrl+drag on a corner stretches it both ways.
+// Rectangles and ellipses resize freely from any side or corner; an arrow has a
+// handle on each end. Media events are moved, scaled, stretched and rotated
+// through their Event Pan/Crop (a keyframe at the cursor when the event already
+// has several), so the export matches exactly.
 
 interface Box {
   /** Center and size in project pixels, rotation in radians (clockwise). */
@@ -35,7 +40,7 @@ function mediaBox(ev: TimelineEvent, t: Flicks, W: number, H: number): Box | nul
   if (!src) return null
   const state = panCropAt(ev.panCrop, sourceTime(ev, t))
   const at = sourcePlacement(state, src.w, src.h, W, H)
-  return { cx: at.x, cy: at.y, w: src.w * at.scale, h: src.h * at.scale, angle: (-state.rotation * Math.PI) / 180 }
+  return { cx: at.x, cy: at.y, w: at.w, h: at.h, angle: (-state.rotation * Math.PI) / 180 }
 }
 
 function eventBox(ev: TimelineEvent, t: Flicks, W: number, H: number): Box | null {
@@ -43,13 +48,14 @@ function eventBox(ev: TimelineEvent, t: Flicks, W: number, H: number): Box | nul
     const b = textBounds(ev.text, W, H)
     return { cx: b.left + b.width / 2, cy: b.top + b.height / 2, w: b.width, h: b.height, angle: (ev.text.rotation * Math.PI) / 180 }
   }
+  if (ev.shape) return shapeBox(ev.shape, W, H)
   return mediaBox(ev, t, W, H)
 }
 
-/** Pan/Crop state that puts the source center at (cx, cy) with the given zoom and rotation (degrees). */
-function stateFor(ev: TimelineEvent, cx: number, cy: number, zoom: number, rotation: number, W: number, H: number): PanCropState {
+/** Pan/Crop state that puts the source center at (cx, cy) with the given zoom, rotation (degrees) and stretch. */
+function stateFor(ev: TimelineEvent, cx: number, cy: number, s: Pick<PanCropState, 'zoom' | 'rotation' | 'stretch'>, W: number, H: number): PanCropState {
   const src = imageSize(ev) as { w: number; h: number }
-  return placeSource(cx, cy, zoom, rotation, src.w, src.h, W, H)
+  return placeSource(cx, cy, s.zoom, s.rotation, src.w, src.h, W, H, s.stretch)
 }
 
 function keysWith(ev: TimelineEvent, t: Flicks, state: PanCropState): PanCropKey[] {
@@ -65,7 +71,7 @@ function editableEvents(project: Project, selection: string[], t: Flicks): Timel
   const order = new Map(project.tracks.map((tr, i) => [tr.id, i]))
   return project.events
     .filter((e) => selection.includes(e.id) && e.kind === 'video' && e.start <= t && t < eventEnd(e))
-    .filter((e) => e.text || imageSize(e))
+    .filter((e) => e.text || e.shape || imageSize(e))
     .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0))
 }
 
@@ -87,9 +93,13 @@ function contains(box: Box, x: number, y: number): boolean {
 }
 
 type Corner = 'nw' | 'ne' | 'sw' | 'se'
-type Handle = 'move' | 'rotate' | Corner | 'w' | 'e'
+type Side = 'n' | 's' | 'w' | 'e'
+type Handle = 'move' | 'rotate' | Corner | Side
 const CORNERS: Corner[] = ['nw', 'ne', 'sw', 'se']
+const SIDES: Side[] = ['n', 's', 'w', 'e']
 const SNAP = 0.012
+/** Shift on an arrow end: the arrow turns in steps of this many degrees. */
+const ARROW_STEP = 15
 /** Shift while moving: the picture follows the pointer this much slower. */
 const FINE_DRAG = 0.2
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
@@ -99,14 +109,15 @@ function nudge(ev: TimelineEvent, t: Flicks, dx: number, dy: number, W: number, 
   const b = eventBox(ev, t, W, H)
   if (!b) return
   const state = panCropAt(ev.panCrop, sourceTime(ev, t))
-  const keys = ev.text ? null : keysWith(ev, t, stateFor(ev, b.cx + dx, b.cy + dy, state.zoom, state.rotation, W, H))
+  const keys = ev.text || ev.shape ? null : keysWith(ev, t, stateFor(ev, b.cx + dx, b.cy + dy, state, W, H))
   A.commitCoalesced(`nudge:${ev.id}`, (d) => {
     const draft = d.events.find((o) => o.id === ev.id)
     if (!draft) return
     if (draft.text) {
       draft.text.x += dx / W
       draft.text.y += dy / H
-    } else if (keys) draft.panCrop = keys
+    } else if (draft.shape) Object.assign(draft.shape, moveShape(draft.shape, dx, dy, W, H))
+    else if (keys) draft.panCrop = keys
   })
 }
 
@@ -119,7 +130,7 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
   const dialog = useEditor((s) => s.dialog)
   const ref = useRef<HTMLDivElement>(null)
   const [guides, setGuides] = useState<{ x: boolean; y: boolean }>({ x: false, y: false })
-  const [angleLabel, setAngleLabel] = useState<string | null>(null)
+  const [label, setLabel] = useState<string | null>(null)
   const W = project.settings.width
   const H = project.settings.height
   const k = width / W
@@ -172,6 +183,7 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
     const b0 = eventBox(ev, cursor, W, H)
     if (!b0) return
     const text0 = ev.text ? { ...ev.text } : null
+    const shape0 = ev.shape ? { ...ev.shape } : null
     const state0 = panCropAt(ev.panCrop, sourceTime(ev, cursor))
     const dist0 = Math.max(4, Math.hypot(start.x - b0.cx, start.y - b0.cy))
     const deg0 = (b0.angle * 180) / Math.PI
@@ -201,12 +213,13 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
         turned += step
         lastAngle = a
         const deg = snapAngle(deg0 + (turned * 180) / Math.PI, pe)
-        setAngleLabel(`${normalizeAngle(deg).toFixed(1)}°`)
+        setLabel(`${normalizeAngle(deg).toFixed(1)}°`)
         A.updateGesture((d) => {
           const draft = d.events.find((o) => o.id === ev.id)
           if (!draft) return
           if (draft.text) draft.text.rotation = normalizeAngle(deg)
-          else draft.panCrop = keysWith(ev, cursor, stateFor(ev, b0.cx, b0.cy, state0.zoom, -deg, W, H))
+          else if (draft.shape) draft.shape.rotation = normalizeAngle(deg)
+          else draft.panCrop = keysWith(ev, cursor, stateFor(ev, b0.cx, b0.cy, { ...state0, rotation: -deg }, W, H))
         })
         return
       }
@@ -231,12 +244,61 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
           if (draft.text && text0) {
             draft.text.x = text0.x + dx / W
             draft.text.y = text0.y + dy / H
+          } else if (draft.shape && shape0) {
+            Object.assign(draft.shape, moveShape(shape0, dx, dy, W, H))
           } else {
-            draft.panCrop = keysWith(ev, cursor, stateFor(ev, b0.cx + dx, b0.cy + dy, state0.zoom, state0.rotation, W, H))
+            draft.panCrop = keysWith(ev, cursor, stateFor(ev, b0.cx + dx, b0.cy + dy, state0, W, H))
           }
         })
         return
       }
+      if (shape0?.kind === 'arrow') {
+        // An end follows the pointer; with Shift the arrow turns in steps around the other end.
+        const tip = handle === 'e'
+        const fx = (tip ? shape0.x1 : shape0.x2) * W
+        const fy = (tip ? shape0.y1 : shape0.y2) * H
+        let px = (tip ? shape0.x2 : shape0.x1) * W + dx
+        let py = (tip ? shape0.y2 : shape0.y1) * H + dy
+        const length = Math.hypot(px - fx, py - fy)
+        if (pe.shiftKey) {
+          const step = (ARROW_STEP * Math.PI) / 180
+          const a = Math.round(Math.atan2(py - fy, px - fx) / step) * step
+          px = fx + Math.cos(a) * length
+          py = fy + Math.sin(a) * length
+        }
+        const deg = (Math.atan2(tip ? py - fy : fy - py, tip ? px - fx : fx - px) * 180) / Math.PI
+        setLabel(`${Math.round(length)} px · ${normalizeAngle(Math.round(deg * 10) / 10).toFixed(1)}°`)
+        A.updateGesture((d) => {
+          const draft = d.events.find((o) => o.id === ev.id)
+          if (!draft?.shape) return
+          if (tip) Object.assign(draft.shape, { x2: px / W, y2: py / H })
+          else Object.assign(draft.shape, { x1: px / W, y1: py / H })
+        })
+        return
+      }
+      if (shape0) {
+        // Rectangles and ellipses: the dragged sides follow the pointer (Shift on a corner keeps the proportions).
+        const b = stretchBox(b0, handle, dx, dy, { w: b0.w, h: b0.h }, handle.length === 2 && pe.shiftKey ? 'keep' : 'free')
+        setLabel(`${Math.round(b.w)} × ${Math.round(b.h)}`)
+        A.updateGesture((d) => {
+          const draft = d.events.find((o) => o.id === ev.id)
+          if (draft?.shape) Object.assign(draft.shape, shapeFromBox(shape0, b, W, H))
+        })
+        return
+      }
+      const src = imageSize(ev)
+      const sideHandle = handle === 'n' || handle === 's' || handle === 'w' || handle === 'e'
+      if (!text0 && src && (sideHandle || pe.ctrlKey || pe.metaKey)) {
+        // Stretch: the dragged sides follow the pointer, the opposite ones stay.
+        const b = stretchBox(b0, handle, dx, dy, src, pe.altKey ? 'free' : 'snap')
+        setLabel(`${Math.round(b.w)} × ${Math.round(b.h)}${b.snapped ? ' · own proportions' : ''}`)
+        A.updateGesture((d) => {
+          const draft = d.events.find((o) => o.id === ev.id)
+          if (draft) draft.panCrop = keysWith(ev, cursor, placeBox(b.cx, b.cy, b.w, b.h, state0.rotation, src.w, src.h, W, H))
+        })
+        return
+      }
+      setLabel(null)
       if (handle === 'w' || handle === 'e') {
         // Side handles of a text: wrap width, keeping the size. Measured along
         // the text's own axis, from its anchor (the center for centered text).
@@ -260,7 +322,7 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
           draft.text.maxWidth = Math.max(0.1, Math.min(1.5, text0.maxWidth * f))
           draft.text.strokeWidth = text0.strokeWidth * f
         } else {
-          draft.panCrop = keysWith(ev, cursor, stateFor(ev, b0.cx, b0.cy, Math.max(0.02, state0.zoom * f), state0.rotation, W, H))
+          draft.panCrop = keysWith(ev, cursor, stateFor(ev, b0.cx, b0.cy, { ...state0, zoom: Math.max(0.02, state0.zoom * f) }, W, H))
         }
       })
     }
@@ -268,7 +330,7 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       setGuides({ x: false, y: false })
-      setAngleLabel(null)
+      setLabel(null)
       A.endGesture()
     }
     window.addEventListener('pointermove', move)
@@ -288,7 +350,8 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
     startDrag(e, hit, 'move')
   }
 
-  const handles: Handle[] = target?.text ? [...CORNERS, 'w', 'e'] : CORNERS
+  const arrow = target?.shape?.kind === 'arrow'
+  const handles: Handle[] = target?.text ? [...CORNERS, 'w', 'e'] : arrow ? ['w', 'e'] : [...CORNERS, ...SIDES]
   const boxDegrees = box ? (box.angle * 180) / Math.PI : 0
   return (
     <div
@@ -310,10 +373,20 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
             transform: `rotate(${box.angle}rad)`
           }}
           onPointerDown={(e) => e.button === 0 && startDrag(e, target, 'move')}
-          onDoubleClick={() => (target.text ? A.openTextEditor(target.id) : A.openPanCrop(target.id))}
-          title="Drag to move (Shift: slowly, Alt: no snapping) · arrow keys: 1 pixel (Shift: 10) · corners: scale · just outside a corner: rotate (Shift: 15° steps) · double-click: edit"
+          onDoubleClick={() =>
+            target.text ? A.openTextEditor(target.id) : target.shape ? A.openShapeEditor(target.id) : A.openPanCrop(target.id)
+          }
+          title={
+            target.text
+              ? 'Drag to move (Shift: slowly, Alt: no snapping) · arrow keys: 1 pixel (Shift: 10) · corners: scale · sides: wrap width · just outside a corner: rotate (Shift: 15° steps) · double-click: edit'
+              : arrow
+                ? 'Drag to move (Shift: slowly, Alt: no snapping) · arrow keys: 1 pixel (Shift: 10) · ends: point it (Shift: 15° steps) · double-click: edit'
+                : target.shape
+                  ? 'Drag to move (Shift: slowly, Alt: no snapping) · arrow keys: 1 pixel (Shift: 10) · sides and corners: resize (Shift on a corner: keep proportions) · just outside a corner: rotate (Shift: 15° steps) · double-click: edit'
+                  : `Drag to move (Shift: slowly, Alt: no snapping) · arrow keys: 1 pixel (Shift: 10) · corners: scale (${MOD}: stretch freely) · sides: stretch · just outside a corner: rotate (Shift: 15° steps) · double-click: edit`
+          }
         >
-          {CORNERS.map((c) => (
+          {!arrow && CORNERS.map((c) => (
             <div
               key={`rotate-${c}`}
               className={`xf-rotate ${c}`}
@@ -322,13 +395,13 @@ export function TransformOverlay({ width }: { width: number }): React.JSX.Elemen
             />
           ))}
           {handles.map((h) => (
-            <div key={h} className={`xf-handle ${h}`} onPointerDown={(e) => e.button === 0 && startDrag(e, target, h)} />
+            <div key={h} className={`xf-handle ${h}${arrow ? ' end' : ''}`} onPointerDown={(e) => e.button === 0 && startDrag(e, target, h)} />
           ))}
         </div>
       )}
-      {angleLabel && box && (
+      {label && box && (
         <div className="xf-angle" style={{ left: box.cx * k, top: box.cy * k }}>
-          {angleLabel}
+          {label}
         </div>
       )}
     </div>

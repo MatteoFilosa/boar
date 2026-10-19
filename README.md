@@ -65,7 +65,8 @@
 - **Text-based editing** (*Transcript* tab): speech becomes text; select words, press `Delete` and the video is cut. One button selects ums, uhs and repeated words; another shortens long pauses.
 - Highlighted keywords (`*word*` in the text, or automatic) and emoji on matching words.
 - 21 text presets, including a hook title at the top and a progress bar; more than 30 bundled fonts; in and out animations.
-- Handles right in the preview to move, scale and rotate text, images and video (drag just outside a corner to rotate, Shift for 15° steps).
+- **Shapes to point at things** (*Generators* tab or *Insert*): rectangle, ellipse and arrow, red to start with, with outline, fill, rounded corners, shadow and an animation that draws them on screen. Resize them freely from any side or corner; point an arrow by dragging its ends. *Solid Color* fills the frame with one color.
+- Handles right in the preview to move, scale, stretch and rotate text, images and video (the side handles of a picture stretch it one way, `Ctrl`+drag on a corner stretches it freely; drag just outside a corner to rotate, Shift for 15° steps).
 
 ### Audio
 
@@ -152,7 +153,7 @@ AI assistants and agents that support MCP (desktop apps, coding agents, AI edito
 
 The assistant's own app is needed: tools on your PC do not work from a web page. If a new chat answers that it does not know Boar, it looked for tools before they had loaded: send the message again, or start from the *edit_in_boar* prompt. Agents started before Boar still see its tools, and when Boar is closed the first tool they use opens it (installed copies).
 
-The agent reads the timeline and the transcripts, looks at frames and makes the edits: it cuts and reorders the speech, adds captions, effects and titles, pans and zooms inside the picture with Pan/Crop keyframes, plays clips backwards, and puts pictures, videos and sound effects from your library on the timeline (over the speaker with a pop, or full screen). For a voiceover over long recordings it can skim files it has not imported yet (frames spread over the file, lengths), turn hours of screen recording into a few seconds of timelapse, freeze a frame to explain it, spotlight a detail and keep a face cam in a corner over the B-roll. Each edit can be undone with `Ctrl+Z`, and the window shows everything it did. It can also render the result (video, GIF or sound only): Boar asks you where to save it. Video and audio stay on your PC.
+The agent reads the timeline and the transcripts, looks at frames and makes the edits: it cuts and reorders the speech, adds captions, effects and titles, pans and zooms inside the picture with Pan/Crop keyframes, plays clips backwards, and puts pictures, videos and sound effects from your library on the timeline (over the speaker with a pop, or full screen). For a voiceover over long recordings it can skim files it has not imported yet (frames spread over the file, lengths), turn hours of screen recording into a few seconds of timelapse, freeze a frame to explain it, spotlight a detail or circle it with a box or an arrow, and keep a face cam in a corner over the B-roll. Each edit can be undone with `Ctrl+Z`, and the window shows everything it did. It can also render the result (video, GIF or sound only): Boar asks you where to save it. Video and audio stay on your PC.
 
 ## Themes
 

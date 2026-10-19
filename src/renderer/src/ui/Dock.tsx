@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react'
-import { addTextEvent, setDockTab } from '../core/actions'
+import { addShapeEvent, addTextEvent, setDockTab } from '../core/actions'
 import { useEditor, type DockTab } from '../core/store'
 import { TEXT_PRESETS } from '../core/text'
+import { SHAPE_PRESETS } from '../core/shapes'
 import { ProjectMedia } from './ProjectMedia'
 import { PresetThumb } from './TextEditor'
+import { ShapeThumb } from './ShapeEditor'
 import { startMediaDrag } from './mediaDrag'
 import { FxBrowser } from './FxBrowser'
 import { Explorer } from './Explorer'
@@ -18,7 +20,7 @@ export const DOCK_TABS: { id: DockTab; label: string; title: string }[] = [
   { id: 'explorer', label: 'Explorer', title: 'Your media folders: sound effects, stock footage, downloads' },
   { id: 'fx', label: 'Video FX', title: 'Video effects: drag onto an event' },
   { id: 'afx', label: 'Audio FX', title: 'Audio effects: drag onto an event' },
-  { id: 'generators', label: 'Generators', title: 'Media Generators: titles and text' },
+  { id: 'generators', label: 'Generators', title: 'Media Generators: titles, text and shapes' },
   { id: 'transitions', label: 'Transitions', title: 'Transitions' }
 ]
 
@@ -53,7 +55,22 @@ function Generators(): React.JSX.Element {
           </div>
         ))}
       </div>
-      <Planned title="Planned generators" items={['Solid color and gradients', 'Animated text (pop-in, typewriter, word-by-word captions)']} />
+      <div className="gen-title">Shapes — point at things: drag to the timeline or double-click</div>
+      <div className="gen-grid">
+        {SHAPE_PRESETS.map((p) => (
+          <div
+            key={p.id}
+            className="gen-tile"
+            title={`${p.description}\nDrag to the timeline or double-click to add at the cursor.`}
+            onPointerDown={(e) => e.button === 0 && startMediaDrag(`shape:${p.id}`, e.clientX, e.clientY)}
+            onDoubleClick={() => addShapeEvent(p.id, useEditor.getState().cursor)}
+          >
+            <ShapeThumb presetId={p.id} />
+            <span>{p.label}</span>
+          </div>
+        ))}
+      </div>
+      <Planned title="Planned generators" items={['Gradients']} />
     </div>
   )
 }

@@ -68,6 +68,16 @@ describe('saving', () => {
     expect(parseProject(json).media.map((m) => m.id)).toEqual(['used', 'fine'])
   })
 
+  test('Pan/Crop keyframes saved before stretch keep the picture\'s own proportions', () => {
+    const key = { time: 0, cx: 0.4, cy: 0.5, zoom: 2, rotation: 0, stretch: 1.5, ease: 'smooth' as const }
+    const p = project([track('v')], [clip('a', 'v', 0, 4, { panCrop: [key] })])
+    const json = serializeProject(p, [media('m')])
+    expect(parseProject(json).project.events[0].panCrop).toEqual([key])
+    const data = JSON.parse(json)
+    delete data.project.events[0].panCrop[0].stretch
+    expect(parseProject(JSON.stringify(data)).project.events[0].panCrop).toEqual([{ ...key, stretch: 1 }])
+  })
+
   test('the early fixture survives a save and reopen unchanged', () => {
     const first = parseProject(early)
     const files = first.media.map((m) => media(m.id, { name: m.name, path: m.path, size: m.size }))

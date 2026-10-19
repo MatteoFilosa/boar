@@ -131,9 +131,11 @@ export function zoomKeys(
   const base = event.panCrop.length ? event.panCrop : [{ ...DEFAULT_PANCROP, time: event.offset, ease: 'smooth' as const }]
   const { at, times } = factorFor(event, o, zoomed, moments)
   const all = [...new Set([...times.map((t) => secondsToFlicks(t)), ...base.map((k) => k.time)])].sort((a, b) => a - b)
-  const fit = media.width && media.height ? fitFrame(media.width, media.height, settings.width, settings.height) : null
   const state = (time: number): PanCropState => {
     const b = panCropAt(base, time)
+    // The frame lies over the stretched picture.
+    const vw = media.width * b.stretch
+    const fit = vw && media.height ? fitFrame(vw, media.height, settings.width, settings.height) : null
     const f = at(time / FLICKS_PER_SECOND)
     const zoom = b.zoom * f
     let { cx, cy } = b
@@ -143,14 +145,14 @@ export function zoomKeys(
       // A little headroom above the face.
       cy += (face.cy + 0.04 - cy) * w
     }
-    if (fit && media.width && media.height) {
+    if (fit && vw && media.height) {
       // Keep the zoomed frame inside the picture when it is smaller than it.
-      const halfW = fit.w / zoom / media.width / 2
+      const halfW = fit.w / zoom / vw / 2
       const halfH = fit.h / zoom / media.height / 2
       cx = halfW < 0.5 ? Math.min(1 - halfW, Math.max(halfW, cx)) : 0.5
       cy = halfH < 0.5 ? Math.min(1 - halfH, Math.max(halfH, cy)) : 0.5
     }
-    return { cx, cy, zoom, rotation: b.rotation }
+    return { cx, cy, zoom, rotation: b.rotation, stretch: b.stretch }
   }
   const ease: PanCropKey['ease'] = o.mode === 'cuts' ? 'smooth' : 'linear'
   return all.map((time) => ({ time, ...state(time), ease }))

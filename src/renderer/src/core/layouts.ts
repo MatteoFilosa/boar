@@ -15,7 +15,7 @@ export function halfFrame(srcW: number, srcH: number, outW: number, outH: number
   // The frame rectangle is twice as tall as the visible part; the other half lies outside the source.
   const zoom = fitFrame(srcW, srcH, outW, outH).w / visW
   const cy = half === 'top' ? (visTop + visH) / srcH : visTop / srcH
-  return { cx: 0.5, cy, zoom, rotation: 0 }
+  return { cx: 0.5, cy, zoom, rotation: 0, stretch: 1 }
 }
 
 /** Source shown whole at `size` (fraction of the frame width) in a corner, `margin` from the edges. */
@@ -41,7 +41,7 @@ export function cornerFrame(
   // The source center lands at (px, py): place the frame rectangle's center accordingly.
   const cx = (srcW / 2 - (px - outW / 2) / k) / srcW
   const cy = (srcH / 2 - (py - outH / 2) / k) / srcH
-  return { cx, cy, zoom, rotation: 0 }
+  return { cx, cy, zoom, rotation: 0, stretch: 1 }
 }
 
 /**
@@ -55,7 +55,7 @@ export function placedFrame(srcW: number, srcH: number, outW: number, outH: numb
   const k = (outW * zoom) / fit.w
   const cx = (srcW / 2 - (x * outW - outW / 2) / k) / srcW
   const cy = (srcH / 2 - (y * outH - outH / 2) / k) / srcH
-  return { cx, cy, zoom, rotation: 0 }
+  return { cx, cy, zoom, rotation: 0, stretch: 1 }
 }
 
 /** The source covering the whole frame (no bars). */
@@ -63,5 +63,6 @@ export const coverFrame = (srcW: number, srcH: number, outW: number, outH: numbe
   cx: 0.5,
   cy: 0.5,
   zoom: fillZoom(srcW, srcH, outW, outH),
-  rotation: 0
+  rotation: 0,
+  stretch: 1
 })

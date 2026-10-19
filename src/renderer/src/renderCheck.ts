@@ -158,6 +158,7 @@ function event(id: string, trackId: string, mediaId: string, kind: 'video' | 'au
     gain: 1,
     panCrop: [],
     text: null,
+    shape: null,
     mask: null,
     fx: [],
     envelope: [],
@@ -306,7 +307,7 @@ export async function runRenderCheck(codec?: 'avc' | 'vp9', audioCodec?: 'aac' |
         event('title', 'T1', '', 'video', 2, 1, { text: normalizeText({ text: 'BOAR', size: 140, color: '#ffffff', shadow: false, y: 0.5 }) }),
         event('c1', 'T2', clip.id, 'video', 0, 1, { fadeIn: s(0.5) }),
         event('c2', 'T2', clip.id, 'video', 1, 1, { offset: s(1.5) }),
-        event('c3', 'T2', clip.id, 'video', 2, 1, { panCrop: [{ time: 0, cx: 0.25, cy: 0.5, zoom: 2, rotation: 0, ease: 'smooth' }] }),
+        event('c3', 'T2', clip.id, 'video', 2, 1, { panCrop: [{ time: 0, cx: 0.25, cy: 0.5, zoom: 2, rotation: 0, stretch: 1, ease: 'smooth' }] }),
         event('c4', 'T2', clip.id, 'video', 3, 1, { rate: 2 }),
         event('c5', 'T2', clip.id, 'video', 4, 1, { fx: webgl && negative ? [negative] : [] }),
         // Short fades: a tone cut off abruptly smears into the silence after it once encoded.

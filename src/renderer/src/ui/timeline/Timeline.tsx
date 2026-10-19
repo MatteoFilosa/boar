@@ -13,6 +13,7 @@ import {
   LayoutTemplate,
   Locate,
   MapPin,
+  Shapes,
   Sparkles,
   TextCursorInput,
   Trash,
@@ -21,7 +22,7 @@ import {
 import * as A from '../../core/actions'
 import { FADE_CURVES, MAX_RATE, MIN_RATE, RATE_PRESETS, clampRate, formatRate } from '../../core/fades'
 import { mediaById, useEditor } from '../../core/store'
-import { eventEnd, eventsOnTrack, findSnap, projectEnd, snapPoints } from '../../core/timeline'
+import { eventEnd, eventsOnTrack, findSnap, isGenerated, projectEnd, snapPoints } from '../../core/timeline'
 import {
   type Flicks,
   FLICKS_PER_SECOND,
@@ -380,7 +381,7 @@ function hitTest(x: number, y: number): Hit {
       if (Math.abs(x - fadeOutX) <= FADE_HANDLE_PX) return { kind: 'event', event, zone: 'fadeOut', layout }
       if (Math.abs(x - fadeInX) <= FADE_HANDLE_PX) return { kind: 'event', event, zone: 'fadeIn', layout }
     }
-    const mediaVideo = event.kind === 'video' && !event.text
+    const mediaVideo = event.kind === 'video' && !isGenerated(event)
     const fx = fxButton(ex, ew, 1, mediaVideo)
     if (fx && x >= fx.x && x <= fx.x + fx.size && rowY >= fx.y && rowY <= fx.y + fx.size) {
       return { kind: 'event', event, zone: 'fx', layout }
@@ -776,10 +777,11 @@ function eventToolEntries(ev: TimelineEvent): MenuEntry[] {
   const partner = (kind: 'video' | 'audio'): boolean =>
     ev.kind === kind || (ev.groupId !== null && get().project.events.some((o) => o.groupId === ev.groupId && o.kind === kind))
   if (ev.text) entries.push({ label: 'Edit Text...', icon: TextCursorInput, run: () => A.openTextEditor(ev.id) })
+  if (ev.shape) entries.push({ label: 'Edit Shape...', icon: Shapes, run: () => A.openShapeEditor(ev.id) })
   if (ev.text?.words) {
     entries.push({ label: 'Highlight Key Words', command: 'highlightKeywords' }, { label: 'Add Emoji', command: 'addEmoji' })
   }
-  if (ev.kind === 'video' && !ev.text) entries.push({ label: 'Event Pan/Crop...', icon: Crop, run: () => A.openPanCrop(ev.id) })
+  if (ev.kind === 'video' && !isGenerated(ev)) entries.push({ label: 'Event Pan/Crop...', icon: Crop, run: () => A.openPanCrop(ev.id) })
   if (partner('video')) entries.push({ label: 'Video FX...', icon: Sparkles, run: () => A.openFxWindow('video', ev.id) })
   if (partner('audio')) entries.push({ label: 'Audio FX...', icon: AudioLines, run: () => A.openFxWindow('audio', ev.id) })
   if (ev.kind === 'video') entries.push({ label: 'Event Mask...', icon: CircleDashed, run: () => A.openMaskEditor(ev.id) })
@@ -923,7 +925,7 @@ function contextEntries(hit: Hit, at: Flicks): MenuEntry[] {
       'separator',
       ...eventToolEntries(ev)
     )
-    if (ev.kind === 'video' && !ev.text) {
+    if (ev.kind === 'video' && !isGenerated(ev)) {
       entries.push({ label: 'Fill Frame', command: 'fillFrame' }, { label: 'Fit Frame', command: 'fitFrame' }, layoutEntry())
     }
     if (ev.kind === 'video') entries.push(rotateEntry())
@@ -1118,6 +1120,7 @@ export function Timeline(): React.JSX.Element {
         return true
       }
       if (mediaId.startsWith('text:')) A.addTextEvent(mediaId.slice(5), at, layout?.track.id ?? null)
+      else if (mediaId.startsWith('shape:')) A.addShapeEvent(mediaId.slice(6), at, layout?.track.id ?? null)
       else A.addMediaToTimeline(mediaId, at, layout ? layout.track.id : 'new')
       return true
     })
@@ -1158,6 +1161,8 @@ export function Timeline(): React.JSX.Element {
           ? 0
           : drag.mediaId.startsWith('text:')
           ? A.TEXT_DEFAULT_LENGTH
+          : drag.mediaId.startsWith('shape:')
+          ? A.SHAPE_DEFAULT_LENGTH
           : media
             ? media.kind === 'image'
               ? A.IMAGE_DEFAULT_LENGTH
@@ -1581,6 +1586,7 @@ export function Timeline(): React.JSX.Element {
                 const { x, y } = local(e)
                 const hit = hitTest(x, y)
                 if (hit.kind === 'event' && hit.event.text) A.openTextEditor(hit.event.id)
+                else if (hit.kind === 'event' && hit.event.shape) A.openShapeEditor(hit.event.id)
                 else if (hit.kind === 'event' && hit.event.kind === 'video') A.openPanCrop(hit.event.id)
               }}
               onContextMenu={(e) => {

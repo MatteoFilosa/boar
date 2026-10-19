@@ -62,7 +62,9 @@ import {
   Layers,
   Rows2,
   PictureInPicture2,
-  Bot
+  Bot,
+  Circle,
+  MoveUpRight
 } from 'lucide-react'
 import type { CommandId } from './commands'
 
@@ -104,6 +106,9 @@ export const COMMAND_ICONS: Partial<Record<CommandId, LucideIcon>> = {
   addMarker: MapPin,
   panCrop: Crop,
   insertText: Type,
+  insertRectangle: Square,
+  insertEllipse: Circle,
+  insertArrow: MoveUpRight,
   captions: Captions,
   editText: TextCursorInput,
   mask: CircleDashed,

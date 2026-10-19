@@ -11,7 +11,8 @@ import {
   framingZoom,
   panCropAt,
   sourceToOutput,
-  upsertKey
+  upsertKey,
+  withStretch
 } from '../core/pancrop'
 import { type MaskPoint, pathAt, shapeOutline } from '../core/mask'
 import { type Flicks, flicksToSeconds, frameFlicks } from '../core/time'
@@ -21,6 +22,7 @@ import { imageCache } from '../media/cache'
 import { rotateCursor, snapAngle } from './rotateCursor'
 import { KeyframeBar, canDraw, useSourceFrame } from './KeyframeBar'
 import { themeColor } from './themes'
+import { MOD } from '../platform'
 
 type Corners = [number, number][]
 
@@ -95,17 +97,19 @@ function NumberField({
   value,
   step,
   digits,
+  title,
   onChange
 }: {
   label: string
   value: number
   step: number
   digits: number
+  title?: string
   onChange: (v: number) => void
 }): React.JSX.Element {
   const [draft, setDraft] = useState<string | null>(null)
   return (
-    <label className="pc-field">
+    <label className="pc-field" title={title}>
       <span>{label}</span>
       <input
         className="input"
@@ -186,6 +190,8 @@ function PanCropWindow({
   const keyHere = event.panCrop.find((k) => Math.abs(k.time - srcTime) < frame / 2)
   const sw = media.width || 1
   const sh = media.height || 1
+  // The window shows the picture stretched: the frame lies over it as a rectangle.
+  const vw = sw * state.stretch
   const outW = settings.width
   const outH = settings.height
   const video = useSourceFrame(media, flicksToSeconds(srcTime), redraw)
@@ -210,7 +216,7 @@ function PanCropWindow({
   const nudgeRef = useRef<(dx: number, dy: number) => void>(() => undefined)
   nudgeRef.current = (dx, dy) => {
     const step = frameRect(state, sw, sh, outW, outH).w / outW
-    edit({ cx: state.cx + (dx * step) / sw, cy: state.cy + (dy * step) / sh }, `panCropNudge:${event.id}`)
+    edit({ cx: state.cx + (dx * step) / vw, cy: state.cy + (dy * step) / sh }, `panCropNudge:${event.id}`)
   }
   useEffect(() => {
     let active = false
@@ -250,7 +256,7 @@ function PanCropWindow({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     const f = frameRect(state, sw, sh, outW, outH)
     const pts = corners(f)
-    const xs = [0, sw, ...pts.map((p) => p[0])]
+    const xs = [0, vw, ...pts.map((p) => p[0])]
     const ys = [0, sh, ...pts.map((p) => p[1])]
     const minX = Math.min(...xs)
     const maxX = Math.max(...xs)
@@ -288,8 +294,8 @@ function PanCropWindow({
     const source: CanvasImageSource | null =
       media.kind === 'image' ? (imageCache.get(media.id) ?? null) : canDraw(video) ? video : null
     ctx.fillStyle = '#000'
-    ctx.fillRect(sx(0), sy(0), sw * scale, sh * scale)
-    if (source) ctx.drawImage(source, sx(0), sy(0), sw * scale, sh * scale)
+    ctx.fillRect(sx(0), sy(0), vw * scale, sh * scale)
+    if (source) ctx.drawImage(source, sx(0), sy(0), vw * scale, sh * scale)
 
     // Dim everything outside the frame.
     ctx.beginPath()
@@ -326,11 +332,14 @@ function PanCropWindow({
     const mask = event.mask
     if (mask) {
       let outline: MaskPoint[]
-      if (mask.shape === 'custom') outline = pathAt(mask.path, srcTime).map(([x, y]) => [x * sw, y * sh])
-      else if (mask.space === 'picture') outline = shapeOutline(mask).map(([x, y]) => [x * sw, y * sh])
+      if (mask.shape === 'custom') outline = pathAt(mask.path, srcTime).map(([x, y]) => [x * vw, y * sh])
+      else if (mask.space === 'picture') outline = shapeOutline(mask).map(([x, y]) => [x * vw, y * sh])
       else {
         const { inverse } = sourceToOutput(state, sw, sh, outW, outH)
-        outline = shapeOutline(mask).map(([x, y]) => inverse(x * outW, y * outH))
+        outline = shapeOutline(mask).map(([x, y]) => {
+          const [px, py] = inverse(x * outW, y * outH)
+          return [px * state.stretch, py]
+        })
       }
       if (outline.length >= 2) {
         ctx.save()
@@ -400,7 +409,7 @@ function PanCropWindow({
       drag.cy += (y - drag.lastY) * k
       drag.lastX = x
       drag.lastY = y
-      edit({ cx: drag.cx / sw, cy: drag.cy / sh })
+      edit({ cx: drag.cx / vw, cy: drag.cy / sh })
     } else {
       const startFrame = frameRect(drag.start, sw, sh, outW, outH)
       const ratio = Math.hypot(x - startFrame.cx, y - startFrame.cy) / drag.dist
@@ -417,9 +426,9 @@ function PanCropWindow({
   }
 
   const f = frameRect(state, sw, sh, outW, outH)
-  const fill = framingZoom('fill', state.rotation, sw, sh, outW, outH)
-  const fit = framingZoom('fit', state.rotation, sw, sh, outW, outH)
-  const fitW = fitFrame(sw, sh, outW, outH).w
+  const fill = framingZoom('fill', state.rotation, sw, sh, outW, outH, state.stretch)
+  const fit = framingZoom('fit', state.rotation, sw, sh, outW, outH, state.stretch)
+  const fitW = fitFrame(vw, sh, outW, outH).w
 
   return (
     <FloatingWindow id="panCrop" className="pancrop" title={`Event Pan/Crop: ${media.name}`} ariaLabel="Event Pan/Crop">
@@ -431,6 +440,14 @@ function PanCropWindow({
           <NumberField label="Width" value={f.w} step={1} digits={1} onChange={(v) => v > 0 && edit({ zoom: fitW / v })} />
           <NumberField label="Zoom %" value={state.zoom * 100} step={1} digits={1} onChange={(v) => v > 0 && edit({ zoom: v / 100 })} />
           <NumberField label="Rotation °" value={state.rotation} step={1} digits={1} onChange={(v) => edit({ rotation: v })} />
+          <NumberField
+            label="Stretch %"
+            title={`Width of the picture against its height: 100 = its own proportions, 200 = twice as wide. In the preview, drag a side handle or ${MOD}+drag a corner`}
+            value={state.stretch * 100}
+            step={1}
+            digits={1}
+            onChange={(v) => v > 0 && edit(withStretch(state, v / 100, sw, sh, outW, outH))}
+          />
           <div className="pc-buttons">
             <button className="btn small" onClick={() => edit({ zoom: fill })} title="Crop so the source covers the whole frame">
               Fill frame

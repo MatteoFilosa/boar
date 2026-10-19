@@ -4,6 +4,7 @@ import * as A from '../core/actions'
 import { AUDIO_FX, VIDEO_FX } from '../core/fx'
 import { useEditor } from '../core/store'
 import { TEXT_PRESETS } from '../core/text'
+import { SHAPE_PRESETS } from '../core/shapes'
 import { type CommandId, commands } from './commands'
 import { MenuIcon } from './ContextMenu'
 import { DOCK_TABS } from './Dock'
@@ -112,6 +113,13 @@ function useEntries(menus: Menu[]): Entry[] {
         { label: preset.label, run: () => void A.addTextEvent(preset.id, useEditor.getState().cursor) },
         'Generators › Titles & Text',
         `${preset.description} text title insert`
+      )
+    }
+    for (const preset of SHAPE_PRESETS) {
+      add(
+        { label: preset.label, run: () => void A.addShapeEvent(preset.id, useEditor.getState().cursor) },
+        'Generators › Shapes',
+        `${preset.description} shape box circle arrow insert`
       )
     }
     return entries

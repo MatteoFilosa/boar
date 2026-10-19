@@ -1,6 +1,6 @@
 import { TRACK_COLORS } from '../../core/actions'
 import { mediaById, type EditorState, type ViewState } from '../../core/store'
-import { crossfadeIn, crossfadeOut, eventEnd, eventsOnTrack } from '../../core/timeline'
+import { crossfadeIn, crossfadeOut, eventEnd, eventsOnTrack, isGenerated } from '../../core/timeline'
 import { type FrameRate, flicksToSeconds, formatTimecode, fps, frameFlicks, secondsToFlicks } from '../../core/time'
 import type { MediaItem, TimelineEvent } from '../../core/types'
 import { type FadeCurve, fadeShape, formatRate } from '../../core/fades'
@@ -19,6 +19,8 @@ import { onThemeChange, themeColor } from '../themes'
 import { type TransitionSpan, transitionLabel, transitionSpans } from '../../core/transitions'
 
 const FONT = '11px "Segoe UI", system-ui, sans-serif'
+/** Shape kinds as one sign, for the event body. */
+const SHAPE_SIGNS = { rectangle: '▭', ellipse: '◯', arrow: '➚' } as const
 
 const C = {
   background: '#1d1e21',
@@ -300,6 +302,16 @@ function drawEvent(
     ctx.font = '600 13px "Segoe UI", system-ui, sans-serif'
     ctx.textBaseline = 'middle'
     ctx.fillText(`T  ${e.text.text.replace(/\n/g, ' ')}`, Math.max(x, 0) + 8, y + headH + (h - headH) / 2)
+  } else if (e.shape) {
+    // The body takes the shape's own color.
+    ctx.fillStyle = e.shape.color
+    ctx.globalAlpha = selected ? 0.42 : 0.3
+    ctx.fillRect(x0, y + headH, x1 - x0, h - headH)
+    ctx.globalAlpha = 1
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'
+    ctx.font = '600 13px "Segoe UI", system-ui, sans-serif'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(`${SHAPE_SIGNS[e.shape.kind]}  ${e.shape.kind}`, Math.max(x, 0) + 8, y + headH + (h - headH) / 2)
   } else if (media) {
     if (e.kind === 'video') drawThumbnails(ctx, e, media, x, y + headH, h - headH, x0, x1, view)
     else drawWaveform(ctx, e, media, x, y + headH, h - headH, x0, x1, view, color)
@@ -320,7 +332,7 @@ function drawEvent(
   ctx.font = FONT
   ctx.textBaseline = 'middle'
   ctx.fillText(eventLabel(e, media), Math.max(x, 0) + 5, y + headH / 2 + 0.5)
-  const mediaVideo = e.kind === 'video' && !e.text
+  const mediaVideo = e.kind === 'video' && !isGenerated(e)
   if (mediaVideo) {
     const button = panCropButton(x, w, y)
     if (button && button.x > x0 && button.x + button.size < x1) {
@@ -499,6 +511,7 @@ function drawFxButton(ctx: CanvasRenderingContext2D, x: number, y: number, size:
 
 function eventLabel(e: TimelineEvent, media: MediaItem | undefined): string {
   if (e.text) return 'Text'
+  if (e.shape) return 'Shape'
   if (!media) return 'Missing media'
   return e.rate !== 1 ? `${media.name}  ·  ${formatRate(e.rate)}` : media.name
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { mediaById, useEditor } from '../core/store'
 import { formatTimecode, rateLabel } from '../core/time'
 import { presetById } from '../core/text'
+import { shapePresetById } from '../core/shapes'
 import { RIPPLE_LABELS } from '../core/actions'
 import { useMediaDrag } from './mediaDrag'
 import { fxDef } from '../core/fx'
@@ -13,6 +14,7 @@ export function MediaDragGhost(): React.JSX.Element | null {
   if (!drag) return null
   const media = mediaById(drag.mediaId)
   const preset = drag.mediaId.startsWith('text:') ? presetById(drag.mediaId.slice(5)) : undefined
+  const shape = drag.mediaId.startsWith('shape:') ? shapePresetById(drag.mediaId.slice(6)) : undefined
   const fx = drag.mediaId.startsWith('fx:') ? fxDef(drag.mediaId.slice(3)) : undefined
   const transition = drag.mediaId.startsWith('tr:') ? transitionDef(drag.mediaId.slice(3)) : undefined
   const path = drag.mediaId.startsWith('path:') ? drag.mediaId.slice(5).split(/[\\/]/).pop() : undefined
@@ -22,7 +24,9 @@ export function MediaDragGhost(): React.JSX.Element | null {
       <span>
         {preset
           ? `Text: ${preset.label}`
-          : fx
+          : shape
+            ? `Shape: ${shape.label}`
+            : fx
             ? `${fx.kind === 'video' ? 'Video' : 'Audio'} FX: ${fx.label}`
             : transition
               ? `Transition: ${transition.label}`

@@ -1,6 +1,7 @@
 import { mediaById } from '../core/store'
 import { drawPanCropped, panCropAt, sourceToOutput } from '../core/pancrop'
 import { drawText } from '../core/text'
+import { drawShape } from '../core/shapes'
 import { type Flicks, flicksToSeconds, frameFlicks } from '../core/time'
 import { eventsOnTrack, sourceTime, videoAlpha } from '../core/timeline'
 import type { Project, TimelineEvent } from '../core/types'
@@ -155,8 +156,8 @@ function drawEvent(
 function pictureMaskPoints(ev: TimelineEvent, mask: EventMask, t: Flicks, width: number, height: number): MaskPoint[] {
   const time = sourceTime(ev, t)
   const points = mask.shape === 'custom' ? pathAt(mask.path, time) : shapeOutline(mask)
-  // Text has no source picture: its shape is drawn over the frame itself.
-  if (ev.text) return points.map(([x, y]) => [x * width, y * height])
+  // Text and shapes have no source picture: the mask is drawn over the frame itself.
+  if (ev.text || ev.shape) return points.map(([x, y]) => [x * width, y * height])
   const media = mediaById(ev.mediaId)
   if (!media?.width || !media.height) return []
   const { map } = sourceToOutput(panCropAt(ev.panCrop, time), media.width, media.height, width, height)
@@ -178,6 +179,10 @@ function drawEventContent(
       length: flicksToSeconds(ev.length),
       origin: flicksToSeconds(ev.offset)
     })
+    return true
+  }
+  if (ev.shape) {
+    drawShape(ctx, ev.shape, width, height, alpha, { t: flicksToSeconds(t - ev.start), length: flicksToSeconds(ev.length) })
     return true
   }
   const media = mediaById(ev.mediaId)

@@ -26,10 +26,11 @@ import {
   quantizeToFrame,
   secondsToFlicks
 } from './time'
-import { editPoints, eventEnd, eventsOnTrack, projectEnd, sourceLength, sourceTime } from './timeline'
+import { editPoints, eventEnd, eventsOnTrack, isGenerated, projectEnd, sourceLength, sourceTime } from './timeline'
 import { DEFAULT_FADE_CURVE, type FadeCurve, clampRate, formatRate } from './fades'
 import { type PanCropKey, DEFAULT_PANCROP, framingZoom, normalizeAngle, turnState } from './pancrop'
 import { type TextContent, presetById, retimeWords } from './text'
+import { type ShapeContent, type ShapeKind, convertShape, shapeForFrame, shapePresetById, shapeStyle, turnShape } from './shapes'
 import type { CaptionChunk } from './captions'
 import { DEFAULT_MASK, type EventMask } from './mask'
 import { type FxKind, cloneFx, createFx, fxDef } from './fx'
@@ -548,7 +549,7 @@ export function addMediaToTimeline(
     }
     for (const piece of place.pieces ?? [{ start, length, offset: 0 }]) {
       const groupId = videoTrack && audioTrack ? uid() : null
-      const base = { mediaId, ...piece, fadeIn: 0, fadeOut: 0, fadeInCurve: DEFAULT_FADE_CURVE, fadeOutCurve: DEFAULT_FADE_CURVE, rate: 1, groupId, gain: 1, panCrop: [], text: null, mask: null, fx: [], envelope: [], transition: null, transitionOut: null }
+      const base = { mediaId, ...piece, fadeIn: 0, fadeOut: 0, fadeInCurve: DEFAULT_FADE_CURVE, fadeOutCurve: DEFAULT_FADE_CURVE, rate: 1, groupId, gain: 1, panCrop: [], text: null, shape: null, mask: null, fx: [], envelope: [], transition: null, transitionOut: null }
       if (videoTrack) add({ ...base, id: uid(), trackId: videoTrack.id, kind: 'video' })
       if (audioTrack) add({ ...base, id: uid(), trackId: audioTrack.id, kind: 'audio' })
     }
@@ -609,6 +610,7 @@ function splitInDraft(d: Draft<Project>, ids: Set<string>, t: Flicks): string[] 
       // Keyframes use source time, so both halves keep the same motion.
       panCrop: e.panCrop.map((k) => ({ ...k })),
       text: e.text ? { ...e.text } : null,
+      shape: e.shape ? { ...e.shape } : null,
       mask: e.mask ? { ...e.mask } : null,
       fx: cloneFx(e.fx),
       envelope: e.envelope.map((p) => ({ ...p })),
@@ -666,15 +668,15 @@ export const EVENT_ATTRIBUTES: { key: EventAttribute; label: string; short: stri
   { key: 'panCrop', label: 'Event Pan/Crop (framing, zoom, rotation)', short: 'Pan/Crop' },
   { key: 'mask', label: 'Mask', short: 'mask' },
   { key: 'gain', label: 'Level (video) / volume (audio)', short: 'level' },
-  { key: 'textStyle', label: 'Text style and position (text events)', short: 'text style' }
+  { key: 'textStyle', label: 'Text style and position (text events), shape look (shape events)', short: 'text or shape style' }
 ]
 
 const ALL_ATTRIBUTES = EVENT_ATTRIBUTES.map((a) => a.key)
 
-/** Which copied event gives its attributes to `target`: same kind, a text event for text, media for media. */
+/** Which copied event gives its attributes to `target`: same kind, text for text, a shape for a shape, media for media. */
 function attributeSource(target: TimelineEvent, sources: readonly TimelineEvent[]): TimelineEvent | undefined {
   const sameKind = sources.filter((s) => s.kind === target.kind)
-  return sameKind.find((s) => !!s.text === !!target.text) ?? sameKind[0]
+  return sameKind.find((s) => !!s.text === !!target.text && !!s.shape === !!target.shape) ?? sameKind[0]
 }
 
 /** A source time of `from` moved to the same moment of `to`, counted from each in-point through each playback rate. */
@@ -713,7 +715,7 @@ export function pasteEventAttributes(
         ev.fx = cloneFx(src.fx).map((f) => ({ ...f, id: uid() }))
         done.push('fx')
       }
-      if (want.has('panCrop') && ev.kind === 'video' && !ev.text && !src.text) {
+      if (want.has('panCrop') && ev.kind === 'video' && !isGenerated(ev) && !isGenerated(src)) {
         ev.panCrop = src.panCrop.map((k) => ({ ...k, time: mapSourceTime(k.time, src, ev) }))
         done.push('panCrop')
       }
@@ -733,6 +735,11 @@ export function pasteEventAttributes(
       if (want.has('textStyle') && ev.text && src.text) {
         // Everything but the words themselves (and their timing) and the progress bar mode.
         ev.text = { ...structuredClone(src.text), text: ev.text.text, words: ev.text.words, progressBar: ev.text.progressBar }
+        done.push('textStyle')
+      }
+      if (want.has('textStyle') && ev.shape && src.shape) {
+        // The look, not the place.
+        Object.assign(ev.shape, shapeStyle(src.shape))
         done.push('textStyle')
       }
       for (const a of done) pasted.add(a)
@@ -1026,7 +1033,7 @@ export function setFadeCurve(eventIds: string[], side: 'in' | 'out', curve: Fade
 
 /** Events whose speed can change: media with a duration (not stills or text). */
 export function canStretch(e: TimelineEvent): boolean {
-  if (e.text) return false
+  if (isGenerated(e)) return false
   const media = mediaById(e.mediaId)
   return !!media && media.kind !== 'image'
 }
@@ -1125,6 +1132,7 @@ export function addSpotlight(
       fadeOut: fade,
       panCrop: source.panCrop.map((k) => ({ ...k })),
       text: source.text ? { ...source.text } : null,
+      shape: source.shape ? { ...source.shape } : null,
       fx: [...cloneFx(source.fx), ...(darken ? [darken] : [])],
       mask: { ...DEFAULT_MASK, shape: 'rectangle', space: 'frame', cx: rect.x, cy: rect.y, w: rect.w, h: rect.h, feather: o.feather, invert: true },
       envelope: [],
@@ -1165,7 +1173,7 @@ export function addSpeakerCorner(
   // The highest clip above the speaker there (captions do not count).
   const own = project.tracks.findIndex((t) => t.id === source.trackId)
   const covering = project.tracks.findIndex(
-    (t, i) => i < own && t.kind === 'video' && project.events.some((e) => e.trackId === t.id && !e.text && overlaps(e))
+    (t, i) => i < own && t.kind === 'video' && project.events.some((e) => e.trackId === t.id && !isGenerated(e) && overlaps(e))
   )
   if (covering < 0) {
     setStatus('Nothing covers the speaker there: their face already fills the frame')
@@ -1380,19 +1388,19 @@ export function reframeVideoEvents(mode: 'fill' | 'fit'): void {
   commit((d) => {
     for (const event of d.events) {
       if (!targets.has(event.id)) continue
-      if (mode === 'fit' && event.panCrop.every((k) => k.rotation === 0)) {
+      if (mode === 'fit' && event.panCrop.every((k) => k.rotation === 0 && k.stretch === 1)) {
         event.panCrop = []
         continue
       }
       const media = mediaById(event.mediaId)
       if (!media || !media.width || !media.height) continue
-      const zoomFor = (rotation: number): number => framingZoom(mode, rotation, media.width, media.height, width, height)
+      const zoomFor = (rotation: number, stretch: number): number => framingZoom(mode, rotation, media.width, media.height, width, height, stretch)
       if (event.panCrop.length === 0) {
-        event.panCrop = [{ time: event.offset, cx: 0.5, cy: 0.5, zoom: zoomFor(0), rotation: 0, ease: 'smooth' }]
+        event.panCrop = [{ time: event.offset, cx: 0.5, cy: 0.5, zoom: zoomFor(0, 1), rotation: 0, stretch: 1, ease: 'smooth' }]
         continue
       }
       for (const key of event.panCrop) {
-        key.zoom = zoomFor(key.rotation)
+        key.zoom = zoomFor(key.rotation, key.stretch)
         if (mode === 'fit') {
           key.cx = 0.5
           key.cy = 0.5
@@ -1415,7 +1423,7 @@ export function rotateEvents(ids: readonly string[], degrees: number | 'reset'):
   const targets = new Set(
     project.events
       .filter((e) => wanted.has(e.id) && e.kind === 'video')
-      .filter((e) => e.text || (mediaById(e.mediaId)?.width ?? 0) > 0)
+      .filter((e) => isGenerated(e) || (mediaById(e.mediaId)?.width ?? 0) > 0)
       .map((e) => e.id)
   )
   if (targets.size === 0) {
@@ -1427,6 +1435,13 @@ export function rotateEvents(ids: readonly string[], degrees: number | 'reset'):
       if (!targets.has(event.id)) continue
       if (event.text) {
         event.text.rotation = degrees === 'reset' ? 0 : normalizeAngle(event.text.rotation + degrees)
+        continue
+      }
+      if (event.shape) {
+        // Arrows have no upright: 'reset' leaves them as they point.
+        if (degrees === 'reset') event.shape.rotation = 0
+        else Object.assign(event.shape, turnShape(event.shape, degrees, width, height))
+        if (event.shape.kind !== 'arrow') event.shape.rotation = normalizeAngle(event.shape.rotation)
         continue
       }
       const media = mediaById(event.mediaId) as MediaItem
@@ -1458,20 +1473,38 @@ export const TEXT_DEFAULT_LENGTH = secondsToFlicks(4)
 export function addTextEvent(presetId: string, at: Flicks, trackId?: string | 'new' | null): string | null {
   const preset = presetById(presetId)
   if (!preset) return null
+  const id = addGeneratedEvent(at, TEXT_DEFAULT_LENGTH, trackId, 'Text', { text: { ...preset.content }, shape: null })
+  set({ selection: [id], selectedTrackId: null, dialog: { kind: 'text', eventId: id } })
+  setStatus(`Added text: ${preset.label}`)
+  return id
+}
+
+/**
+ * Adds a text or shape event (one undo step). Without a target track it goes
+ * on a video track at the top that is free at that time (created if needed,
+ * named `trackName`), so it stays in front of the footage.
+ */
+function addGeneratedEvent(
+  at: Flicks,
+  length: Flicks,
+  trackId: string | 'new' | null | undefined,
+  trackName: string,
+  content: Pick<TimelineEvent, 'text' | 'shape'>
+): string {
   const { project, options } = get()
   const rate = project.settings.frameRate
   const start = Math.max(0, options.quantize ? quantizeToFrame(at, rate) : at)
-  const end = start + TEXT_DEFAULT_LENGTH
+  const end = start + length
   const id = uid()
   commit((d) => {
     const busy = (t: Track): boolean => d.events.some((e) => e.trackId === t.id && e.start < end && eventEnd(e) > start)
     let track: Track | undefined
     if (trackId && trackId !== 'new') {
       const target = d.tracks.find((t) => t.id === trackId && t.kind === 'video')
-      // Dropped on footage: put the text on a new track just above instead of crossfading into it.
+      // Dropped on footage: a new track just above instead of crossfading into it.
       if (target && busy(target)) {
         track = insertTrack(d, 'video', d.tracks.indexOf(target))
-        track.name = 'Text'
+        track.name = trackName
       } else {
         track = target
       }
@@ -1482,10 +1515,10 @@ export function addTextEvent(presetId: string, at: Flicks, trackId?: string | 'n
       if (top && !busy(top)) track = top
     }
     if (!track) {
-      // New text tracks go above the other video tracks so titles stay in front.
+      // New tracks go above the other video tracks so titles and shapes stay in front.
       const firstVideo = d.tracks.findIndex((t) => t.kind === 'video')
       track = insertTrack(d, 'video', Math.max(0, firstVideo))
-      track.name = 'Text'
+      track.name = trackName
     }
     d.events.push({
       id,
@@ -1493,7 +1526,7 @@ export function addTextEvent(presetId: string, at: Flicks, trackId?: string | 'n
       mediaId: '',
       kind: 'video',
       start,
-      length: TEXT_DEFAULT_LENGTH,
+      length,
       offset: 0,
       fadeIn: 0,
       fadeOut: 0,
@@ -1503,7 +1536,7 @@ export function addTextEvent(presetId: string, at: Flicks, trackId?: string | 'n
       groupId: null,
       gain: 1,
       panCrop: [],
-      text: { ...preset.content },
+      ...content,
       mask: null,
       fx: [],
       envelope: [],
@@ -1511,9 +1544,61 @@ export function addTextEvent(presetId: string, at: Flicks, trackId?: string | 'n
       transitionOut: null
     })
   })
-  set({ selection: [id], selectedTrackId: null, dialog: { kind: 'text', eventId: id } })
-  setStatus(`Added text: ${preset.label}`)
   return id
+}
+
+// Shapes
+
+export const SHAPE_DEFAULT_LENGTH = secondsToFlicks(4)
+
+/**
+ * Adds a shape event from a preset (rectangle, ellipse, arrow, solid), sized
+ * for the frame, with `patch` over it (one undo step). It goes on a free track
+ * at the top like text, is selected and shows its handles in the preview.
+ */
+export function addShapeEvent(
+  presetId: string,
+  at: Flicks,
+  trackId?: string | 'new' | null,
+  o: { length?: Flicks; patch?: Partial<ShapeContent> } = {}
+): string | null {
+  const { width, height } = get().project.settings
+  const base = shapeForFrame(presetId, width, height)
+  const preset = shapePresetById(presetId)
+  if (!base || !preset) return null
+  const shape = { ...base, ...o.patch }
+  const id = addGeneratedEvent(at, o.length ?? SHAPE_DEFAULT_LENGTH, trackId, 'Shapes', { text: null, shape })
+  set({ selection: [id], selectedTrackId: null })
+  setStatus(`Added ${preset.label.toLowerCase()}: drag its handles in the preview, double-click it for colors and outline`)
+  return id
+}
+
+/** Changes a shape; changes of the same field in a row are one undo step. */
+export function updateShape(eventId: string, patch: Partial<ShapeContent>, field = 'shape'): void {
+  commitCoalesced(`shape:${eventId}:${field}`, (d) => {
+    const event = d.events.find((e) => e.id === eventId)
+    if (event?.shape) Object.assign(event.shape, patch)
+  })
+}
+
+/** Shows another kind of shape in the same place (a box becomes an arrow along its diagonal). */
+export function setShapeKind(eventId: string, kind: ShapeKind): void {
+  const { width, height } = get().project.settings
+  commit((d) => {
+    const event = d.events.find((e) => e.id === eventId)
+    if (event?.shape) event.shape = convertShape(event.shape, kind, width, height)
+  })
+}
+
+export function openShapeEditor(eventId?: string): void {
+  const { project, selection } = get()
+  const candidates = eventId ? [eventId] : selection
+  const event = project.events.find((e) => candidates.includes(e.id) && e.shape)
+  if (!event) {
+    setStatus('Select a shape event to edit it')
+    return
+  }
+  set({ dialog: { kind: 'shape', eventId: event.id } })
 }
 
 /**
@@ -1577,6 +1662,7 @@ export function addCaptionEvents(captions: CaptionChunk[], origin: Flicks, prese
             ? c.words.map((w) => ({ text: w.text, start: toEvent(w.start), end: toEvent(w.end), ...(w.src ? { src: w.src } : {}) }))
             : null
         },
+        shape: null,
         mask: null,
         fx: [],
         envelope: [],
@@ -1733,13 +1819,13 @@ export const BACKGROUND_TRACK = 'Background'
 export function foregroundVideoEvents(): TimelineEvent[] {
   const { project } = get()
   const background = new Set(project.tracks.filter((t) => t.name === BACKGROUND_TRACK).map((t) => t.id))
-  return project.events.filter((e) => e.kind === 'video' && !e.text && !background.has(e.trackId))
+  return project.events.filter((e) => e.kind === 'video' && !isGenerated(e) && !background.has(e.trackId))
 }
 
 /** Video events showing a picture (not text), with a known size. */
 function framedEvents(ids: readonly string[]): TimelineEvent[] {
   return get().project.events.filter((e) => {
-    if (!ids.includes(e.id) || e.kind !== 'video' || e.text) return false
+    if (!ids.includes(e.id) || e.kind !== 'video' || isGenerated(e)) return false
     const media = mediaById(e.mediaId)
     return !!media && media.kind !== 'audio' && media.width > 0 && media.height > 0
   })

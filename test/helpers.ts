@@ -42,6 +42,7 @@ export function clip(
     gain: 1,
     panCrop: [],
     text: null,
+    shape: null,
     mask: null,
     fx: [],
     envelope: [],

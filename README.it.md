@@ -65,7 +65,8 @@
 - **Montaggio dal testo** (tab *Transcript*): il parlato diventa testo; selezioni le parole, premi `Canc` e il video si taglia. Un pulsante seleziona ehm, uhm e parole ripetute; un altro accorcia le pause lunghe.
 - Parole chiave evidenziate (`*parola*` nel testo, o in automatico) ed emoji sulle parole a tema.
 - 21 preset di testo, tra cui titolo d'aggancio in alto e progress bar; oltre 30 font inclusi; animazioni di entrata e uscita.
-- Maniglie direttamente nell'anteprima per spostare, scalare e ruotare testi, immagini e video (per ruotare trascina appena fuori da un angolo, Shift per scatti di 15°).
+- **Forme per indicare le cose** (scheda *Generators* o menu *Insert*): rettangolo, ellisse e freccia, rosse di partenza, con contorno, riempimento, angoli arrotondati, ombra e un'animazione che le disegna sullo schermo. Si ridimensionano liberamente da ogni lato o angolo; la freccia si punta trascinandone le estremità. *Solid Color* riempie il fotogramma di un solo colore.
+- Maniglie direttamente nell'anteprima per spostare, scalare, stirare e ruotare testi, immagini e video (le maniglie sui lati di un'immagine la stirano in una direzione, `Ctrl`+trascina un angolo la stira liberamente; per ruotare trascina appena fuori da un angolo, Shift per scatti di 15°).
 
 ### Audio
 
@@ -152,7 +153,7 @@ Gli assistenti e gli agenti AI compatibili con MCP (app desktop, agenti di codin
 
 Serve l'app dell'assistente: gli strumenti sul tuo PC non funzionano da una pagina web. Se una chat nuova risponde che non conosce Boar, ha cercato gli strumenti prima che fossero caricati: rimanda il messaggio, oppure parti dal prompt *edit_in_boar*. Gli agenti avviati prima di Boar vedono comunque i suoi strumenti, e se Boar è chiuso il primo strumento usato lo apre (copie installate).
 
-L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: taglia e riordina il parlato, aggiunge sottotitoli, effetti e titoli, muove e zooma dentro l'inquadratura con i keyframe di Pan/Crop, manda le clip al contrario, e mette sulla timeline immagini, video ed effetti sonori della tua libreria (sopra chi parla con un effetto pop, o a tutto schermo). Per un voiceover sopra registrazioni lunghe può sfogliare file non ancora importati (fotogrammi sparsi lungo il file, durate), trasformare ore di registrazione dello schermo in pochi secondi di timelapse, fermare un fotogramma per spiegarlo, mettere in risalto un dettaglio e tenere la webcam in un angolo sopra le immagini. Ogni modifica si annulla con `Ctrl+Z` e la finestra mostra tutto quello che ha fatto. Può anche fare il render del risultato (video, GIF o solo audio): Boar ti chiede dove salvarlo. Video e audio restano sul tuo PC.
+L'agente legge la timeline e le trascrizioni, guarda i frame e fa le modifiche: taglia e riordina il parlato, aggiunge sottotitoli, effetti e titoli, muove e zooma dentro l'inquadratura con i keyframe di Pan/Crop, manda le clip al contrario, e mette sulla timeline immagini, video ed effetti sonori della tua libreria (sopra chi parla con un effetto pop, o a tutto schermo). Per un voiceover sopra registrazioni lunghe può sfogliare file non ancora importati (fotogrammi sparsi lungo il file, durate), trasformare ore di registrazione dello schermo in pochi secondi di timelapse, fermare un fotogramma per spiegarlo, mettere in risalto un dettaglio o cerchiarlo con un riquadro o una freccia, e tenere la webcam in un angolo sopra le immagini. Ogni modifica si annulla con `Ctrl+Z` e la finestra mostra tutto quello che ha fatto. Può anche fare il render del risultato (video, GIF o solo audio): Boar ti chiede dove salvarlo. Video e audio restano sul tuo PC.
 
 ## Temi
 

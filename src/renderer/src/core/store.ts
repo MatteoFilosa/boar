@@ -120,6 +120,7 @@ export type Dialog =
   | { kind: 'matchMedia'; mediaId: string }
   | { kind: 'panCrop'; eventId: string }
   | { kind: 'text'; eventId: string }
+  | { kind: 'shape'; eventId: string }
   | { kind: 'render' }
   | { kind: 'captions' }
   | { kind: 'mask'; eventId: string }

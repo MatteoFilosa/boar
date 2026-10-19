@@ -1,12 +1,13 @@
 import * as A from '../core/actions'
 import { type EventAttribute, mediaById, useEditor } from '../core/store'
 import { FLICKS_PER_SECOND, type Flicks, fps, frameFlicks, secondsToFlicks } from '../core/time'
-import { eventEnd, projectEnd, sourceTime, timelineTime } from '../core/timeline'
+import { eventEnd, isGenerated, projectEnd, sourceTime, timelineTime } from '../core/timeline'
 import type { MediaItem, TimelineEvent } from '../core/types'
 import { CAPTION_STYLES, alignWords, chunkWords } from '../core/captions'
 import { type TimelineWord, defaultSpeechTrack, hasSpeech, speechTracks, timedWord, wordFlag, wordsOnTimeline } from '../core/transcript'
 import { TEXT_PRESETS } from '../core/text'
-import { fillZoom, framingZoom, normalizeAngle, panCropAt, sourceToOutput, upsertKey } from '../core/pancrop'
+import { type ShapeContent, type ShapeKind, SHAPE_KINDS, convertShape } from '../core/shapes'
+import { MAX_STRETCH, MIN_STRETCH, fillZoom, framingZoom, normalizeAngle, panCropAt, sourceToOutput, upsertKey, withStretch } from '../core/pancrop'
 import { DEFAULT_MASK, type EventMask, type MaskPoint, convertMaskSpace } from '../core/mask'
 import { smartOutline, trackOutline } from '../engine/smartMask'
 import { AUDIO_FX, VIDEO_FX, cloneFx, fxDef, hexToColor } from '../core/fx'
@@ -176,6 +177,7 @@ function describeEvent(e: TimelineEvent, trackIndex: Map<string, number>): Recor
     end: sec(eventEnd(e))
   }
   if (e.text) out.text = e.text.progressBar ? '(progress bar)' : e.text.text
+  else if (e.shape) out.shape = describeShape(e.shape)
   else {
     out.media = media?.name ?? 'missing media'
     out.sourceIn = sec(e.offset)
@@ -187,7 +189,10 @@ function describeEvent(e: TimelineEvent, trackIndex: Map<string, number>): Recor
   if (e.fx.length) out.fx = e.fx.map((f) => f.type)
   if (e.transition) out.transitionIn = e.transition.type
   if (e.transitionOut) out.transitionOut = e.transitionOut.type
-  if (e.panCrop.length) out.panCrop = e.panCrop.length === 1 ? `zoom ${e.panCrop[0].zoom.toFixed(2)}` : `${e.panCrop.length} keyframes`
+  if (e.panCrop.length) {
+    const k = e.panCrop[0]
+    out.panCrop = e.panCrop.length === 1 ? `zoom ${k.zoom.toFixed(2)}${k.stretch !== 1 ? `, stretch ${k.stretch.toFixed(2)}` : ''}` : `${e.panCrop.length} keyframes`
+  }
   // Clockwise on screen (a Pan/Crop rotation turns the frame, so the picture the other way).
   const rotation = e.text ? e.text.rotation : e.panCrop.length === 1 ? normalizeAngle(-e.panCrop[0].rotation) : 0
   if (rotation) out.rotation = Math.round(rotation * 10) / 10
@@ -298,7 +303,7 @@ function overlayTargets(a: Args, media: MediaItem, at: Flicks, end: Flicks, soun
   }
   if (!targets.video && !soundOnly) {
     // The main video is the lowest video track with clips.
-    const mainIndex = project.tracks.findLastIndex((t) => t.kind === 'video' && project.events.some((e) => e.trackId === t.id && !e.text))
+    const mainIndex = project.tracks.findLastIndex((t) => t.kind === 'video' && project.events.some((e) => e.trackId === t.id && !isGenerated(e)))
     if (mainIndex >= 0) {
       const above = project.tracks.slice(0, mainIndex).reverse()
       const overlay = above.find((t) => t.kind === 'video' && !project.events.some((e) => e.trackId === t.id && e.text) && free(t.id))
@@ -311,22 +316,92 @@ function overlayTargets(a: Args, media: MediaItem, at: Flicks, end: Flicks, soun
   return targets
 }
 
+const r3 = (v: number): number => Math.round(v * 1000) / 1000
+
+/** A shape as the agent reads it: frame fractions, like add_shape takes them. */
+function describeShape(s: ShapeContent): Record<string, unknown> {
+  const look: Record<string, unknown> = { color: s.color, width: s.width }
+  if (s.fill && s.kind !== 'arrow') Object.assign(look, { fill: s.fill, fillOpacity: s.fillOpacity })
+  if (s.kind === 'arrow') return { kind: s.kind, from: [r3(s.x1), r3(s.y1)], to: [r3(s.x2), r3(s.y2)], ...look }
+  return { kind: s.kind, x: r3(s.x), y: r3(s.y), w: r3(s.w), h: r3(s.h), ...(s.rotation ? { rotation: r3(s.rotation) } : {}), ...look }
+}
+
+/** "#rrggbb" from an agent's color argument (undefined when absent). */
+function colorArg(a: Args, key: string): string | undefined {
+  if (a[key] === undefined) return undefined
+  const n = hexToColor(str(a, key))
+  if (n === null) throw new ToolError(`"${key}" must be a "#rrggbb" color`)
+  return `#${n.toString(16).padStart(6, '0')}`
+}
+
+const SHAPE_ARGS = {
+  x: S.num('Rectangle/ellipse: center, 0 = left edge, 1 = right edge'),
+  y: S.num('Rectangle/ellipse: center, 0 = top, 1 = bottom'),
+  w: S.num('Rectangle/ellipse: width, fraction of the frame width'),
+  h: S.num('Rectangle/ellipse: height, fraction of the frame height'),
+  rotation: S.num('Rectangle/ellipse: degrees, clockwise'),
+  from_x: S.num('Arrow: tail, 0 = left edge, 1 = right edge'),
+  from_y: S.num('Arrow: tail, 0 = top, 1 = bottom'),
+  to_x: S.num('Arrow: tip (the point it shows), 0-1'),
+  to_y: S.num('Arrow: tip, 0-1'),
+  color: S.str('Outline or arrow color, "#rrggbb" (default red)'),
+  width: S.num('Outline or arrow thickness, px at 1080p (default 10, arrows 12; 0 = no outline)'),
+  fill: S.str('Rectangle/ellipse fill, "#rrggbb" or "none" (default none)'),
+  fill_opacity: S.num('Fill opacity 0-1 (default 0.25)'),
+  radius: S.num('Rectangle corner radius, px at 1080p'),
+  head: S.num('Arrow head length, px at 1080p (default 52)'),
+  shadow: S.bool('Soft shadow under it (default true)'),
+  anim_in: S.str('Entrance', ['none', 'fade', 'pop', 'draw']),
+  anim_out: S.str('Exit', ['none', 'fade', 'pop'])
+}
+
+/** The shape fields an agent gave, checked against the kind of shape. */
+function shapePatch(a: Args, kind: ShapeKind): Partial<ShapeContent> {
+  const p: Partial<ShapeContent> = {}
+  const box = ['x', 'y', 'w', 'h', 'rotation'].filter((k) => a[k] !== undefined)
+  const ends = ['from_x', 'from_y', 'to_x', 'to_y'].filter((k) => a[k] !== undefined)
+  if (kind === 'arrow' && box.length) throw new ToolError(`An arrow goes from (from_x, from_y) to (to_x, to_y): ${box.join(', ')} apply to rectangles and ellipses`)
+  if (kind !== 'arrow' && ends.length) throw new ToolError(`A ${kind} takes x, y, w, h: ${ends.join(', ')} apply to arrows`)
+  const frac = (key: string): number => num(a, key, { min: -1, max: 2 })
+  if (a.x !== undefined) p.x = frac('x')
+  if (a.y !== undefined) p.y = frac('y')
+  if (a.w !== undefined) p.w = num(a, 'w', { min: 0.005, max: 3 })
+  if (a.h !== undefined) p.h = num(a, 'h', { min: 0.005, max: 3 })
+  if (a.rotation !== undefined) p.rotation = normalizeAngle(num(a, 'rotation', { min: -3600, max: 3600 }))
+  if (a.from_x !== undefined) p.x1 = frac('from_x')
+  if (a.from_y !== undefined) p.y1 = frac('from_y')
+  if (a.to_x !== undefined) p.x2 = frac('to_x')
+  if (a.to_y !== undefined) p.y2 = frac('to_y')
+  const color = colorArg(a, 'color')
+  if (color) p.color = color
+  if (a.width !== undefined) p.width = num(a, 'width', { min: kind === 'arrow' ? 1 : 0, max: 200 })
+  if (a.fill !== undefined) p.fill = a.fill === 'none' || a.fill === '' ? '' : (colorArg(a, 'fill') as string)
+  if (a.fill_opacity !== undefined) p.fillOpacity = num(a, 'fill_opacity', { min: 0, max: 1 })
+  if (a.radius !== undefined) p.radius = num(a, 'radius', { min: 0, max: 2000 })
+  if (a.head !== undefined) p.head = num(a, 'head', { min: 4, max: 1000 })
+  if (a.shadow !== undefined) p.shadow = bool(a, 'shadow', true)
+  if (a.anim_in !== undefined) p.animIn = oneOf(a, 'anim_in', ['none', 'fade', 'pop', 'draw'] as const, 'none')
+  if (a.anim_out !== undefined) p.animOut = oneOf(a, 'anim_out', ['none', 'fade', 'pop'] as const, 'none')
+  return p
+}
+
 /** A video or image event with its (ready) media, for the Pan/Crop tools. */
 function panCropTarget(id: string): { event: TimelineEvent; media: MediaItem } {
   const event = get().project.events.find((e) => e.id === id)
   if (!event) throw new ToolError(`Unknown event ${id}`)
-  if (event.kind !== 'video' || event.text) throw new ToolError(`${id} is not a video or image event (text moves with add_text's position)`)
+  if (event.kind !== 'video' || isGenerated(event)) throw new ToolError(`${id} is not a video or image event (text moves with add_text's position, shapes with set_shape)`)
   const media = mediaById(event.mediaId)
   if (!media || media.status !== 'ready' || !media.width || !media.height) throw new ToolError(`The media of ${id} is not ready`)
   return { event, media }
 }
 
 /** A framing as the agent reads it: rotation clockwise on screen. */
-const agentState = (k: PanCropState): { x: number; y: number; zoom: number; rotation: number } => ({
+const agentState = (k: PanCropState): { x: number; y: number; zoom: number; rotation: number; stretch: number } => ({
   x: Math.round(k.cx * 1000) / 1000,
   y: Math.round(k.cy * 1000) / 1000,
   zoom: Math.round(k.zoom * 1000) / 1000,
-  rotation: Math.round(normalizeAngle(-k.rotation) * 10) / 10
+  rotation: Math.round(normalizeAngle(-k.rotation) * 10) / 10,
+  stretch: Math.round(k.stretch * 1000) / 1000
 })
 
 // Tools
@@ -614,6 +689,62 @@ const TOOLS: Tool[] = [
     }
   },
   {
+    name: 'add_shape',
+    title: 'Add a rectangle, ellipse or arrow',
+    description:
+      'Draws a shape over the video to point at something: a rectangle or ellipse around it, or an arrow pointing at it (red by default), or "solid" (the whole frame in one color). ' +
+      'Positions are fractions of the frame (get_frame shows where things are). It goes on a free track on top for `duration` seconds; one undo step. ' +
+      'anim_in "draw" draws the outline (or the arrow) on screen. Change it later with set_shape.',
+    inputSchema: object(
+      {
+        shape: S.str('What to draw (default rectangle)', ['rectangle', 'ellipse', 'arrow', 'solid']),
+        start: S.num('Seconds (default: the cursor)'),
+        duration: S.num('Seconds (default 4)'),
+        track: S.int('Track number (default: a free track on top)'),
+        ...SHAPE_ARGS
+      }
+    ),
+    run: (a) => {
+      const preset = oneOf(a, 'shape', ['rectangle', 'ellipse', 'arrow', 'solid'] as const, 'rectangle')
+      const patch = shapePatch(a, preset === 'arrow' ? 'arrow' : preset === 'ellipse' ? 'ellipse' : 'rectangle')
+      const start = a.start === undefined ? get().cursor : secondsToFlicks(num(a, 'start', { min: 0 }))
+      const length = secondsToFlicks(num(a, 'duration', { min: 0.1, max: 3600, def: 4 }))
+      const id = A.addShapeEvent(preset, start, trackId(a), { length, patch })
+      if (!id) throw new ToolError('Could not add the shape')
+      const event = get().project.events.find((e) => e.id === id)
+      return { id, track: event ? get().project.tracks.findIndex((t) => t.id === event.trackId) + 1 : undefined, shape: event?.shape ? describeShape(event.shape) : undefined }
+    }
+  },
+  {
+    name: 'set_shape',
+    title: 'Change shapes',
+    description:
+      'Changes shape events made with add_shape (or by hand): place, size, color, outline, fill, animation, or the kind (a box turned into an arrow keeps the place). ' +
+      'Only the fields given change; the same change goes to every event given. One undo step.',
+    inputSchema: object({ event_ids: S.ids('Shape events'), kind: S.str('Turn into another kind', SHAPE_KINDS), ...SHAPE_ARGS }, ['event_ids']),
+    run: (a) => {
+      const ids = eventIds(a)
+      if (ids.length === 0) throw new ToolError('"event_ids" must name at least one shape event')
+      const { project } = get()
+      const { width, height } = project.settings
+      const kind = a.kind === undefined ? undefined : oneOf(a, 'kind', SHAPE_KINDS, 'rectangle')
+      const next = new Map<string, ShapeContent>()
+      for (const id of ids) {
+        const shape = project.events.find((e) => e.id === id)?.shape
+        if (!shape) throw new ToolError(`${id} is not a shape (add one with add_shape)`)
+        const base = kind ? convertShape(shape, kind, width, height) : shape
+        next.set(id, { ...base, ...shapePatch(a, base.kind) })
+      }
+      A.commit((d) => {
+        for (const e of d.events) {
+          const shape = next.get(e.id)
+          if (shape) e.shape = shape
+        }
+      })
+      return `Changed ${next.size} shape${next.size === 1 ? '' : 's'}`
+    }
+  },
+  {
     name: 'add_captions',
     title: 'Add captions from the transcript',
     description: `Word-timed captions for the speech track as it is now (after cuts), on a new Captions track. Styles: ${CAPTION_STYLES.map((s) => `${s.id} (${s.label})`).join('; ')}.`,
@@ -747,7 +878,7 @@ const TOOLS: Tool[] = [
     name: 'get_pan_crop',
     title: 'Read the Pan/Crop of a clip',
     description:
-      'Event Pan/Crop of a video or image event: the keyframes (time = seconds from the clip start; x, y = the point of the picture at the center of the frame, fractions 0-1; zoom 1 = whole picture fits, higher = closer; rotation = clockwise degrees on screen) and the zoom that fills the frame.',
+      'Event Pan/Crop of a video or image event: the keyframes (time = seconds from the clip start; x, y = the point of the picture at the center of the frame, fractions 0-1; zoom 1 = whole picture fits, higher = closer; rotation = clockwise degrees on screen; stretch = width of the picture against its height, 1 = its own proportions) and the zoom that fills the frame (with the first keyframe\'s stretch).',
     inputSchema: object({ event_id: S.str('Event id') }, ['event_id']),
     readOnly: true,
     run: (a) => {
@@ -758,7 +889,7 @@ const TOOLS: Tool[] = [
         clipLength: sec(event.length),
         picture: { width: media.width, height: media.height },
         frame: { width, height },
-        fillZoom: Math.round(fillZoom(media.width, media.height, width, height) * 1000) / 1000,
+        fillZoom: Math.round(fillZoom(media.width * (event.panCrop[0]?.stretch ?? 1), media.height, width, height) * 1000) / 1000,
         keyframes: event.panCrop.map((k) => ({
           time: sec(timelineTime(event, k.time) - event.start),
           ...agentState(k),
@@ -774,7 +905,9 @@ const TOOLS: Tool[] = [
     description:
       'Sets Event Pan/Crop keyframes on video or image events: what part of the picture fills the frame over time (Ken Burns moves, slow push-ins, punch-ins, reframing). ' +
       'Each keyframe: time (seconds from the clip start, or from its end with from_end), x, y (the point of the picture at the center of the frame, 0-1), ' +
-      'zoom (1 = whole picture fits, "fill" = covers the frame, "fit", or a number: 2 = twice as close), rotation (clockwise degrees), ease (smooth, linear or hold until the next key). ' +
+      'zoom (1 = whole picture fits, "fill" = covers the frame, "fit", or a number: 2 = twice as close), rotation (clockwise degrees), ' +
+      'stretch (width of the picture against its height: 1 = its own proportions, 2 = twice as wide, 0.5 = half as wide; resizes boxes, arrows and other pictures freely; ' +
+      'given alone it keeps the picture\'s center and height on screen, and zoom counts on the stretched picture), ease (smooth, linear or hold until the next key). ' +
       'Missing values keep the current framing at that time. The same keyframes go on every event given. replace=false keeps the other keyframes; reset=true removes them all (whole picture fitted). Check the result with get_frame.',
     inputSchema: object(
       {
@@ -791,6 +924,7 @@ const TOOLS: Tool[] = [
               y: S.num('Picture point at the frame center, 0 = top, 1 = bottom'),
               zoom: { type: ['number', 'string'], description: '1 = whole picture fits; "fill" covers the frame; "fit"; or a number like 1.5' },
               rotation: S.num('Clockwise degrees on screen'),
+              stretch: S.num('Width of the picture against its height: 1 = its own proportions, 2 = twice as wide'),
               ease: S.str('Toward the next keyframe (default smooth)', ['smooth', 'linear', 'hold'])
             }
           }
@@ -821,10 +955,14 @@ const TOOLS: Tool[] = [
           if (at > sec(event.length) + 1e-3) throw new ToolError(`keyframes[${i}]: time ${at} is past the end of ${event.id} (${sec(event.length)} s)`)
           const t = Math.min(event.length, secondsToFlicks(at))
           const time = sourceTime(event, event.start + (bool(k, 'from_end', false) ? event.length - t : t))
-          const current = panCropAt(event.panCrop, time)
+          let current = panCropAt(event.panCrop, time)
+          // A new stretch alone keeps the picture where it is, as tall as it is.
+          if (k.stretch !== undefined) {
+            current = withStretch(current, num(k, 'stretch', { min: MIN_STRETCH, max: MAX_STRETCH }), media.width, media.height, width, height)
+          }
           const rotation = k.rotation === undefined ? current.rotation : -num(k, 'rotation', { min: -3600, max: 3600 })
           let zoom = current.zoom
-          if (k.zoom === 'fill' || k.zoom === 'fit') zoom = framingZoom(k.zoom, rotation, media.width, media.height, width, height)
+          if (k.zoom === 'fill' || k.zoom === 'fit') zoom = framingZoom(k.zoom, rotation, media.width, media.height, width, height, current.stretch)
           else if (k.zoom !== undefined) zoom = num(k, 'zoom', { min: 0.05, max: 20 })
           out = upsertKey(out, {
             time,
@@ -832,6 +970,7 @@ const TOOLS: Tool[] = [
             cy: num(k, 'y', { min: -1, max: 2, def: current.cy }),
             zoom,
             rotation,
+            stretch: current.stretch,
             ease: oneOf(k, 'ease', ['smooth', 'linear', 'hold'] as const, 'smooth')
           })
         }
@@ -1476,7 +1615,7 @@ const TOOLS: Tool[] = [
     title: 'Copy event attributes',
     description:
       'Gives other events the look of one event (like Paste Event Attributes): its effects (fx), Pan/Crop framing (panCrop), mask, ' +
-      'level or volume (gain) and, between text events, the text style and position (textStyle). Video goes to video, audio to audio; ' +
+      'level or volume (gain) and, between text events, the text style and position (textStyle; between shapes, their look: color, width, fill, animation). Video goes to video, audio to audio; ' +
       'keyframes keep their place from the start of each event. Use it after editing one piece of a split clip.',
     inputSchema: object(
       {

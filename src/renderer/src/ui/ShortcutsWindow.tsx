@@ -109,6 +109,9 @@ const MOUSE: [string, string][] = [
   ['Drag on empty area', 'Select events in a rectangle'],
   ['Drag on the ruler', 'Time selection (loop region)'],
   ['Preview: drag a handle', 'Move or resize the selected video, image or text'],
+  [`Preview: drag a side handle / ${MOD}+drag a corner`, 'Stretch a video or image (one side / freely)'],
+  ['Preview: drag a shape\'s side or corner', 'Resize a rectangle or ellipse (Shift on a corner keeps the proportions)'],
+  ['Preview: drag an end of an arrow', 'Point it somewhere else (Shift: 15° steps)'],
   ['Preview: drag just outside a corner', 'Rotate (Shift: 15° steps)'],
   ['Right-click / Alt+click marker', 'Delete marker'],
   [`Keyframe bar: click / ${MOD}+click / Shift+click`, `Select keyframes (Pan/Crop, Mask); drag moves them, Del deletes, ${MOD}+C / ${MOD}+V copy and paste at the cursor`]

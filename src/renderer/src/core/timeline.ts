@@ -13,6 +13,9 @@ export const timelineTime = (e: TimelineEvent, src: Flicks): Flicks => e.start +
 /** How much of the media the event plays. */
 export const sourceLength = (e: TimelineEvent): Flicks => Math.round(e.length * e.rate)
 
+/** Text and shape events: drawn by the editor, no media file behind them. */
+export const isGenerated = (e: TimelineEvent): boolean => !!e.text || !!e.shape
+
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v)
 
 export function projectEnd(p: Project): Flicks {

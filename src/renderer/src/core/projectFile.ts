@@ -3,6 +3,7 @@ import type { MediaTranscript } from './transcript'
 import type { ShortCandidate } from './shorts'
 import { emptyProject } from './store'
 import { normalizeText } from './text'
+import { normalizeShape } from './shapes'
 import { normalizeMask } from './mask'
 import { DEFAULT_FADE_CURVE, clampRate, isFadeCurve } from './fades'
 import { upgradeFx } from './fx'
@@ -87,8 +88,9 @@ export function parseProject(json: string): {
         rate: typeof e.rate === 'number' && e.rate > 0 && !e.text ? clampRate(e.rate) : 1,
         gain: e.gain ?? 1,
         groupId: e.groupId ?? null,
-        panCrop: e.panCrop ?? [],
+        panCrop: (e.panCrop ?? []).map((k) => ({ ...k, stretch: typeof k.stretch === 'number' && k.stretch > 0 ? k.stretch : 1 })),
         text: e.text ? normalizeText(e.text) : null,
+        shape: e.shape ? normalizeShape(e.shape) : null,
         mask: e.mask ? normalizeMask(e.mask) : null,
         fx: Array.isArray(e.fx) ? e.fx.map(upgradeFx) : [],
         envelope: Array.isArray(e.envelope) ? e.envelope : [],

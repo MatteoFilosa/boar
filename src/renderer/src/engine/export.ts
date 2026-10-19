@@ -19,7 +19,7 @@ import {
 } from 'mediabunny'
 import { mediaById } from '../core/store'
 import { type Flicks, flicksToSeconds, fps, frameFlicks } from '../core/time'
-import { audioGain, eventsByTrack, mixedTracks, projectEnd, sourceTime } from '../core/timeline'
+import { audioGain, eventsByTrack, isGenerated, mixedTracks, projectEnd, sourceTime } from '../core/timeline'
 import type { MediaItem, Project, TimelineEvent } from '../core/types'
 import { composeFrame } from './compose'
 import { inputSource } from '../media/source'
@@ -247,7 +247,7 @@ export class FrameDecoder {
         }
         continue
       }
-      if (ev.kind !== 'video' || ev.text) continue
+      if (ev.kind !== 'video' || isGenerated(ev)) continue
       const media = mediaById(ev.mediaId)
       if (!media || media.kind !== 'video' || media.status !== 'ready') continue
       const { input, first } = await this.open(media)

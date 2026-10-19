@@ -75,6 +75,9 @@ export const commands = {
   addMarker: A.addMarkerAtCursor,
   panCrop: (): void => A.openPanCrop(),
   insertText: (): void => void A.addTextEvent('title', useEditor.getState().cursor),
+  insertRectangle: (): void => void A.addShapeEvent('rectangle', useEditor.getState().cursor),
+  insertEllipse: (): void => void A.addShapeEvent('ellipse', useEditor.getState().cursor),
+  insertArrow: (): void => void A.addShapeEvent('arrow', useEditor.getState().cursor),
   youtube: (): void => {
     if (!useEditor.getState().options.linkDownloads) {
       A.setStatus('Download from Link is an optional feature: enable it in Options')

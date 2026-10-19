@@ -112,14 +112,15 @@ export function convertMaskSpace(
 ): EventMask {
   if (mask.space === to) return mask
   const { map, inverse } = sourceToOutput(state, srcW, srcH, outW, outH)
-  // Output pixels per source pixel.
-  const scale = (outW * state.zoom) / fitFrame(srcW, srcH, outW, outH).w
+  // Output pixels per source pixel, down and across (the picture may be stretched).
+  const scale = (outW * state.zoom) / fitFrame(srcW * state.stretch, srcH, outW, outH).w
+  const scaleX = scale * state.stretch
   if (to === 'picture') {
     const [x, y] = inverse(mask.cx * outW, mask.cy * outH)
-    return { ...mask, space: to, cx: x / srcW, cy: y / srcH, w: (mask.w * outW) / scale / srcW, h: (mask.h * outH) / scale / srcH }
+    return { ...mask, space: to, cx: x / srcW, cy: y / srcH, w: (mask.w * outW) / scaleX / srcW, h: (mask.h * outH) / scale / srcH }
   }
   const [x, y] = map(mask.cx * srcW, mask.cy * srcH)
-  return { ...mask, space: to, cx: x / outW, cy: y / outH, w: (mask.w * srcW * scale) / outW, h: (mask.h * srcH * scale) / outH }
+  return { ...mask, space: to, cx: x / outW, cy: y / outH, w: (mask.w * srcW * scaleX) / outW, h: (mask.h * srcH * scale) / outH }
 }
 
 // Custom shape keyframes
