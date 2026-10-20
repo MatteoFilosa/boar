@@ -203,6 +203,23 @@ button {
   color: var(--on-accent);
 }
 
+.menu-entry {
+  position: relative;
+}
+
+.menu-popup.menubar-submenu {
+  top: -5px;
+  left: calc(100% - 2px);
+  min-width: 200px;
+  max-width: 440px;
+}
+
+.menubar-submenu .menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .menu-sep {
   height: 1px;
   margin: 4px 8px;
@@ -1635,6 +1652,25 @@ body.moving-window * {
   margin: 0;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.mask-props {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mask-props:disabled {
+  opacity: 0.45;
+}
+
+.mask-tip {
+  margin-top: auto;
+  padding-top: 6px;
 }
 
 .mask-busy {

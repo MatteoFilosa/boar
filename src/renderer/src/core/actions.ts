@@ -1729,6 +1729,8 @@ export function openMaskEditor(eventId?: string): void {
     setStatus('Select a video or text event to edit its mask')
     return
   }
+  // The window is for masking: an event without a mask gets one at once.
+  if (!event.mask) replaceMask(event.id, { ...DEFAULT_MASK })
   set({ dialog: { kind: 'mask', eventId: event.id } })
 }
 

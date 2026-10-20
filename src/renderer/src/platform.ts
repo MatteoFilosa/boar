@@ -22,6 +22,11 @@ export interface BoarBridge {
   takeLaunchProject(): Promise<{ path: string; json: string } | null>
   /** Reads a .boar file dropped on the window. */
   openDroppedProject(path: string): Promise<{ path: string; json: string }>
+  /** File › Open Recent, newest first (src/main/recent.ts). */
+  recentProjects(): Promise<{ path: string; missing: boolean }[]>
+  /** Reads a project on the recent list. */
+  openRecentProject(path: string): Promise<{ path: string; json: string }>
+  clearRecentProjects(): Promise<void>
   /**
    * Starts this page's autosave session and offers the copy a crash left behind
    * (the main process asks the user); null when there is none or it was declined.

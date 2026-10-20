@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { LucideIcon } from 'lucide-react'
+import { ChevronRight, type LucideIcon } from 'lucide-react'
 import { RIPPLE_LABELS, setOption, setRippleMode } from '../core/actions'
 import { useEditor, type PreviewQuality } from '../core/store'
+import { clearRecentProjects, openRecentProject, refreshRecentProjects, useRecentProjects } from '../core/session'
 import { type CommandId, commands } from './commands'
 import { shortcutLabel } from './shortcuts'
 import logo from '../assets/logo.png'
@@ -17,9 +18,11 @@ export interface Item {
   disabled?: boolean
   hint?: string
   icon?: LucideIcon
+  /** Opens a nested menu beside the item. */
+  submenu?: Entry[]
 }
 
-type Entry = Item | 'separator'
+export type Entry = Item | 'separator'
 
 export interface Menu {
   label: string
@@ -33,6 +36,7 @@ function useMenus(): Menu[] {
   const canRedo = useEditor((s) => s.future.length > 0)
   const hasSelection = useEditor((s) => s.selection.length > 0)
   const hasTimeSelection = useEditor((s) => s.timeSelection !== null)
+  const recent = useRecentProjects((s) => s.list)
   const quality = (q: PreviewQuality, label: string): Item => ({
     label,
     checked: options.previewQuality === q,
@@ -44,6 +48,24 @@ function useMenus(): Menu[] {
       entries: [
         { label: 'New', command: 'newProject' },
         { label: 'Open...', command: 'openProject' },
+        {
+          label: 'Open Recent',
+          submenu:
+            recent.length === 0
+              ? [{ label: 'No Recent Projects', disabled: true }]
+              : [
+                  ...recent.map(
+                    (r): Item => ({
+                      label: r.label,
+                      hint: r.missing ? `${r.path} (not found)` : r.path,
+                      disabled: r.missing,
+                      run: () => void openRecentProject(r.path)
+                    })
+                  ),
+                  'separator',
+                  { label: 'Clear Recent List', run: () => void clearRecentProjects() }
+                ]
+        },
         { label: 'Save', command: 'saveProject' },
         { label: 'Save As...', command: 'saveProjectAs' },
         'separator',
@@ -191,10 +213,64 @@ function useMenus(): Menu[] {
   ]
 }
 
+function MenuEntries({
+  entries,
+  run,
+  sub,
+  setSub
+}: {
+  entries: Entry[]
+  run: (item: Item) => void
+  sub: string | null
+  setSub: (label: string | null) => void
+}): React.JSX.Element {
+  return (
+    <>
+      {entries.map((entry, j) =>
+        entry === 'separator' ? (
+          <div key={`sep-${j}`} className="menu-sep" />
+        ) : (
+          <div key={entry.label} className="menu-entry" onMouseEnter={() => setSub(entry.submenu ? entry.label : null)}>
+            <button
+              className={`menu-item${entry.submenu && sub === entry.label ? ' open' : ''}`}
+              disabled={entry.disabled}
+              title={entry.hint}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => run(entry)}
+            >
+              <MenuIcon item={entry} />
+              <span className="menu-label">{entry.label}</span>
+              {entry.submenu ? (
+                <ChevronRight size={13} className="menu-arrow" />
+              ) : (
+                <span className="menu-shortcut">{entry.command ? shortcutLabel(entry.command) : ''}</span>
+              )}
+            </button>
+            {entry.submenu && sub === entry.label && (
+              <div className="menu-popup menubar-submenu">
+                <MenuEntries entries={entry.submenu} run={run} sub={null} setSub={() => undefined} />
+              </div>
+            )}
+          </div>
+        )
+      )}
+    </>
+  )
+}
+
 export function MenuBar(): React.JSX.Element {
   const menus = useMenus()
   const [open, setOpen] = useState<number | null>(null)
+  /** Label of the item whose submenu is open. */
+  const [sub, setSub] = useState<string | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
+  const fileOpen = open !== null && menus[open]?.label === 'File'
+
+  useEffect(() => setSub(null), [open])
+  // Files may have been moved or deleted since the list was read.
+  useEffect(() => {
+    if (fileOpen) void refreshRecentProjects()
+  }, [fileOpen])
 
   useEffect(() => {
     if (open === null) return
@@ -214,6 +290,10 @@ export function MenuBar(): React.JSX.Element {
 
   const run = (item: Item): void => {
     if (item.disabled) return
+    if (item.submenu) {
+      setSub(item.label)
+      return
+    }
     setOpen(null)
     if (item.run) item.run()
     else if (item.command) commands[item.command]()
@@ -233,24 +313,7 @@ export function MenuBar(): React.JSX.Element {
           </button>
           {open === i && (
             <div className="menu-popup">
-              {menu.entries.map((entry, j) =>
-                entry === 'separator' ? (
-                  <div key={`sep-${j}`} className="menu-sep" />
-                ) : (
-                  <button
-                    key={entry.label}
-                    className="menu-item"
-                    disabled={entry.disabled}
-                    title={entry.hint}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => run(entry)}
-                  >
-                    <MenuIcon item={entry} />
-                    <span className="menu-label">{entry.label}</span>
-                    <span className="menu-shortcut">{entry.command ? shortcutLabel(entry.command) : ''}</span>
-                  </button>
-                )
-              )}
+              <MenuEntries entries={menu.entries} run={run} sub={sub} setSub={setSub} />
             </div>
           )}
         </div>

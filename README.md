@@ -80,7 +80,7 @@
 - 25 GPU video effects: ready-made color looks, brightness and contrast, color correction, chroma key, blur, glow, vignette, grain, VHS, glitch and more. AI **background removal**, no green screen needed.
 - **Chroma key with an eyedropper**: click the color to remove in the preview, a green or blue screen or a white or black background. *Background only* removes it just around the subject, so a white logo on a product shot on white stays.
 - Transitions: zoom, whip pan, spin, glitch, flash, dip to black, blur, pixelate. Drag one onto the start or the end of a clip, or where two clips overlap: the whole overlap becomes the transition, and its name shows on the timeline. Click the name to change the type or the length.
-- Masks: ellipse, rectangle or a custom shape drawn with points and animated with keyframes. The shape is part of the picture, so moving it with Pan/Crop takes the masked part along. **Smart Select** cuts out an object with a click (more clicks add or leave out parts) and *Track Motion* follows it through the clip.
+- Masks: ellipse, rectangle or a custom shape drawn with points and animated with keyframes, all in one window over the picture: drag an ellipse or rectangle into place by its handles, or type its position and size in pixels. The shape is part of the picture, so moving it with Pan/Crop takes the masked part along. **Smart Select** cuts out an object with a click (more clicks add or leave out parts) and *Track Motion* follows it through the clip.
 - Event Pan/Crop with keyframes: click, `Ctrl`+click or `Shift`+click them on the keyframe bar to select, drag to move, `Delete` to remove, `Ctrl+C` / `Ctrl+V` to copy them to the cursor or to another event. The arrow keys move the frame (or, in the preview, the clicked picture) by one pixel, ten with `Shift`; `Shift`+drag moves it slowly.
 - **Render As** MP4 (H.264, HEVC, AV1, VP9): you choose who encodes, the graphics card (NVENC, Quick Sync, AMF, VideoToolbox) or the processor, and the audio (AAC or Opus). Preview and export use the same engine: what you see is what you export.
 - **Sound only** renders to MP3, WAV, FLAC, M4A (AAC) or OGG (Opus): the whole mix or one audio track alone, with the same loudness targets as videos.
@@ -209,7 +209,7 @@ Ideas that make everyday editing of spoken videos, Shorts and captions quicker f
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copy / cut / paste (images from the clipboard too) |
 | `Ctrl+Shift+V` | paste the copied event's attributes (FX, Pan/Crop, mask, level, text style) onto the selected events |
 | `Ctrl+D` | switch between the normal edit tool and the selection tool |
-| `Ctrl+S` / `Ctrl+O` | save / open project (`.boar`; double-clicking a project file or dropping it on Boar opens it too) |
+| `Ctrl+S` / `Ctrl+O` | save / open project (`.boar`; double-clicking a project file or dropping it on Boar opens it too; *File › Open Recent* lists the last ten) |
 | `Ctrl+M` | Render As |
 | `Ctrl+F` | search commands, options and effects |
 | `Ctrl+R` / `Ctrl+Shift+R` | rotate the selected video, image or text 90° clockwise / counterclockwise |

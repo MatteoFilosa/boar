@@ -12,6 +12,7 @@ import { registerUpdateIpc } from './updates'
 import { blockExternalRequests, disableBackgroundNetworking } from './privacy'
 import { registerProxyIpc } from './proxies'
 import { abandonAutosaveSession, endAutosaveSession, registerAutosaveIpc } from './autosave'
+import { addRecentProject, clearRecentProjects, findRecentProject, keepRecentProjects, recentProjects } from './recent'
 
 // `--smoke`: load the UI hidden, report renderer errors, exit. Used to verify builds.
 const smoke = process.argv.includes('--smoke')
@@ -307,6 +308,7 @@ function registerIpc(): void {
     }
     await writeFile(path, json, 'utf8')
     projectPaths.add(path)
+    void addRecentProject(path)
     return path
   })
   // A project the user opened: its media may be served, and saving writes back to it.
@@ -319,6 +321,7 @@ function registerIpc(): void {
       // Invalid file: the renderer reports it.
     }
     projectPaths.add(path)
+    void addRecentProject(path)
     return { path, json }
   }
   ipcMain.handle('project:open', async (event) => {
@@ -340,6 +343,15 @@ function registerIpc(): void {
     if (typeof path !== 'string' || !isProjectFile(path)) throw new Error('Not a Boar project')
     return readProject(path)
   })
+  // File › Open Recent: only projects on the list open without the dialog.
+  ipcMain.handle('project:recent', () => recentProjects())
+  ipcMain.handle('project:openRecent', async (_event, path: unknown) => {
+    const known = typeof path === 'string' ? await findRecentProject(path) : null
+    if (!known) throw new Error('Not a recent project')
+    if (!existsSync(known)) throw new Error('The file was moved or deleted')
+    return readProject(known)
+  })
+  ipcMain.handle('project:clearRecent', () => clearRecentProjects())
 }
 
 function runSmokeTest(win: BrowserWindow): void {
@@ -441,6 +453,7 @@ app.whenReady().then(() => {
   }
   blockExternalRequests()
   handleMediaProtocol()
+  keepRecentProjects(!smoke)
   registerIpc()
   registerCaptionIpc()
   registerLibraryIpc()

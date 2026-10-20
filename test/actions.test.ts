@@ -354,3 +354,25 @@ describe('stretched pictures', () => {
     expect(ev('a').panCrop).toEqual([])
   })
 })
+
+describe('Event Mask window', () => {
+  test('opening it on an event without a mask turns one on, as one undo step', () => {
+    load(project([track('v')], [clip('a', 'v', 0, 4)]), { selection: ['a'] })
+    A.openMaskEditor()
+    expect(state().dialog).toEqual({ kind: 'mask', eventId: 'a' })
+    expect(ev('a').mask).toMatchObject({ shape: 'ellipse', space: 'picture', feather: 0, invert: false })
+    A.undo()
+    expect(ev('a').mask).toBeNull()
+  })
+
+  test('opening it again keeps the mask the event has', () => {
+    load(project([track('v')], [clip('a', 'v', 0, 4)]), { selection: ['a'] })
+    A.openMaskEditor()
+    A.setMask('a', { ...ev('a').mask!, shape: 'rectangle', feather: 12 })
+    A.closeDialog()
+    const past = state().past.length
+    A.openMaskEditor('a')
+    expect(ev('a').mask).toMatchObject({ shape: 'rectangle', feather: 12 })
+    expect(state().past).toHaveLength(past)
+  })
+})

@@ -59,7 +59,8 @@ export const DEFAULT_MASK: EventMask = {
   cy: 0.5,
   w: 0.6,
   h: 0.6,
-  feather: 40,
+  // Hard edges until the user asks for softness.
+  feather: 0,
   invert: false,
   path: [],
   smooth: true,
@@ -94,6 +95,82 @@ export function shapeOutline(mask: EventMask): MaskPoint[] {
     const a = (i / 72) * Math.PI * 2
     return [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]
   })
+}
+
+/** Center and size of an ellipse or rectangle, as fractions of its space. */
+export interface MaskBox {
+  cx: number
+  cy: number
+  w: number
+  h: number
+}
+
+/** Smallest side of an ellipse or rectangle (fraction of its space). */
+const MIN_SIDE = 0.005
+
+/**
+ * An ellipse or rectangle after a drag in the Event Mask window, from `from`
+ * to `to` (fractions of its space). 'move' shifts it; 'resize' moves the
+ * handle at (hx, hy) (-1, 0 or 1 across and down: corners and side middles)
+ * with the opposite sides fixed; 'draw' spans a new one between the two
+ * points. `keepRatio` keeps the proportions of a resize and makes a drawn one
+ * a square or circle (`aspect` = width / height of the space in pixels);
+ * `fromCenter` grows it around its center, or around the press when drawing.
+ */
+export function dragBox(
+  start: MaskBox,
+  mode: 'move' | 'resize' | 'draw',
+  hx: number,
+  hy: number,
+  from: MaskPoint,
+  to: MaskPoint,
+  keepRatio = false,
+  fromCenter = false,
+  aspect = 1
+): MaskBox {
+  const dx = to[0] - from[0]
+  const dy = to[1] - from[1]
+  const sized = (box: MaskBox): MaskBox => ({ ...box, w: Math.max(MIN_SIDE, box.w), h: Math.max(MIN_SIDE, box.h) })
+  if (mode === 'move') return { ...start, cx: start.cx + dx, cy: start.cy + dy }
+  if (mode === 'draw') {
+    let w = Math.abs(dx)
+    let h = Math.abs(dy)
+    if (keepRatio) {
+      // Same size in pixels across and down.
+      const side = Math.max(w * aspect, h)
+      w = side / aspect
+      h = side
+    }
+    if (fromCenter) return sized({ cx: from[0], cy: from[1], w: w * 2, h: h * 2 })
+    return sized({ cx: from[0] + ((Math.sign(dx) || 1) * w) / 2, cy: from[1] + ((Math.sign(dy) || 1) * h) / 2, w, h })
+  }
+  let left = start.cx - start.w / 2
+  let right = start.cx + start.w / 2
+  let top = start.cy - start.h / 2
+  let bottom = start.cy + start.h / 2
+  // The grabbed sides follow the pointer (and the opposite ones mirror them around the center).
+  const mirror = fromCenter ? 1 : 0
+  if (hx < 0) [left, right] = [left + dx, right - dx * mirror]
+  if (hx > 0) [left, right] = [left - dx * mirror, right + dx]
+  if (hy < 0) [top, bottom] = [top + dy, bottom - dy * mirror]
+  if (hy > 0) [top, bottom] = [top - dy * mirror, bottom + dy]
+  if (!keepRatio || start.w <= 0 || start.h <= 0) {
+    return sized({ cx: (left + right) / 2, cy: (top + bottom) / 2, w: Math.abs(right - left), h: Math.abs(bottom - top) })
+  }
+  const w0 = Math.abs(right - left)
+  const h0 = Math.abs(bottom - top)
+  const s = hx !== 0 && hy !== 0 ? Math.max(w0 / start.w, h0 / start.h) : hx !== 0 ? w0 / start.w : h0 / start.h
+  const w = start.w * s
+  const h = start.h * s
+  if (fromCenter) return sized({ cx: start.cx, cy: start.cy, w, h })
+  /** Center on one axis: from the fixed side toward the moving one (which may have crossed it). */
+  const center = (handle: number, c: number, size: number, lo: number, hi: number, length: number): number => {
+    if (handle === 0) return c
+    const anchor = handle < 0 ? c + size / 2 : c - size / 2
+    const moving = handle < 0 ? lo : hi
+    return anchor + (Math.sign(moving - anchor) || handle) * (length / 2)
+  }
+  return sized({ cx: center(hx, start.cx, start.w, left, right, w), cy: center(hy, start.cy, start.h, top, bottom, h), w, h })
 }
 
 /**

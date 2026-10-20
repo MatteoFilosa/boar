@@ -6,17 +6,20 @@ import { mediaById, useEditor } from '../core/store'
 import {
   DEFAULT_MASK,
   type EventMask,
+  type MaskBox,
   type MaskPoint,
   type SmartSeeds,
   convertMaskSpace,
+  dragBox,
   insertPoint,
   pathAt,
   removePoint,
   setShapeAt,
+  shapeOutline,
   tracePath,
   upsertPathKey
 } from '../core/mask'
-import { frameRect, panCropAt } from '../core/pancrop'
+import { frameRect, panCropAt, sourceToOutput } from '../core/pancrop'
 import { drawText } from '../core/text'
 import { drawShape } from '../core/shapes'
 import { type Flicks, flicksToSeconds, frameFlicks } from '../core/time'
@@ -26,6 +29,7 @@ import { imageCache } from '../media/cache'
 import { smartOutline, trackOutline } from '../engine/smartMask'
 import { BoarProgress, celebrate } from './BoarProgress'
 import { KeyframeBar, canDraw, useSourceFrame } from './KeyframeBar'
+import { NumberField } from './PanCropDialog'
 import { themeColor } from './themes'
 
 function Slider({
@@ -56,15 +60,13 @@ function Slider({
   )
 }
 
-const pct = (v: number): string => `${Math.round(v * 100)}%`
-
 const SHAPES: { id: EventMask['shape']; label: string; icon: typeof Circle }[] = [
   { id: 'ellipse', label: 'Ellipse', icon: Circle },
   { id: 'rectangle', label: 'Rectangle', icon: Square },
   { id: 'custom', label: 'Custom', icon: Spline }
 ]
 
-/** Floating window to edit an event's mask; the preview updates live. */
+/** Floating window to edit an event's mask over its picture; the preview updates live. */
 export function MaskDialog({ eventId }: { eventId: string }): React.JSX.Element | null {
   const event = useEditor((s) => s.project.events.find((e) => e.id === eventId))
   const settings = useEditor((s) => s.project.settings)
@@ -73,106 +75,12 @@ export function MaskDialog({ eventId }: { eventId: string }): React.JSX.Element 
     if (!event) A.closeDialog()
   }, [event])
   if (!event) return null
-  const mask = event.mask
-  const update = (patch: Partial<EventMask>, field: string): void => A.setMask(event.id, { ...(mask ?? DEFAULT_MASK), ...patch }, field)
-  // Text has no picture of its own: its shapes are always over the frame.
-  const media = isGenerated(event) ? undefined : mediaById(event.mediaId)
-  const follow = mask && media && media.width > 0 && media.height > 0 ? (
-    <label className="te-check" title="On: the shape is part of the picture, so moving, zooming or turning it with Event Pan/Crop (or the preview handles) takes the masked part along. Off: a fixed window over the frame that the picture moves behind.">
-      <input
-        type="checkbox"
-        checked={mask.space === 'picture'}
-        onChange={(e) => {
-          const state = panCropAt(event.panCrop, sourceTime(event, Math.min(Math.max(cursor, event.start), event.start + event.length - 1)))
-          A.setMask(event.id, convertMaskSpace(mask, e.target.checked ? 'picture' : 'frame', state, media.width, media.height, settings.width, settings.height), 'space')
-        }}
-      />
-      Moves with the picture (Pan/Crop)
-    </label>
-  ) : null
-  const of = mask?.space === 'picture' && media ? 'picture' : 'frame'
-
-  const enable = (
-    <label className="te-check">
-      <input type="checkbox" checked={mask !== null} onChange={(e) => A.setMask(event.id, e.target.checked ? { ...DEFAULT_MASK } : null, 'enable')} />
-      Enable mask (outside the shape becomes transparent)
-    </label>
-  )
-  const shapes = mask && (
-    <div className="te-control mask-shapes">
-      {SHAPES.map(({ id, label, icon: Icon }) => (
-        <button key={id} className={`tool-btn labeled${mask.shape === id ? ' active' : ''}`} onClick={() => update({ shape: id }, 'shape')}>
-          <Icon size={13} /> {label}
-        </button>
-      ))}
-    </div>
-  )
-  const invert = mask && (
-    <label className="te-check">
-      <input type="checkbox" checked={mask.invert} onChange={(e) => update({ invert: e.target.checked }, 'invert')} />
-      Invert
-    </label>
-  )
-  const feather = mask && (
-    <Slider label="Feather" value={mask.feather} min={0} max={200} step={1} format={(v) => `${v}px`} onChange={(v) => update({ feather: v }, 'feather')} />
-  )
-
-  if (mask?.shape === 'custom') {
-    return (
-      <FloatingWindow key="custom" id="maskCustom" className="pancrop" title="Event Mask" ariaLabel="Event Mask">
-        <CustomMaskEditor event={event} mask={mask} settings={settings} cursor={cursor}>
-          {enable}
-          {shapes}
-          <div className="mask-row">
-            {invert}
-            <label className="te-check">
-              <input type="checkbox" checked={mask.smooth} onChange={(e) => update({ smooth: e.target.checked }, 'smooth')} />
-              Smooth curve
-            </label>
-          </div>
-          {feather}
-        </CustomMaskEditor>
-      </FloatingWindow>
-    )
-  }
-
   return (
-    <FloatingWindow key="shape" id="mask" className="text-editor" title="Event Mask">
-      <div className="te-body">
-        {enable}
-        {mask && (
-          <div className="te-grid">
-            <label className="te-field">
-              <span>Shape</span>
-              <div className="te-control">
-                {shapes}
-                {invert}
-              </div>
-            </label>
-            {follow && (
-              <label className="te-field">
-                <span />
-                <div className="te-control">{follow}</div>
-              </label>
-            )}
-            <Slider label="Center X" value={mask.cx} min={0} max={1} step={0.005} format={pct} onChange={(cx) => update({ cx }, 'cx')} />
-            <Slider label="Center Y" value={mask.cy} min={0} max={1} step={0.005} format={pct} onChange={(cy) => update({ cy }, 'cy')} />
-            <Slider label="Width" value={mask.w} min={0.02} max={1.5} step={0.005} format={pct} onChange={(w) => update({ w }, 'w')} />
-            <Slider label="Height" value={mask.h} min={0.02} max={1.5} step={0.005} format={pct} onChange={(h) => update({ h }, 'h')} />
-            {feather}
-            <p className="dim">Position and size are fractions of the {of}.</p>
-          </div>
-        )}
-        <p className="dim">
-          Tip: put the masked event on a track above another clip for a picture-in-picture or spotlight look. Custom draws any shape
-          with points, or cuts out an object with Smart Select and follows it through the clip.
-        </p>
-      </div>
+    <FloatingWindow id="maskCustom" className="pancrop" title="Event Mask" ariaLabel="Event Mask">
+      <MaskEditor event={event} settings={settings} cursor={cursor} />
     </FloatingWindow>
   )
 }
-
-// Custom shape editor
 
 type Tool = 'points' | 'smart'
 
@@ -182,9 +90,24 @@ interface ViewMap {
   oy: number
 }
 
-/** Screen pixels for grabbing a point, and for inserting one on a side. */
+/** Screen pixels for grabbing a point or handle, and for inserting a point on a side. */
 const POINT_RADIUS = 8
 const SIDE_RADIUS = 6
+
+/** Ellipse and rectangle handles: corners and side middles, as (-1, 0 or 1) across and down. */
+const HANDLES: MaskPoint[] = [
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+  [1, 0],
+  [1, 1],
+  [0, 1],
+  [-1, 1],
+  [-1, 0]
+]
+
+const handleCursor = ([hx, hy]: MaskPoint): string =>
+  hx === 0 ? 'ns-resize' : hy === 0 ? 'ew-resize' : hx === hy ? 'nwse-resize' : 'nesw-resize'
 
 const hitCanvas = new OffscreenCanvas(1, 1).getContext('2d') as OffscreenCanvasRenderingContext2D
 
@@ -197,29 +120,49 @@ interface Drag {
   start: MaskPoint[]
 }
 
-function CustomMaskEditor({
+interface BoxDrag {
+  mode: 'move' | 'resize' | 'draw'
+  handle: MaskPoint
+  /** Press, in fractions of the shape's space. */
+  from: MaskPoint
+  start: MaskBox
+  /** Press in screen pixels: drawing starts once the pointer really moves. */
+  client: MaskPoint
+  moved: boolean
+}
+
+function MaskEditor({
   event,
-  mask,
   settings,
-  cursor,
-  children
+  cursor
 }: {
   event: TimelineEvent
-  mask: EventMask
   settings: ProjectSettings
   cursor: Flicks
-  children: React.ReactNode
 }): React.JSX.Element {
+  const mask = event.mask
+  const customMask = mask?.shape === 'custom' ? mask : null
+  const boxMask = mask && mask.shape !== 'custom' ? mask : null
   const media: MediaItem | undefined = isGenerated(event) ? undefined : mediaById(event.mediaId)
   const canSmart = !!media && !!media.width
-  const [tool, setTool] = useState<Tool>(canSmart && (mask.path.length === 0 || mask.smart) ? 'smart' : 'points')
+  const [tool, setTool] = useState<Tool>('points')
   const [busy, setBusy] = useState<{ label: string; progress: number | null } | null>(null)
   const cancelled = useRef(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewRef = useRef<ViewMap>({ scale: 1, ox: 0, oy: 0 })
   const dragRef = useRef<Drag | null>(null)
+  const boxRef = useRef<BoxDrag | null>(null)
+  /** The mask before it was switched off, to bring it back. */
+  const kept = useRef<EventMask | null>(null)
   const [, setTick] = useState(0)
   const redraw = useRef(() => setTick((n) => n + 1)).current
+
+  // A custom shape without points starts with Smart Select when the event has a picture.
+  const shape = mask?.shape
+  useEffect(() => {
+    if (customMask) setTool(canSmart && (customMask.path.length === 0 || customMask.smart) ? 'smart' : 'points')
+    // Only when the shape changes, not at every edit of its points.
+  }, [shape, canSmart])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -241,14 +184,34 @@ function CustomMaskEditor({
   // Text has no source picture: its shape is drawn over the frame.
   const sw = media?.width || settings.width
   const sh = media?.height || settings.height
-  const points = pathAt(mask.path, srcTime)
-  const px: MaskPoint[] = points.map(([x, y]) => [x * sw, y * sh])
-  const keyHere = mask.path.findIndex((k) => Math.abs(k.time - srcTime) < frame / 2)
-  const seeds = mask.smart && Math.abs(mask.smart.time - srcTime) < frame / 2 ? mask.smart : null
+  const state = panCropAt(event.panCrop, srcTime)
   const video = useSourceFrame(media, flicksToSeconds(srcTime), redraw)
 
+  // An ellipse or rectangle over the output frame (older masks, or "Moves with
+  // the picture" off) is placed on the source picture here through Pan/Crop.
+  const overFrame = !!boxMask && boxMask.space === 'frame' && !!media?.width && !!media.height
+  const toOutput = overFrame ? sourceToOutput(state, sw, sh, settings.width, settings.height) : null
+  /** Size in pixels of the space an ellipse or rectangle is measured in. */
+  const spaceW = toOutput ? settings.width : sw
+  const spaceH = toOutput ? settings.height : sh
+  /** From fractions of that space to source pixels, and back. */
+  const fromSpace = ([x, y]: MaskPoint): MaskPoint => (toOutput ? toOutput.inverse(x * spaceW, y * spaceH) : [x * sw, y * sh])
+  const toSpace = ([x, y]: MaskPoint): MaskPoint => {
+    if (!toOutput) return [x / sw, y / sh]
+    const [ox, oy] = toOutput.map(x, y)
+    return [ox / spaceW, oy / spaceH]
+  }
+  const outline = boxMask ? shapeOutline(boxMask).map(fromSpace) : []
+  const handles = boxMask ? HANDLES.map(([hx, hy]) => fromSpace([boxMask.cx + (hx * boxMask.w) / 2, boxMask.cy + (hy * boxMask.h) / 2])) : []
+
+  const points = customMask ? pathAt(customMask.path, srcTime) : []
+  const px: MaskPoint[] = points.map(([x, y]) => [x * sw, y * sh])
+  const keyHere = customMask ? customMask.path.findIndex((k) => Math.abs(k.time - srcTime) < frame / 2) : -1
+  const seeds = customMask?.smart && Math.abs(customMask.smart.time - srcTime) < frame / 2 ? customMask.smart : null
+
   /** The mask as it is now in the project (async work may finish after other edits). */
-  const latest = (): EventMask => useEditor.getState().project.events.find((e) => e.id === event.id)?.mask ?? mask
+  const latest = (): EventMask =>
+    useEditor.getState().project.events.find((e) => e.id === event.id)?.mask ?? mask ?? { ...DEFAULT_MASK, shape: 'custom' }
 
   // Workspace drawing
   useEffect(() => {
@@ -295,7 +258,6 @@ function CustomMaskEditor({
     const lw = 1 / scale
     // What the output frame shows of the source (Event Pan/Crop).
     if (media && event.panCrop.length > 0) {
-      const state = panCropAt(event.panCrop, srcTime)
       const f = frameRect(state, sw, sh, settings.width, settings.height)
       ctx.save()
       // The frame lies over the stretched picture; this window shows it unstretched.
@@ -308,12 +270,10 @@ function CustomMaskEditor({
       ctx.strokeRect(-f.w / 2, -f.h / 2, f.w, f.h)
       ctx.restore()
     }
-    if (px.length >= 3) {
-      // Dim what the mask hides.
-      const shape = new Path2D()
-      tracePath(shape, px, mask.smooth)
+    /** Dims what the mask hides and outlines the shape. */
+    const cut = (shape: Path2D, invert: boolean): void => {
       ctx.fillStyle = 'rgba(10,11,13,0.6)'
-      if (mask.invert) ctx.fill(shape)
+      if (invert) ctx.fill(shape)
       else {
         const outside = new Path2D()
         outside.rect(-sw, -sh, sw * 3, sh * 3)
@@ -323,59 +283,85 @@ function CustomMaskEditor({
       ctx.strokeStyle = '#ffffff'
       ctx.lineWidth = 1.5 * lw
       ctx.stroke(shape)
-    } else if (px.length === 2) {
-      ctx.strokeStyle = '#ffffff'
-      ctx.lineWidth = 1.5 * lw
-      ctx.beginPath()
-      ctx.moveTo(px[0][0], px[0][1])
-      ctx.lineTo(px[1][0], px[1][1])
-      ctx.stroke()
     }
-    // Outlines from Smart Select have many points: smaller handles.
-    const size = (tool === 'points' ? (px.length > 24 ? 5 : 7) : 4) * lw
-    ctx.lineWidth = lw
-    px.forEach(([x, y], i) => {
-      ctx.fillStyle = keyHere >= 0 || mask.path.length <= 1 ? '#ffffff' : '#9fb8e8'
+    if (boxMask) {
+      const shape = new Path2D()
+      tracePath(shape, outline, false)
+      cut(shape, boxMask.invert)
+      const size = 8 * lw
+      ctx.lineWidth = lw
+      ctx.fillStyle = '#ffffff'
       ctx.strokeStyle = '#1b1c20'
-      ctx.fillRect(x - size / 2, y - size / 2, size, size)
-      ctx.strokeRect(x - size / 2, y - size / 2, size, size)
-      if (i === 0 && tool === 'points') {
-        ctx.strokeStyle = '#ffcf70'
-        ctx.strokeRect(x - size, y - size, size * 2, size * 2)
+      for (const [x, y] of handles) {
+        ctx.fillRect(x - size / 2, y - size / 2, size, size)
+        ctx.strokeRect(x - size / 2, y - size / 2, size, size)
       }
-    })
-    // Smart Select points on their frame: green adds, red removes.
-    if (seeds) {
-      const mark = ([x, y]: MaskPoint, include: boolean): void => {
-        const r = 7 * lw
-        const cx = x * sw
-        const cy = y * sh
-        ctx.beginPath()
-        ctx.arc(cx, cy, r, 0, Math.PI * 2)
-        ctx.fillStyle = include ? '#2fb85a' : '#e04848'
-        ctx.fill()
-        ctx.strokeStyle = '#fff'
+    } else if (customMask) {
+      if (px.length >= 3) {
+        const shape = new Path2D()
+        tracePath(shape, px, customMask.smooth)
+        cut(shape, customMask.invert)
+      } else if (px.length === 2) {
+        ctx.strokeStyle = '#ffffff'
         ctx.lineWidth = 1.5 * lw
-        ctx.stroke()
         ctx.beginPath()
-        ctx.moveTo(cx - r * 0.5, cy)
-        ctx.lineTo(cx + r * 0.5, cy)
-        if (include) {
-          ctx.moveTo(cx, cy - r * 0.5)
-          ctx.lineTo(cx, cy + r * 0.5)
-        }
+        ctx.moveTo(px[0][0], px[0][1])
+        ctx.lineTo(px[1][0], px[1][1])
         ctx.stroke()
       }
-      seeds.include.forEach((p) => mark(p, true))
-      seeds.exclude.forEach((p) => mark(p, false))
+      // Outlines from Smart Select have many points: smaller handles.
+      const size = (tool === 'points' ? (px.length > 24 ? 5 : 7) : 4) * lw
+      ctx.lineWidth = lw
+      px.forEach(([x, y], i) => {
+        ctx.fillStyle = keyHere >= 0 || customMask.path.length <= 1 ? '#ffffff' : '#9fb8e8'
+        ctx.strokeStyle = '#1b1c20'
+        ctx.fillRect(x - size / 2, y - size / 2, size, size)
+        ctx.strokeRect(x - size / 2, y - size / 2, size, size)
+        if (i === 0 && tool === 'points') {
+          ctx.strokeStyle = '#ffcf70'
+          ctx.strokeRect(x - size, y - size, size * 2, size * 2)
+        }
+      })
+      // Smart Select points on their frame: green adds, red removes.
+      if (seeds) {
+        const mark = ([x, y]: MaskPoint, include: boolean): void => {
+          const r = 7 * lw
+          const cx = x * sw
+          const cy = y * sh
+          ctx.beginPath()
+          ctx.arc(cx, cy, r, 0, Math.PI * 2)
+          ctx.fillStyle = include ? '#2fb85a' : '#e04848'
+          ctx.fill()
+          ctx.strokeStyle = '#fff'
+          ctx.lineWidth = 1.5 * lw
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.moveTo(cx - r * 0.5, cy)
+          ctx.lineTo(cx + r * 0.5, cy)
+          if (include) {
+            ctx.moveTo(cx, cy - r * 0.5)
+            ctx.lineTo(cx, cy + r * 0.5)
+          }
+          ctx.stroke()
+        }
+        seeds.include.forEach((p) => mark(p, true))
+        seeds.exclude.forEach((p) => mark(p, false))
+      }
     }
     ctx.restore()
 
-    if (px.length === 0 && !busy) {
+    const message = !mask
+      ? 'The mask is off'
+      : customMask && px.length === 0 && !busy
+        ? tool === 'smart'
+          ? 'Click the object to cut out'
+          : 'Click to place the points of the shape'
+        : ''
+    if (message) {
       ctx.fillStyle = 'rgba(255,255,255,0.75)'
       ctx.font = '13px "Segoe UI", system-ui, sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText(tool === 'smart' ? 'Click the object to cut out' : 'Click to place the points of the shape', cw / 2, oy + 18)
+      ctx.fillText(message, cw / 2, oy + 18)
     }
   })
 
@@ -386,6 +372,47 @@ function CustomMaskEditor({
     return [(e.clientX - r.left - ox) / scale, (e.clientY - r.top - oy) / scale]
   }
   const toFraction = ([x, y]: MaskPoint): MaskPoint => [x / sw, y / sh]
+
+  // Ellipse and rectangle
+
+  /** What a press at `p` (source pixels) does to an ellipse or rectangle. */
+  const boxHit = (p: MaskPoint): { mode: BoxDrag['mode']; handle: MaskPoint } => {
+    const k = viewRef.current.scale
+    const near = handles.findIndex(([x, y]) => Math.hypot(x - p[0], y - p[1]) * k < POINT_RADIUS)
+    if (near >= 0) return { mode: 'resize', handle: HANDLES[near] }
+    if (!boxMask) return { mode: 'draw', handle: [0, 0] }
+    const [x, y] = toSpace(p)
+    const dx = (x - boxMask.cx) / (boxMask.w / 2)
+    const dy = (y - boxMask.cy) / (boxMask.h / 2)
+    const inside = boxMask.shape === 'rectangle' ? Math.abs(dx) <= 1 && Math.abs(dy) <= 1 : dx * dx + dy * dy <= 1
+    return { mode: inside ? 'move' : 'draw', handle: [0, 0] }
+  }
+
+  const boxDown = (e: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!boxMask || e.button !== 0) return
+    const p = toSource(e)
+    const { mode, handle } = boxHit(p)
+    e.currentTarget.setPointerCapture(e.pointerId)
+    A.beginGesture()
+    const { cx, cy, w, h } = boxMask
+    boxRef.current = { mode, handle, from: toSpace(p), start: { cx, cy, w, h }, client: [e.clientX, e.clientY], moved: mode !== 'draw' }
+  }
+
+  const boxMove = (e: React.PointerEvent<HTMLCanvasElement>): void => {
+    const drag = boxRef.current
+    if (!drag) return
+    // A click outside the shape leaves it alone; a drag draws a new one.
+    if (!drag.moved && Math.hypot(e.clientX - drag.client[0], e.clientY - drag.client[1]) < 3) return
+    drag.moved = true
+    const [hx, hy] = drag.handle
+    const box = dragBox(drag.start, drag.mode, hx, hy, drag.from, toSpace(toSource(e)), e.shiftKey, e.altKey, spaceW / spaceH)
+    A.updateGesture((d) => {
+      const ev = d.events.find((o) => o.id === event.id)
+      if (ev?.mask) ev.mask = { ...ev.mask, ...box }
+    })
+  }
+
+  // Custom shape
 
   /** What a press at `p` (source pixels) hits in the points tool. */
   const hit = (p: MaskPoint): { kind: 'point' | 'side' | 'inside' | 'outside'; index: number } => {
@@ -410,7 +437,7 @@ function CustomMaskEditor({
     }
     if (px.length >= 3) {
       const shape = new Path2D()
-      tracePath(shape, px, mask.smooth)
+      tracePath(shape, px, customMask?.smooth ?? true)
       if (hitCanvas.isPointInPath(shape, p[0], p[1])) return { kind: 'inside', index: -1 }
     }
     return { kind: 'outside', index: -1 }
@@ -435,20 +462,20 @@ function CustomMaskEditor({
     })
   }
 
-  const pointsDown = (e: React.PointerEvent<HTMLCanvasElement>): void => {
+  const pointsDown = (e: React.PointerEvent<HTMLCanvasElement>, m: EventMask): void => {
     const p = toSource(e)
     const target = hit(p)
     const remove = e.button === 2 || e.altKey
     if (remove) {
-      if (target.kind === 'point') A.replaceMask(event.id, { ...mask, path: removePoint(mask.path, target.index) })
+      if (target.kind === 'point') A.replaceMask(event.id, { ...m, path: removePoint(m.path, target.index) })
       return
     }
     if (e.button !== 0) return
     e.currentTarget.setPointerCapture(e.pointerId)
-    if (target.kind === 'point') startDrag(mask.path, target.index, p)
-    else if (target.kind === 'side') startDrag(insertPoint(mask.path, srcTime, target.index, toFraction(p), frame / 2), target.index + 1, p)
-    else if (target.kind === 'inside') startDrag(mask.path, -1, p)
-    else startDrag(insertPoint(mask.path, srcTime, px.length - 1, toFraction(p), frame / 2), px.length, p)
+    if (target.kind === 'point') startDrag(m.path, target.index, p)
+    else if (target.kind === 'side') startDrag(insertPoint(m.path, srcTime, target.index, toFraction(p), frame / 2), target.index + 1, p)
+    else if (target.kind === 'inside') startDrag(m.path, -1, p)
+    else startDrag(insertPoint(m.path, srcTime, px.length - 1, toFraction(p), frame / 2), px.length, p)
   }
 
   const smartDown = async (e: React.PointerEvent<HTMLCanvasElement>): Promise<void> => {
@@ -486,7 +513,7 @@ function CustomMaskEditor({
   }
 
   const track = async (): Promise<void> => {
-    const smart = mask.smart
+    const smart = customMask?.smart
     if (!media || !smart || smart.include.length === 0) return
     cancelled.current = false
     setBusy({ label: 'Tracking', progress: 0 })
@@ -505,10 +532,15 @@ function CustomMaskEditor({
     }
   }
 
+  // Pointer
+
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>): void => {
     if (busy) return
-    if (tool === 'smart') void smartDown(e)
-    else pointsDown(e)
+    if (boxMask) boxDown(e)
+    else if (customMask) {
+      if (tool === 'smart') void smartDown(e)
+      else pointsDown(e, customMask)
+    }
   }
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>): void => {
@@ -516,87 +548,177 @@ function CustomMaskEditor({
       moveDrag(toSource(e))
       return
     }
-    if (tool === 'smart') {
-      e.currentTarget.style.cursor = busy ? 'progress' : e.altKey ? 'not-allowed' : 'crosshair'
+    if (boxRef.current) {
+      boxMove(e)
       return
     }
-    const target = hit(toSource(e))
-    e.currentTarget.style.cursor =
-      target.kind === 'point' ? (e.altKey ? 'not-allowed' : 'grab') : target.kind === 'side' ? 'copy' : target.kind === 'inside' ? 'move' : 'crosshair'
+    const style = e.currentTarget.style
+    if (boxMask) {
+      const { mode, handle } = boxHit(toSource(e))
+      style.cursor = mode === 'resize' ? handleCursor(handle) : mode === 'move' ? 'move' : 'crosshair'
+    } else if (!customMask) style.cursor = 'default'
+    else if (tool === 'smart') style.cursor = busy ? 'progress' : e.altKey ? 'not-allowed' : 'crosshair'
+    else {
+      const target = hit(toSource(e))
+      style.cursor =
+        target.kind === 'point' ? (e.altKey ? 'not-allowed' : 'grab') : target.kind === 'side' ? 'copy' : target.kind === 'inside' ? 'move' : 'crosshair'
+    }
   }
 
   const onPointerUp = (): void => {
-    if (!dragRef.current) return
+    if (!dragRef.current && !boxRef.current) return
     dragRef.current = null
+    boxRef.current = null
     A.endGesture()
   }
 
+  // Properties
+
+  const update = (patch: Partial<EventMask>, field: string): void => {
+    if (mask) A.setMask(event.id, { ...mask, ...patch }, field)
+  }
+  const setEnabled = (on: boolean): void => {
+    if (on) A.replaceMask(event.id, kept.current ?? { ...DEFAULT_MASK })
+    else {
+      kept.current = mask
+      A.replaceMask(event.id, null)
+    }
+  }
+  const canFollow = !!media?.width && !!media.height
+  const setFollow = (follow: boolean): void => {
+    if (boxMask && media) {
+      A.setMask(event.id, convertMaskSpace(boxMask, follow ? 'picture' : 'frame', state, sw, sh, settings.width, settings.height), 'space')
+    }
+  }
+
   // After a split the Smart Select points may be on a frame of the other part.
-  const seedInEvent = !!mask.smart && mask.smart.time >= event.offset && mask.smart.time <= event.offset + sourceLength(event)
-  const trackable = media?.kind === 'video' && seedInEvent && (mask.smart?.include.length ?? 0) > 0
+  const seedInEvent = !!customMask?.smart && customMask.smart.time >= event.offset && customMask.smart.time <= event.offset + sourceLength(event)
+  const trackable = media?.kind === 'video' && seedInEvent && (customMask?.smart?.include.length ?? 0) > 0
   return (
     <div className="pc-body">
       <div className="pc-props">
-        {children}
-        <div className="pc-group">Tool</div>
-        <div className="te-control mask-tools">
-          <button className={`tool-btn labeled${tool === 'points' ? ' active' : ''}`} onClick={() => setTool('points')} title="Place and drag points">
-            <PenTool size={13} /> Points
-          </button>
-          <button
-            className={`tool-btn labeled${tool === 'smart' ? ' active' : ''}`}
-            disabled={!canSmart}
-            onClick={() => setTool('smart')}
-            title={canSmart ? 'Click an object: the AI cuts it out (runs on this computer)' : 'Smart Select works on video and image events'}
-          >
-            <WandSparkles size={13} /> Smart Select
-          </button>
-        </div>
-        <p className="dim mask-hint">
-          {tool === 'smart'
-            ? 'Click the object to cut out. Click more parts to add them; Alt+click (or right-click) what to leave out.'
-            : 'Click to add points, drag to move them, click a side to insert one. Drag inside to move the shape; Alt+click (or right-click) a point to delete it.'}
-        </p>
-        {busy ? (
-          <div className="mask-busy">
-            <BoarProgress value={busy.progress}>
-              {busy.label}
-              {busy.progress !== null ? ` ${Math.round(busy.progress * 100)}%` : ''}
-            </BoarProgress>
-            {busy.progress !== null && (
-              <button className="btn small" onClick={() => (cancelled.current = true)}>
-                Cancel
+        <label className="te-check" title="Outside the shape the event becomes transparent, so lower tracks show through">
+          <input type="checkbox" checked={mask !== null} onChange={(e) => setEnabled(e.target.checked)} />
+          Mask on
+        </label>
+        <fieldset className="mask-props" disabled={!mask}>
+          <div className="te-control mask-shapes">
+            {SHAPES.map(({ id, label, icon: Icon }) => (
+              <button key={id} className={`tool-btn labeled${mask?.shape === id ? ' active' : ''}`} onClick={() => update({ shape: id }, 'shape')}>
+                <Icon size={13} /> {label}
               </button>
+            ))}
+          </div>
+          <div className="mask-row">
+            <label className="te-check">
+              <input type="checkbox" checked={mask?.invert ?? false} onChange={(e) => update({ invert: e.target.checked }, 'invert')} />
+              Invert
+            </label>
+            {customMask && (
+              <label className="te-check">
+                <input type="checkbox" checked={customMask.smooth} onChange={(e) => update({ smooth: e.target.checked }, 'smooth')} />
+                Smooth curve
+              </label>
             )}
           </div>
-        ) : (
-          <div className="pc-buttons">
-            {media?.kind === 'video' && (
-              <button
-                className="btn small"
-                disabled={!trackable}
-                onClick={() => void track()}
-                title={
-                  trackable
-                    ? 'Follow the selected object through the whole event'
-                    : mask.smart && !seedInEvent
-                      ? 'Pick the object again with Smart Select on a frame of this event'
-                      : 'Select an object with Smart Select first'
-                }
-              >
-                Track Motion
-              </button>
-            )}
-            <button
-              className="btn small"
-              disabled={mask.path.length === 0 && !mask.smart}
-              onClick={() => A.replaceMask(event.id, { ...mask, path: [], smart: null })}
-              title="Remove every point and keyframe"
-            >
-              <Eraser size={12} /> Clear
-            </button>
-          </div>
-        )}
+          <Slider
+            label="Feather"
+            value={mask?.feather ?? 0}
+            min={0}
+            max={200}
+            step={1}
+            format={(v) => `${v}px`}
+            onChange={(v) => update({ feather: v }, 'feather')}
+          />
+
+          {boxMask && (
+            <>
+              <div className="pc-group">Position and size (px)</div>
+              <NumberField label="Center X" value={boxMask.cx * spaceW} step={1} digits={0} onChange={(v) => update({ cx: v / spaceW }, 'cx')} />
+              <NumberField label="Center Y" value={boxMask.cy * spaceH} step={1} digits={0} onChange={(v) => update({ cy: v / spaceH }, 'cy')} />
+              <NumberField label="Width" value={boxMask.w * spaceW} step={1} digits={0} onChange={(v) => v > 0 && update({ w: v / spaceW }, 'w')} />
+              <NumberField label="Height" value={boxMask.h * spaceH} step={1} digits={0} onChange={(v) => v > 0 && update({ h: v / spaceH }, 'h')} />
+              {canFollow && (
+                <label
+                  className="te-check"
+                  title="On: the shape is part of the picture, so moving, zooming or turning it with Event Pan/Crop (or the preview handles) takes the masked part along. Off: a fixed window over the frame that the picture moves behind."
+                >
+                  <input type="checkbox" checked={boxMask.space === 'picture'} onChange={(e) => setFollow(e.target.checked)} />
+                  Moves with the picture (Pan/Crop)
+                </label>
+              )}
+              <p className="dim mask-hint">
+                Drag inside the shape to move it, drag a handle to resize it (Shift keeps the proportions, Alt works from the center), drag
+                outside it to draw a new one. Pixels of the {overFrame || !media ? 'frame' : 'picture'}.
+              </p>
+            </>
+          )}
+
+          {customMask && (
+            <>
+              <div className="pc-group">Tool</div>
+              <div className="te-control mask-tools">
+                <button className={`tool-btn labeled${tool === 'points' ? ' active' : ''}`} onClick={() => setTool('points')} title="Place and drag points">
+                  <PenTool size={13} /> Points
+                </button>
+                <button
+                  className={`tool-btn labeled${tool === 'smart' ? ' active' : ''}`}
+                  disabled={!canSmart}
+                  onClick={() => setTool('smart')}
+                  title={canSmart ? 'Click an object: the AI cuts it out (runs on this computer)' : 'Smart Select works on video and image events'}
+                >
+                  <WandSparkles size={13} /> Smart Select
+                </button>
+              </div>
+              <p className="dim mask-hint">
+                {tool === 'smart'
+                  ? 'Click the object to cut out. Click more parts to add them; Alt+click (or right-click) what to leave out.'
+                  : 'Click to add points, drag to move them, click a side to insert one. Drag inside to move the shape; Alt+click (or right-click) a point to delete it.'}
+              </p>
+              {busy ? (
+                <div className="mask-busy">
+                  <BoarProgress value={busy.progress}>
+                    {busy.label}
+                    {busy.progress !== null ? ` ${Math.round(busy.progress * 100)}%` : ''}
+                  </BoarProgress>
+                  {busy.progress !== null && (
+                    <button className="btn small" onClick={() => (cancelled.current = true)}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="pc-buttons">
+                  {media?.kind === 'video' && (
+                    <button
+                      className="btn small"
+                      disabled={!trackable}
+                      onClick={() => void track()}
+                      title={
+                        trackable
+                          ? 'Follow the selected object through the whole event'
+                          : customMask.smart && !seedInEvent
+                            ? 'Pick the object again with Smart Select on a frame of this event'
+                            : 'Select an object with Smart Select first'
+                      }
+                    >
+                      Track Motion
+                    </button>
+                  )}
+                  <button
+                    className="btn small"
+                    disabled={customMask.path.length === 0 && !customMask.smart}
+                    onClick={() => A.replaceMask(event.id, { ...customMask, path: [], smart: null })}
+                    title="Remove every point and keyframe"
+                  >
+                    <Eraser size={12} /> Clear
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </fieldset>
+        <p className="dim mask-hint mask-tip">Tip: put the masked event on a track above another clip for a picture-in-picture or spotlight look.</p>
       </div>
       <div className="pc-main">
         <canvas
@@ -608,23 +730,25 @@ function CustomMaskEditor({
           onPointerCancel={onPointerUp}
           onContextMenu={(e) => e.preventDefault()}
         />
-        <KeyframeBar
-          event={event}
-          keys={mask.path}
-          kind="mask"
-          srcTime={srcTime}
-          here={keyHere}
-          local={local}
-          frame={frame}
-          frameRate={settings.frameRate}
-          onAdd={() => points.length > 0 && A.replaceMask(event.id, { ...mask, path: upsertPathKey(mask.path, { time: srcTime, points }) })}
-          onChange={(path) => A.replaceMask(event.id, { ...latest(), path })}
-          pasteProblem={(keys) => {
-            const count = mask.path[0]?.points.length
-            const other = keys.find((k) => count !== undefined && k.points.length !== count)
-            return other ? `The copied shape has ${other.points.length} points and this one ${count}: keyframes of a shape need the same points` : null
-          }}
-        />
+        {customMask && (
+          <KeyframeBar
+            event={event}
+            keys={customMask.path}
+            kind="mask"
+            srcTime={srcTime}
+            here={keyHere}
+            local={local}
+            frame={frame}
+            frameRate={settings.frameRate}
+            onAdd={() => points.length > 0 && A.replaceMask(event.id, { ...customMask, path: upsertPathKey(customMask.path, { time: srcTime, points }) })}
+            onChange={(path) => A.replaceMask(event.id, { ...latest(), path })}
+            pasteProblem={(keys) => {
+              const count = customMask.path[0]?.points.length
+              const other = keys.find((k) => count !== undefined && k.points.length !== count)
+              return other ? `The copied shape has ${other.points.length} points and this one ${count}: keyframes of a shape need the same points` : null
+            }}
+          />
+        )}
       </div>
     </div>
   )

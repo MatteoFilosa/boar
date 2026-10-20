@@ -15,7 +15,7 @@ import {
   turnState,
   withStretch
 } from '@/core/pancrop'
-import { DEFAULT_MASK, convertMaskSpace } from '@/core/mask'
+import { DEFAULT_MASK, type MaskBox, convertMaskSpace, dragBox } from '@/core/mask'
 import { s } from './helpers'
 
 const sine = (freq: number, amplitude: number, seconds: number, rate = 48000, phase = 0): Float32Array =>
@@ -214,5 +214,39 @@ describe('stretch handles', () => {
 
   test('a side never shrinks past a few pixels or flips', () => {
     expect(stretchBox(box, 'e', -500, 0, src, 'free').w).toBe(4)
+  })
+})
+
+describe('mask ellipse and rectangle drags', () => {
+  const box: MaskBox = { cx: 0.5, cy: 0.5, w: 0.4, h: 0.2 }
+  const round = (b: MaskBox): number[] => [b.cx, b.cy, b.w, b.h].map((v) => Math.round(v * 1e6) / 1e6)
+
+  test('moving shifts the center only', () => {
+    expect(round(dragBox(box, 'move', 0, 0, [0.5, 0.5], [0.6, 0.45]))).toEqual([0.6, 0.45, 0.4, 0.2])
+  })
+
+  test('a side handle moves that side and keeps the opposite one', () => {
+    // Right side from 0.7 to 0.8: left stays at 0.3.
+    expect(round(dragBox(box, 'resize', 1, 0, [0.7, 0.5], [0.8, 0.9]))).toEqual([0.55, 0.5, 0.5, 0.2])
+    // Past the opposite side it flips instead of going negative.
+    expect(round(dragBox(box, 'resize', 1, 0, [0.7, 0.5], [0.2, 0.5]))).toEqual([0.25, 0.5, 0.1, 0.2])
+  })
+
+  test('Alt resizes around the center, Shift keeps the proportions', () => {
+    expect(round(dragBox(box, 'resize', 1, 0, [0.7, 0.5], [0.8, 0.5], false, true))).toEqual([0.5, 0.5, 0.6, 0.2])
+    // Bottom-right corner dragged mostly across: both sides grow by the same factor, top-left stays.
+    expect(round(dragBox(box, 'resize', 1, 1, [0.7, 0.6], [0.9, 0.6], true))).toEqual([0.6, 0.55, 0.6, 0.3])
+    // Top-left corner: the bottom-right corner stays.
+    expect(round(dragBox(box, 'resize', -1, -1, [0.3, 0.4], [0.1, 0.4], true))).toEqual([0.4, 0.45, 0.6, 0.3])
+  })
+
+  test('drawing spans the drag, Shift makes it square in pixels', () => {
+    expect(round(dragBox(box, 'draw', 0, 0, [0.6, 0.5], [0.2, 0.7]))).toEqual([0.4, 0.6, 0.4, 0.2])
+    // 16:9 space: 0.1 across is 0.1777… down in pixels.
+    const square = dragBox(box, 'draw', 0, 0, [0.2, 0.2], [0.3, 0.25], true, false, 16 / 9)
+    expect(square.w * 1920).toBeCloseTo(square.h * 1080)
+    expect(square.cx - square.w / 2).toBeCloseTo(0.2)
+    expect(square.cy - square.h / 2).toBeCloseTo(0.2)
+    expect(round(dragBox(box, 'draw', 0, 0, [0.5, 0.5], [0.6, 0.6], false, true))).toEqual([0.5, 0.5, 0.2, 0.2])
   })
 })

@@ -1024,7 +1024,7 @@ const TOOLS: Tool[] = [
         w: S.num('Ellipse/rectangle width, fraction of the frame'),
         h: S.num('Ellipse/rectangle height, fraction of the frame'),
         follow_picture: S.bool('Ellipse/rectangle: move with the picture when its Pan/Crop changes (default true; false: a fixed window over the frame)'),
-        feather: S.num('Edge softness in px at 1080p (default 40, smart 6)'),
+        feather: S.num('Edge softness in px at 1080p (default: the current value; 0 = hard edge on a new mask, smart 6)'),
         invert: S.bool('Keep the outside instead (default false)')
       },
       ['event_id', 'shape']

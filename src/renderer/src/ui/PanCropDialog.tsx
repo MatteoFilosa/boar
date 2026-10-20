@@ -92,7 +92,7 @@ function hitMode(
   return { mode: outside && best < ROTATE_RADIUS ? 'rotate' : 'move', corner }
 }
 
-function NumberField({
+export function NumberField({
   label,
   value,
   step,

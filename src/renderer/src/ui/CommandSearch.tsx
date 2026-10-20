@@ -92,6 +92,10 @@ function useEntries(menus: Menu[]): Entry[] {
       let parent = ''
       for (const entry of menu.entries) {
         if (entry === 'separator') continue
+        if (entry.submenu) {
+          for (const item of entry.submenu) if (item !== 'separator') add(item, `${menu.label} › ${entry.label}`)
+          continue
+        }
         // Indented items are the options of the item above them (Auto Ripple modes).
         const nested = entry.label.startsWith(' ')
         if (!nested) parent = entry.label

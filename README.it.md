@@ -80,7 +80,7 @@
 - 25 effetti video sulla GPU: look colore pronti, luminosità e contrasto, correzione colore, chroma key, sfocatura, glow, vignettatura, grana, VHS, glitch e altri. **Rimozione dello sfondo** con AI, senza green screen.
 - **Chroma key con contagocce**: clicchi nell'anteprima il colore da togliere, un green o blue screen o uno sfondo bianco o nero. *Background only* lo toglie solo attorno al soggetto, così un logo bianco su un prodotto fotografato sul bianco resta.
 - Transizioni: zoom, whip pan, spin, glitch, flash, dissolvenza al nero, blur, pixel. Trascinale sull'inizio o sulla fine di una clip, o dove due clip si sovrappongono: tutta la sovrapposizione diventa la transizione e il suo nome compare sulla timeline. Clic sul nome per cambiarne tipo o durata.
-- Maschere: ellisse, rettangolo o forma custom disegnata a punti e animata con i keyframe. La forma fa parte dell'immagine: spostandola con Pan/Crop la parte mascherata si sposta con lei. **Smart Select** scontorna un oggetto con un clic (altri clic aggiungono o tolgono parti) e *Track Motion* lo segue per tutta la clip.
+- Maschere: ellisse, rettangolo o forma custom disegnata a punti e animata con i keyframe, tutto in una finestra sopra l'immagine: un'ellisse o un rettangolo si sistemano trascinando le maniglie, oppure scrivendo posizione e dimensioni in pixel. La forma fa parte dell'immagine: spostandola con Pan/Crop la parte mascherata si sposta con lei. **Smart Select** scontorna un oggetto con un clic (altri clic aggiungono o tolgono parti) e *Track Motion* lo segue per tutta la clip.
 - Event Pan/Crop con keyframe: sulla barra dei keyframe clic, `Ctrl`+clic o `Shift`+clic per selezionarli, trascina per spostarli, `Canc` per eliminarli, `Ctrl+C` / `Ctrl+V` per copiarli al cursore o in un altro evento. Le frecce spostano il riquadro (o, nell'anteprima, l'immagine cliccata) di un pixel, dieci con `Shift`; `Shift`+trascina lo sposta lentamente.
 - **Render As** in MP4 (H.264, HEVC, AV1, VP9): scegli chi codifica, la scheda video (NVENC, Quick Sync, AMF, VideoToolbox) o il processore, e l'audio (AAC o Opus). L'anteprima e l'export usano lo stesso motore: quello che vedi è quello che esporti.
 - Render **solo audio** in MP3, WAV, FLAC, M4A (AAC) o OGG (Opus): tutto il mix o una sola traccia audio, con gli stessi livelli di loudness dei video.
@@ -209,7 +209,7 @@ Le idee che rendono più veloce il montaggio di tutti i giorni di video parlati,
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copia / taglia / incolla (anche immagini dagli appunti) |
 | `Ctrl+Shift+V` | incolla gli attributi dell'evento copiato (FX, Pan/Crop, maschera, livello, stile del testo) sugli eventi selezionati |
 | `Ctrl+D` | passa dallo strumento normale a quello di selezione e viceversa |
-| `Ctrl+S` / `Ctrl+O` | salva / apri progetto (`.boar`; si apre anche con un doppio clic sul file o trascinandolo su Boar) |
+| `Ctrl+S` / `Ctrl+O` | salva / apri progetto (`.boar`; si apre anche con un doppio clic sul file o trascinandolo su Boar; *File › Open Recent* elenca gli ultimi dieci) |
 | `Ctrl+M` | Render As |
 | `Ctrl+F` | cerca comandi, opzioni ed effetti |
 | `Ctrl+R` / `Ctrl+Shift+R` | ruota video, immagine o testo selezionato di 90° in senso orario / antiorario |

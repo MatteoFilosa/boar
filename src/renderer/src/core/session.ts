@@ -1,3 +1,4 @@
+import { create } from 'zustand'
 import { setStatus, updateMedia } from './actions'
 import { parseProject, serializeProject } from './projectFile'
 import { adoptRecoveredCopy } from './autosave'
@@ -29,6 +30,7 @@ export async function saveProject(saveAs = false): Promise<boolean> {
       if (!path) return false
       set({ projectPath: path, savedProject: project, savedTranscripts: transcripts, savedShorts: shorts, savedMediaKey: mediaKey(media) })
       setStatus(`Saved ${path}`)
+      void refreshRecentProjects()
       return true
     } catch (err) {
       setStatus(`Save failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -80,6 +82,47 @@ export async function openDroppedProject(file: File): Promise<void> {
   }
 }
 
+// File › Open Recent (the main process keeps the list)
+
+export interface RecentProject {
+  path: string
+  /** Shown in the menu: the file name, with its folder when two have the same name. */
+  label: string
+  missing: boolean
+}
+
+export const useRecentProjects = create<{ list: RecentProject[] }>()(() => ({ list: [] }))
+
+export async function refreshRecentProjects(): Promise<void> {
+  if (!bridge) return
+  const entries = await bridge.recentProjects().catch(() => [])
+  const names = entries.map((e) => projectName(e.path))
+  const folder = (path: string): string => path.split(/[\\/]/).slice(-2, -1)[0] ?? ''
+  useRecentProjects.setState({
+    list: entries.map((e, i) => ({
+      path: e.path,
+      label: names.indexOf(names[i]) !== names.lastIndexOf(names[i]) ? `${names[i]} (${folder(e.path)})` : names[i],
+      missing: e.missing
+    }))
+  })
+}
+
+export async function openRecentProject(path: string): Promise<void> {
+  if (!bridge || get().playing) return
+  if (isDirty() && !window.confirm(`The project has unsaved changes. Discard them and open ${projectName(path)}?`)) return
+  try {
+    loadProject(await bridge.openRecentProject(path))
+  } catch (err) {
+    setStatus(`Cannot open ${path}: ${err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err)}`)
+    void refreshRecentProjects()
+  }
+}
+
+export async function clearRecentProjects(): Promise<void> {
+  await bridge?.clearRecentProjects()
+  await refreshRecentProjects()
+}
+
 let recovery: Promise<void> | null = null
 
 /** Offers back the project a crash left unsaved (the main process asks); once per page. */
@@ -102,6 +145,7 @@ let launchStarted = false
 export function startLaunchProjects(): void {
   if (!bridge || launchStarted) return
   launchStarted = true
+  void refreshRecentProjects()
   const take = async (): Promise<void> => {
     const opened = await bridge!.takeLaunchProject().catch((err: unknown) => {
       setStatus(`Cannot open the project: ${err instanceof Error ? err.message : String(err)}`)
@@ -178,6 +222,7 @@ function loadProject(opened: { path: string | null; json: string }, recoveredAt?
       ? `Recovered ${projectName(opened.path)} as autosaved on ${new Date(recoveredAt).toLocaleString()}: save it to keep it`
       : `Opened ${opened.path}`
   )
+  if (!recovered) void refreshRecentProjects()
   for (const m of media) {
     if (!canRead(m)) {
       updateMedia(m.id, { status: 'error', error: 'file not available — import it again to relink' })
