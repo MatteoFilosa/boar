@@ -46,6 +46,12 @@ const WHOLE_FILE = 120
 const HANDLE = 2
 /** Keyframes of the copy, so it seeks as fast as a proxy. */
 const KEYFRAME_INTERVAL = 0.5
+/**
+ * Seconds of sound decoded before each stretch, then dropped: the first frames
+ * out of a new decoder are not whole (AAC overlaps each frame with the one
+ * before it), and the copy clicked where two stretches met.
+ */
+const PRE_ROLL = 0.2
 /** Pixel layouts encoders take as they are; others are copied as 8-bit RGB. */
 const KEEP_FORMATS = new Set<VideoSamplePixelFormat>(['I420', 'I420A', 'NV12', 'RGBA', 'RGBX', 'BGRA', 'BGRX'])
 
@@ -258,7 +264,8 @@ async function openReversal(media: MediaItem, start: number, end: number, withVi
             if (length > 0) {
               const out = new AudioBuffer({ length, numberOfChannels: channels, sampleRate: rate })
               const data = Array.from({ length: channels }, (_, c) => out.getChannelData(c))
-              for await (const { buffer, timestamp } of soundSink.buffers(a, b)) {
+              // Frames before `a` (the pre-roll) fall before the buffer and are left out.
+              for await (const { buffer, timestamp } of soundSink.buffers(Math.max(first, a - PRE_ROLL), b)) {
                 if (isCancelled()) throw new ReverseCancelled()
                 const at = sampleAt(timestamp) - sampleAt(a)
                 for (let c = 0; c < channels; c++) {
