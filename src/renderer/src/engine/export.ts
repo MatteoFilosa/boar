@@ -296,6 +296,13 @@ async function decodeEventAudio(media: MediaItem, ev: TimelineEvent, from: Flick
   return timeStretch(buffer, ev.rate, Math.max(1, Math.ceil(seconds * buffer.sampleRate)))
 }
 
+/**
+ * Seconds decoded before the part of a file a render needs, then dropped: the
+ * first frames out of a new decoder are not whole (AAC overlaps each frame
+ * with the one before it), and the sound jumped at the cuts of a clip.
+ */
+const PRE_ROLL = 0.2
+
 /** Decodes [offset, offset + length) of a media file's audio into one AudioBuffer. */
 async function decodeAudio(media: MediaItem, offset: number, length: number): Promise<AudioBuffer | null> {
   const input = new Input({ formats: ALL_FORMATS, source: inputSource(media) })
@@ -309,7 +316,8 @@ async function decodeAudio(media: MediaItem, offset: number, length: number): Pr
     const channels = Math.min(2, Math.max(1, track.numberOfChannels))
     const total = Math.max(1, Math.ceil(length * rate))
     const out = new AudioBuffer({ length: total, numberOfChannels: channels, sampleRate: rate })
-    for await (const { buffer, timestamp } of sink.buffers(start, start + length)) {
+    // Frames before `start` (the pre-roll) fall before the buffer and are left out.
+    for await (const { buffer, timestamp } of sink.buffers(Math.max(first, start - PRE_ROLL), start + length)) {
       const at = Math.round((timestamp - start) * rate)
       for (let c = 0; c < channels; c++) {
         const src = buffer.getChannelData(Math.min(c, buffer.numberOfChannels - 1))
@@ -330,6 +338,14 @@ export interface MixSettings {
   /** Audio tracks to mix whatever their mute and solo (default: the ones that are heard). */
   tracks?: string[]
 }
+
+/**
+ * The time of the frame nearest to `seconds`, a hair before it. Events that
+ * meet then start and stop on the same frame, and none starts a hair after a
+ * frame: Chromium plays such a source with a few ms of stale sound after its
+ * end (a click at that cut).
+ */
+const onFrame = (seconds: number, rate: number): number => Math.max(0, Math.round(seconds * rate) / rate - 1e-9)
 
 /** Mixes every audible audio event in [range.start, range.end) offline, with the same gains as the preview. */
 export async function mixAudio(
@@ -375,8 +391,10 @@ export async function mixAudio(
       source.buffer = buffer
       const gain = ctx.createGain()
       // Envelope (fades, crossfades, event gain) sampled 200 times per second.
-      const startSec = flicksToSeconds(from - range.start)
-      const durSec = flicksToSeconds(to - from)
+      const startSec = onFrame(flicksToSeconds(from - range.start), rate)
+      const durSec = onFrame(flicksToSeconds(to - range.start), rate) - startSec
+      // Shorter than a frame: nothing to play.
+      if (durSec <= 0) continue
       const points = Math.max(2, Math.ceil(durSec * 200))
       const curve = new Float32Array(points)
       for (let i = 0; i < points; i++) {
