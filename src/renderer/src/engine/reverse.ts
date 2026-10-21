@@ -311,7 +311,8 @@ async function makeReversedCopy(
   const reversal = await openReversal(media, start, end, withVideo)
   const name = `${stemOf(media.name)} (reversed).${withVideo && media.hasVideo ? 'mp4' : 'm4a'}`
   const link: ReverseLink = { mediaId: media.id, start: secondsToFlicks(reversal.start), end: secondsToFlicks(reversal.end) }
-  const key = `${reversal.from.toFixed(6)}-${reversal.to.toFixed(6)}-${withVideo ? 'av' : 'a'}`
+  // `-2`: copies written before the sound had a pre-roll click every stretch; they are made again.
+  const key = `${reversal.from.toFixed(6)}-${reversal.to.toFixed(6)}-${withVideo ? 'av' : 'a'}-2`
   let imported: MediaItem | null
   try {
     if (bridge && media.path) {
