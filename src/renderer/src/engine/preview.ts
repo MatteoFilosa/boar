@@ -11,10 +11,11 @@ import type { EventFx } from '../core/fx'
 import { onFontLoaded } from '../core/fonts'
 import { onSegmenterReady } from './vision'
 import { previewUrl } from '../media/proxy'
+import { type SoundClock, SoundStream, closeIdleSounds, openSound } from './soundStream'
 
 /**
- * Preview engine: hidden <video>/<audio> elements decode, frames are composited
- * on a 2D canvas and sound is mixed with Web Audio.
+ * Preview engine: hidden <video> elements decode, frames are composited on a
+ * 2D canvas; sound is decoded like the export and mixed with Web Audio.
  */
 
 export const QUALITY_SCALE: Record<PreviewQuality, number> = {
@@ -29,14 +30,12 @@ export const QUALITY_SCALE: Record<PreviewQuality, number> = {
  * seeks. Elements seek only while paused: a seek aims where the timeline will
  * be when it lands (seeks of long files or files read through the media
  * protocol can take longer than the drift allowed), and the element starts
- * when the timeline reaches it. Seeking a playing element left a gap in the
- * sound and landed behind the timeline, which took another seek.
+ * when the timeline reaches it. Seeking a playing element left a gap and landed
+ * behind the timeline, which took another seek.
  *
- * The currentTime of a sound played through Web Audio moves in steps and reads
- * up to a quarter of a second behind, then catches up: judged reading by
- * reading, a correction fired about once a second and the sound dropped out
- * each time. A playing element is judged by its least late reading over a
- * short window instead; after a jump of the timeline one reading decides.
+ * currentTime can read behind for a moment, then catch up: a playing element
+ * is judged by its least late reading over a short window; after a jump of the
+ * timeline one reading decides.
  */
 interface Drift {
   /** When the running seek started (performance.now), 0 = none. */
@@ -98,8 +97,9 @@ function drifted(drift: Drift, off: number, limit: number, now: number): boolean
  * Plays `el` at source time `src` (where the timeline is now). A playing
  * element that drifted by more than `tolerance` seconds is paused and cued
  * again; a paused one seeks ahead and starts when the timeline gets there.
+ * `frame` is how long ticks take now (seconds).
  */
-function playInStep(el: HTMLMediaElement, drift: Drift, src: number, rate: number, tolerance: number): void {
+function playInStep(el: HTMLMediaElement, drift: Drift, src: number, rate: number, tolerance: number, frame: number): void {
   const speed = Math.max(1, rate)
   if (!el.paused) {
     if (el.seeking || el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return
@@ -110,7 +110,9 @@ function playInStep(el: HTMLMediaElement, drift: Drift, src: number, rate: numbe
   }
   if (el.seeking) return
   const ahead = el.currentTime - src
-  if (Math.abs(ahead) <= START_WINDOW * speed) {
+  // Starts on the tick nearest to the cue. With slow frames (heavy projects) no
+  // tick fell within a few ms of it: the element sought again and again and never played.
+  if (ahead <= Math.max(START_WINDOW, frame / 2) * speed && ahead >= -(START_WINDOW + frame) * speed) {
     drift.since = performance.now()
     drift.readings.length = 0
     drift.jumped = false
@@ -135,17 +137,17 @@ interface VideoSlot {
 }
 
 interface AudioSlot {
-  el: HTMLAudioElement
-  source: MediaElementAudioSourceNode
+  /** Where the decoded sound enters. */
+  input: GainNode
+  stream: SoundStream
   gain: GainNode
   mediaId: string
   trackId: string
   lastUsed: number
-  /** Event FX chain between the source and the gain (null = direct). */
+  /** Event FX chain between the input and the gain (null = direct). */
   chain: AudioFxChain | null
   fxKey: string
   fxRef: EventFx[] | null
-  drift: Drift
 }
 
 interface AudioGraph {
@@ -157,9 +159,11 @@ interface AudioGraph {
 
 const LOOKAHEAD = secondsToFlicks(0.75)
 const RELEASE_AFTER_MS = 10_000
-/** Loaded sound elements kept per file for the next event that plays it. */
+/** Sound slots kept per file, FX chain built, for the next event that plays it. */
 const SPARE_AUDIO_PER_MEDIA = 3
 const SPARE_AUDIO_MS = 120_000
+/** Off the clock by more than this (seconds), playing sound starts again where the timeline is. */
+const MAX_SOUND_DRIFT = 0.04
 const dbToGain = (db: number): number => (db <= -60 ? 0 : Math.pow(10, db / 20))
 
 /** Side of the square an eyedropper averages, in source pixels (evens out noise and compression). */
@@ -203,9 +207,9 @@ class PreviewEngine {
   private readonly videos = new Map<string, VideoSlot>()
   private readonly audios = new Map<string, AudioSlot>()
   /**
-   * Sound elements no event uses right now, by media: a clip cut into many
-   * events (Remove Silences) plays them all from the same loaded file instead
-   * of opening it again, which can take seconds with long recordings.
+   * Sound slots no event uses right now, by media: the pieces of a clip cut
+   * into many events (Remove Silences) reuse their FX chain instead of building
+   * it again (noise reduction models take a moment to start).
    */
   private readonly spareAudio = new Map<string, AudioSlot[]>()
   private audio: AudioGraph | null = null
@@ -213,6 +217,26 @@ class PreviewEngine {
   private playStartWall = 0
   private playStartTime: Flicks = 0
   private returnTo: Flicks | null = null
+  /** Bumped when the timeline clock jumps or the sound drifts from it: playing sound starts again where it is. */
+  private soundEpoch = 0
+  /**
+   * Context time of one timeline time, fixed until the next jump: the sounds of
+   * every event follow the same clock, so the pieces of a cut clip join sample
+   * by sample (measured anew for each event, they overlapped or left gaps of a
+   * millisecond or two, which clicked).
+   */
+  private soundAnchor: { epoch: number; t: Flicks; ctx: number } | null = null
+  /** Since when the sound clock is off the measured one by more than MAX_SOUND_DRIFT (performance.now, 0 = in step). */
+  private soundDriftSince = 0
+  /** How long ticks take now (seconds). */
+  private frame = 1 / 60
+  private lastTick = 0
+  /** Files whose sound could not be decoded, reported once. */
+  private readonly silentMedia = new Set<string>()
+  private readonly clock: SoundClock = {
+    now: () => this.playStartTime + secondsToFlicks((performance.now() - this.playStartWall) / 1000),
+    contextTimeAt: (t) => this.contextTimeAt(t)
+  }
   private readonly meterBuffer = new Float32Array(1024)
   /** Peak level per channel (linear), with decay. Read by the master bus meters. */
   readonly meter: [number, number] = [0, 0]
@@ -244,12 +268,32 @@ class PreviewEngine {
     requestAnimationFrame(this.tick)
   }
 
-  /** The timeline clock jumped while playing: the playing elements follow at once. */
+  /** The timeline clock jumped while playing: the playing elements and sounds follow at once. */
   private clockJumped(): void {
-    for (const slot of [...this.videos.values(), ...this.audios.values()]) {
+    this.soundEpoch++
+    for (const slot of this.videos.values()) {
       slot.drift.jumped = true
       slot.drift.holdUntil = 0
     }
+  }
+
+  /** AudioContext time at which timeline time `t` is played, on the clock of the sounds playing now. */
+  private contextTimeAt(t: Flicks): number {
+    let anchor = this.soundAnchor
+    if (!anchor || anchor.epoch !== this.soundEpoch) {
+      anchor = { epoch: this.soundEpoch, t, ctx: this.heardAt(t) }
+      this.soundAnchor = anchor
+    }
+    return anchor.ctx + flicksToSeconds(t - anchor.t)
+  }
+
+  /** AudioContext time at which timeline time `t` is heard while playing, measured now (output latency included). */
+  private heardAt(t: Flicks): number {
+    const ctx = this.ensureAudio().ctx
+    const wall = this.playStartWall + flicksToSeconds(t - this.playStartTime) * 1000
+    const out = ctx.getOutputTimestamp()
+    if (out.contextTime && out.performanceTime) return out.contextTime + (wall - out.performanceTime) / 1000
+    return ctx.currentTime - ctx.baseLatency - (ctx.outputLatency || 0) + (wall - performance.now()) / 1000
   }
 
   attach(canvas: HTMLCanvasElement): void {
@@ -327,6 +371,9 @@ class PreviewEngine {
 
   private readonly tick = (): void => {
     requestAnimationFrame(this.tick)
+    const wall = performance.now()
+    if (this.lastTick) this.frame = Math.min(0.25, Math.max(0.004, (wall - this.lastTick) / 1000))
+    this.lastTick = wall
     const s = useEditor.getState()
     let t = s.cursor
     if (s.playing) {
@@ -366,6 +413,15 @@ class PreviewEngine {
     const byTrack = eventsByTrack(project)
     const audioTracks = project.tracks.filter((tr) => tr.kind === 'audio')
     const anyAudioSolo = audioTracks.some((tr) => tr.solo)
+    // The audio device's clock and the timeline's drift apart slowly (and stop together while the
+    // context is suspended); a single reading can be off by a few ms, a drift lasts.
+    const anchor = this.soundAnchor
+    if (playing && anchor?.epoch === this.soundEpoch && Math.abs(this.contextTimeAt(t) - this.heardAt(t)) > MAX_SOUND_DRIFT) {
+      this.soundDriftSince ||= now
+      if (now - this.soundDriftSince > DRIFT_WINDOW) this.soundEpoch++
+    } else {
+      this.soundDriftSince = 0
+    }
 
     for (const ev of project.events) {
       const end = ev.start + ev.length
@@ -383,15 +439,14 @@ class PreviewEngine {
         slot.lastUsed = now
         this.syncVideo(slot, srcSeconds, playing && active, media.fps, ev.rate)
       } else if (ev.kind === 'audio' && (playing || active)) {
-        // While paused, the sound under the cursor is loaded and positioned too: play starts at once.
+        // While paused, the file under the cursor is opened too: play starts at once.
         const audible = !track.muted && (!anyAudioSolo || track.solo)
         if (!audible) continue
         wantAudio.add(ev.id)
         const slot = this.audioSlot(ev, media, track)
         slot.lastUsed = now
         this.syncFx(slot, ev)
-        const gain = playing && active ? audioGain(ev, t, byTrack.get(ev.trackId) ?? [ev], options.autoCrossfade) : 0
-        this.syncAudio(slot, srcSeconds, playing && active, gain, ev.rate)
+        this.syncAudio(slot, ev, media, t, playing, active, byTrack.get(ev.trackId) ?? [ev], options.autoCrossfade)
       }
     }
 
@@ -402,10 +457,11 @@ class PreviewEngine {
     }
     for (const [id, slot] of this.audios) {
       if (wantAudio.has(id)) continue
-      if (!slot.el.paused) slot.el.pause()
-      slot.gain.gain.value = 0
+      // Fades out (setting the gain to 0 at once clicked).
+      slot.stream.stop()
       this.spare(id)
     }
+    closeIdleSounds(now)
     for (const [mediaId, list] of this.spareAudio) {
       const keep = list.filter((slot) => now - slot.lastUsed < SPARE_AUDIO_MS)
       for (const slot of list) if (!keep.includes(slot)) this.destroyAudio(slot)
@@ -456,7 +512,7 @@ class PreviewEngine {
     const el = slot.el
     if (play) {
       if (el.playbackRate !== rate) el.playbackRate = rate
-      playInStep(el, slot.drift, src, rate, 0.2)
+      playInStep(el, slot.drift, src, rate, 0.2, this.frame)
       return
     }
     if (!el.paused) el.pause()
@@ -540,20 +596,12 @@ class PreviewEngine {
       if (slot) this.audios.set(ev.id, slot)
     }
     if (!slot) {
-      const el = new Audio()
-      el.preload = 'auto'
-      // Without CORS, Web Audio outputs silence for boar-media:// files (Explorer, reopened projects).
-      el.crossOrigin = 'anonymous'
-      el.preservesPitch = true
-      el.src = media.url
-      el.addEventListener('error', () => setStatus(`Preview cannot play the sound of ${media.name} (the render still includes it)`))
-      const source = graph.ctx.createMediaElementSource(el)
+      const input = graph.ctx.createGain()
       const gain = graph.ctx.createGain()
       gain.gain.value = 0
-      source.connect(gain)
-      const drift = newDrift()
-      el.addEventListener('seeked', () => seekLanded(drift))
-      slot = { el, source, gain, mediaId: media.id, trackId: '', lastUsed: 0, chain: null, fxKey: '', fxRef: null, drift }
+      input.connect(gain)
+      const stream = new SoundStream(graph.ctx, input, (err) => this.soundFailed(media, err))
+      slot = { input, stream, gain, mediaId: media.id, trackId: '', lastUsed: 0, chain: null, fxKey: '', fxRef: null }
       this.audios.set(ev.id, slot)
     }
     if (slot.trackId !== track.id) {
@@ -569,14 +617,14 @@ class PreviewEngine {
     const ctx = this.ensureAudio().ctx
     const key = audioFxKey(ctx, ev.fx)
     if (key !== slot.fxKey) {
-      slot.source.disconnect()
+      slot.input.disconnect()
       slot.chain?.dispose()
       slot.chain = key ? buildAudioFxChain(ctx, ev.fx) : null
       if (slot.chain) {
-        slot.source.connect(slot.chain.input)
+        slot.input.connect(slot.chain.input)
         slot.chain.output.connect(slot.gain)
       } else {
-        slot.source.connect(slot.gain)
+        slot.input.connect(slot.gain)
       }
       slot.fxKey = key
       slot.fxRef = ev.fx
@@ -586,23 +634,44 @@ class PreviewEngine {
     slot.fxRef = ev.fx
   }
 
-  private syncAudio(slot: AudioSlot, src: number, active: boolean, gain: number, rate: number): void {
-    const el = slot.el
-    const graph = this.ensureAudio()
-    // Speed changes keep the pitch (Chromium time-stretches like the export does).
-    if (el.playbackRate !== rate) el.playbackRate = rate
-    if (!active) {
-      if (!el.paused) el.pause()
-      // Close enough that play starts without another seek.
-      if (!el.seeking && Math.abs(el.currentTime - src) > START_WINDOW) seekTo(el, slot.drift, src)
-      slot.gain.gain.value = 0
+  /**
+   * Plays the event's sound while playing: from where the timeline is, or from
+   * its start when it is coming up (scheduled ahead, so a cut joins the next
+   * piece without a gap). Starts again after a jump, an edit of the event's
+   * timing or a drift from the clock.
+   */
+  private syncAudio(
+    slot: AudioSlot,
+    ev: TimelineEvent,
+    media: MediaItem,
+    t: Flicks,
+    playing: boolean,
+    active: boolean,
+    trackEvents: TimelineEvent[],
+    autoCrossfade: boolean
+  ): void {
+    const ctx = this.ensureAudio().ctx
+    if (!playing) {
+      slot.stream.stop()
+      void openSound(media, (err) => this.soundFailed(media, err))
       return
     }
-    slot.gain.gain.setTargetAtTime(gain, graph.ctx.currentTime, 0.012)
-    playInStep(el, slot.drift, src, rate, 0.15)
+    // The audio thread runs ahead of the sound heard now by the output latency: gains follow it.
+    const lead = secondsToFlicks(Math.max(0, ctx.currentTime - this.contextTimeAt(t)))
+    const at = Math.min(ev.start + ev.length - 1, Math.max(ev.start, t + lead))
+    slot.gain.gain.setTargetAtTime(audioGain(ev, at, trackEvents, autoCrossfade), ctx.currentTime, 0.012)
+    const key = `${this.soundEpoch}|${ev.start}|${ev.length}|${ev.offset}|${ev.rate}`
+    if (slot.stream.key !== key) slot.stream.start(ev, media, active ? t : ev.start, key, this.clock)
   }
 
-  /** The event no longer plays: its element waits, loaded, for the next event of the same file. */
+  private soundFailed(media: MediaItem, err: unknown): void {
+    console.warn('[preview] sound of', media.name, err)
+    if (this.silentMedia.has(media.id)) return
+    this.silentMedia.add(media.id)
+    setStatus(`Preview cannot play the sound of ${media.name}`)
+  }
+
+  /** The event no longer plays: its slot waits, FX chain built, for the next event of the same file. */
   private spare(id: string): void {
     const slot = this.audios.get(id)
     if (!slot) return
@@ -624,12 +693,10 @@ class PreviewEngine {
   }
 
   private destroyAudio(slot: AudioSlot): void {
-    slot.el.pause()
-    slot.source.disconnect()
+    slot.stream.stop()
+    slot.input.disconnect()
     slot.chain?.dispose()
     slot.gain.disconnect()
-    slot.el.removeAttribute('src')
-    slot.el.load()
   }
 
   private updateMeters(playing: boolean): void {
