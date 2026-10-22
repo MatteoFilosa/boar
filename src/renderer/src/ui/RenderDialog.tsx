@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, X } from 'lucide-react'
+import { FileText, FolderOpen, X } from 'lucide-react'
 import * as A from '../core/actions'
 import { useEditor } from '../core/store'
 import { flicksToSeconds, formatTimecode, fps, rateLabel } from '../core/time'
@@ -27,8 +27,8 @@ const LONG_GIF_SECONDS = 15
 
 type RenderState =
   | { kind: 'idle' }
-  | { kind: 'running'; progress: ExportProgress; started: number; withAudio: boolean; render: RenderKind }
-  | { kind: 'done'; label: string; seconds: number; reveal?: () => void; loudness: LoudnessResult | null }
+  | { kind: 'running'; progress: ExportProgress; started: number; withAudio: boolean; render: RenderKind; note: string | null }
+  | { kind: 'done'; label: string; seconds: number; reveal?: () => void; loudness: LoudnessResult | null; note: string | null; movedToProcessor: boolean }
   | { kind: 'error'; message: string }
 
 const PHASES: Record<ExportProgress['phase'], string> = {
@@ -159,16 +159,20 @@ export function RenderDialog(): React.JSX.Element {
     useEditor.setState({ playing: false, exporting: true })
     const started = performance.now()
     const render = kind
-    setState({ kind: 'running', progress: { phase: render === 'gif' ? 'video' : 'audio', progress: 0 }, started, withAudio: false, render })
+    setState({ kind: 'running', progress: { phase: render === 'gif' ? 'video' : 'audio', progress: 0 }, started, withAudio: false, render, note: null })
     const onProgress = (progress: ExportProgress): void =>
-      setState((s) => (s.kind === 'running' ? { ...s, progress, withAudio: s.withAudio || progress.phase === 'audio' } : s))
+      setState((s) =>
+        s.kind === 'running' ? { ...s, progress, withAudio: s.withAudio || progress.phase === 'audio', note: progress.note ?? s.note } : s
+      )
     const isCancelled = (): boolean => cancelled.current
     try {
       const job = { quality, range, tracks: chosenTracks, once: !gifLoop }
       const result = await renderProject(project, destination, options, job, onProgress, isCancelled)
       await destination.finish()
       const seconds = (performance.now() - started) / 1000
-      setState({ kind: 'done', label: destination.label, seconds, reveal: destination.reveal, loudness: result.loudness })
+      // The graphics card's encoder stalled: the next renders go straight to the processor (the Encoder menu shows it).
+      if (result.movedToProcessor) A.setOption('renderEncoder', 'cpu')
+      setState({ kind: 'done', label: destination.label, seconds, reveal: destination.reveal, loudness: result.loudness, note: result.note, movedToProcessor: result.movedToProcessor })
       A.setStatus(`Rendered ${destination.label} in ${seconds.toFixed(1)} s`)
     } catch (err) {
       await destination.discard().catch(() => undefined)
@@ -430,6 +434,7 @@ export function RenderDialog(): React.JSX.Element {
               )}
             </BoarProgress>
           )}
+          {state.kind === 'running' && state.note && <div className="render-result note">{state.note}</div>}
           {state.kind === 'done' && (
             <div className="render-result ok">
               Rendered in {state.seconds.toFixed(1)} s: <b>{state.label}</b>
@@ -439,6 +444,12 @@ export function RenderDialog(): React.JSX.Element {
                   {state.loudness.peak.toFixed(1)} dBTP
                 </div>
               )}
+              {state.note && (
+                <div className="dim">
+                  {state.note}
+                  {state.movedToProcessor ? ' Encoder is now set to Processor.' : ''}
+                </div>
+              )}
               {state.reveal && (
                 <button className="btn small" onClick={state.reveal}>
                   <FolderOpen size={13} /> Show in folder
@@ -446,7 +457,14 @@ export function RenderDialog(): React.JSX.Element {
               )}
             </div>
           )}
-          {state.kind === 'error' && <div className="render-result error">Render failed: {state.message}</div>}
+          {state.kind === 'error' && (
+            <div className="render-result error">
+              Render failed: {state.message}
+              <button className="btn small" title="What Boar wrote down about the render, to copy into a problem report" onClick={() => A.openDialog({ kind: 'log' })}>
+                <FileText size={13} /> Problem Log
+              </button>
+            </div>
+          )}
 
           <div className="modal-actions">
             {running ? (

@@ -1,9 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Captions, Download, Scissors } from 'lucide-react'
+import { Captions, Download, Pencil, Scissors } from 'lucide-react'
 import * as A from '../core/actions'
 import { mediaById, useEditor } from '../core/store'
 import { CAPTION_STYLES, alignWords, chunkWords } from '../core/captions'
-import { type TimelineWord, type WordFlag, defaultSpeechTrack, hasSpeech, longPauses, speechTracks, timedWord, wordFlag, wordsOnTimeline } from '../core/transcript'
+import {
+  type TimelineWord,
+  type WordFlag,
+  defaultSpeechTrack,
+  hasSpeech,
+  longPauses,
+  speechTracks,
+  timedWord,
+  transcriptRun,
+  wordFlag,
+  wordsOnTimeline
+} from '../core/transcript'
 import { FLICKS_PER_SECOND, type Flicks, formatTimecode } from '../core/time'
 import type { MediaItem } from '../core/types'
 import { type CaptionProgress, type CaptionStatus, bridge } from '../platform'
@@ -31,8 +42,8 @@ const seconds = (t: Flicks): string => `${(t / FLICKS_PER_SECOND).toFixed(1)} s`
 
 type Token =
   | { kind: 'word'; i: number; word: TimelineWord; flag: WordFlag | null }
-  | { kind: 'pause'; length: Flicks; key: string }
-  | { kind: 'cut'; key: string }
+  | { kind: 'pause'; i: number; length: Flicks; key: string }
+  | { kind: 'cut'; i: number; key: string }
 
 interface Paragraph {
   start: Flicks
@@ -53,8 +64,8 @@ function layout(words: readonly TimelineWord[]): Paragraph[] {
       out.push(current)
       count = 0
     } else {
-      if (previous && previous.eventId !== word.eventId) current.tokens.push({ kind: 'cut', key: `c${i}` })
-      if (gap > PAUSE_MIN * FLICKS_PER_SECOND) current.tokens.push({ kind: 'pause', length: gap, key: `p${i}` })
+      if (previous && previous.eventId !== word.eventId) current.tokens.push({ kind: 'cut', i, key: `c${i}` })
+      if (gap > PAUSE_MIN * FLICKS_PER_SECOND) current.tokens.push({ kind: 'pause', i, length: gap, key: `p${i}` })
     }
     current.tokens.push({ kind: 'word', i, word, flag: wordFlag(words, i) })
     count++
@@ -65,7 +76,8 @@ function layout(words: readonly TimelineWord[]): Paragraph[] {
 /**
  * Transcript tab: the speech of a track as text. Click a word to jump there,
  * select words (drag, Shift, Ctrl) and press Delete to cut them out of the
- * video; fillers and repeated words are underlined.
+ * video; fillers and repeated words are underlined. Double-click a word (or
+ * press Enter) to correct it: captions made from it follow.
  */
 export function TranscriptPanel(): React.JSX.Element {
   const project = useEditor((s) => s.project)
@@ -92,9 +104,16 @@ export function TranscriptPanel(): React.JSX.Element {
   const [status, setStatus] = useState<CaptionStatus | null>(null)
   const [busy, setBusy] = useState<(CaptionProgress & { label: string }) | null>(null)
   const [error, setError] = useState('')
+  /** Words being corrected: positions in `words`, one run of one file's transcript. */
+  const [editing, setEditing] = useState<number[] | null>(null)
+  const editingRef = useRef(editing)
+  editingRef.current = editing
 
   // A cut changes the words: the old selection no longer applies.
-  useEffect(() => setPicked(new Set()), [words])
+  useEffect(() => {
+    setPicked(new Set())
+    setEditing(null)
+  }, [words])
 
   useEffect(() => {
     if (!bridge) return
@@ -157,8 +176,28 @@ export function TranscriptPanel(): React.JSX.Element {
     return out
   }
 
+  /** Corrects the selected words when they are one run of speech, else the word at `at` (or the first selected). */
+  const startEdit = (at: number | null): void => {
+    const chosen = [...picked].sort((a, b) => a - b)
+    const run = chosen.length > 1 && (at === null || picked.has(at)) && transcriptRun(words, chosen) ? chosen : null
+    const one = at ?? chosen[0]
+    if (run) setEditing(run)
+    else if (one !== undefined && words[one]) setEditing([one])
+  }
+
+  const finishEdit = (text: string | null): void => {
+    const positions = editingRef.current
+    if (!positions) return
+    editingRef.current = null
+    setEditing(null)
+    const run = transcriptRun(words, positions)
+    const before = positions.map((i) => words[i].text).join(' ')
+    if (run && text !== null && text.trim() !== before) A.editTranscript(run.mediaId, run.from, run.to, text.trim())
+    textRef.current?.focus()
+  }
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>): void => {
-    if (e.button !== 0) return
+    if (e.button !== 0 || (e.target as HTMLElement).closest('.tr-edit')) return
     const i = wordAt(e.clientX, e.clientY)
     e.currentTarget.focus()
     if (i === null) {
@@ -200,6 +239,10 @@ export function TranscriptPanel(): React.JSX.Element {
       e.preventDefault()
       e.stopPropagation()
       remove(picked)
+    } else if ((e.key === 'Enter' || e.key === 'F2') && picked.size > 0) {
+      e.preventDefault()
+      e.stopPropagation()
+      startEdit(null)
     } else if (e.key === 'Escape') {
       e.stopPropagation()
       setPicked(new Set())
@@ -307,6 +350,14 @@ export function TranscriptPanel(): React.JSX.Element {
             <button className="btn small" disabled={picked.size === 0} title="Cut the selected words (Delete)" onClick={() => remove(picked)}>
               <Scissors size={13} /> Delete{picked.size > 0 ? ` ${picked.size}` : ''}
             </button>
+            <button
+              className="btn small"
+              disabled={picked.size === 0}
+              title="Correct the selected words: captions made from them follow (Enter, or double-click a word)"
+              onClick={() => startEdit(null)}
+            >
+              <Pencil size={13} /> Correct
+            </button>
             <button className="btn small" disabled={fillers.length === 0} title="Select ehm, uhm and repeated words" onClick={() => setPicked(new Set(fillers))}>
               Fillers {fillers.length}
             </button>
@@ -339,6 +390,10 @@ export function TranscriptPanel(): React.JSX.Element {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={() => (dragging.current = false)}
+        onDoubleClick={(e) => {
+          const i = wordAt(e.clientX, e.clientY)
+          if (i !== null) startEdit(i)
+        }}
         onKeyDown={onKeyDown}
       >
         {words.length === 0 && !notice && missing.length === 0 && <p className="dim">No speech found on this track.</p>}
@@ -351,7 +406,9 @@ export function TranscriptPanel(): React.JSX.Element {
           <p key={p.start} className="tr-paragraph">
             <span className="tr-time">{formatTimecode(p.start, rate)}</span>
             {p.tokens.map((t) =>
-              t.kind === 'word' ? (
+              editing && t.i !== editing[0] && editing.includes(t.i) ? null : editing && t.kind === 'word' && t.i === editing[0] ? (
+                <WordEditor key={t.i} text={editing.map((i) => words[i].text).join(' ')} onDone={finishEdit} />
+              ) : t.kind === 'word' ? (
                 <span
                   key={t.i}
                   data-i={t.i}
@@ -375,7 +432,9 @@ export function TranscriptPanel(): React.JSX.Element {
         <div className="ex-bar tr-footer">
           <span className="dim">
             {words.length} words
-            {picked.size > 0 ? ` · ${picked.size} selected (${seconds(pickedLength)})` : ' · click a word to jump, drag to select'}
+            {picked.size > 0
+              ? ` · ${picked.size} selected (${seconds(pickedLength)})`
+              : ' · click a word to jump, drag to select, double-click to correct'}
           </span>
           <select className="select" value={style} title="Caption look" onChange={(e) => setStyle(e.target.value)}>
             {CAPTION_STYLES.map((s) => (
@@ -390,5 +449,31 @@ export function TranscriptPanel(): React.JSX.Element {
         </div>
       )}
     </div>
+  )
+}
+
+/** Text box over the words being corrected: Enter keeps the text, Esc leaves them as they were. */
+function WordEditor({ text, onDone }: { text: string; onDone: (text: string | null) => void }): React.JSX.Element {
+  return (
+    <input
+      className="input tr-edit"
+      autoFocus
+      defaultValue={text}
+      spellCheck={false}
+      aria-label="Correct the words"
+      title="Enter: keep · Esc: cancel · empty: take the words out of the text (the speech stays)"
+      onFocus={(e) => e.currentTarget.select()}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          onDone(e.currentTarget.value)
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          onDone(null)
+        }
+      }}
+      onBlur={(e) => onDone(e.currentTarget.value)}
+    />
   )
 }

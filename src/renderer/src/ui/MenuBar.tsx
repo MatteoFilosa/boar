@@ -207,6 +207,7 @@ function useMenus(): Menu[] {
         'separator',
         { label: 'Check for Updates...', command: 'checkForUpdates' },
         { label: 'Report a Problem...', command: 'reportProblem' },
+        { label: 'Problem Log...', command: 'problemLog' },
         { label: 'About Boar', command: 'about' }
       ]
     }

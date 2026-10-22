@@ -47,12 +47,12 @@ import {
   transitionLabel,
   transitionSlot
 } from './transitions'
-import { type MediaTranscript, type TimelineWord, rangesForWords } from './transcript'
+import { type MediaTranscript, type TimelineWord, editTranscriptWords, rangesForWords } from './transcript'
 import { addEmoji, emphasizeKeywords } from './captionStyle'
 import type { ShortCandidate } from './shorts'
 import { type Corner, cornerFrame, coverFrame, halfFrame, placedFrame } from './layouts'
 import { dropMediaCache } from '../media/cache'
-import { followClips } from './linkedCaptions'
+import { followClips, followTranscriptEdit } from './linkedCaptions'
 
 const HISTORY_LIMIT = 200
 const get = useEditor.getState
@@ -150,7 +150,8 @@ export function undo(): void {
     project: previous,
     past: past.slice(0, -1),
     future: [project, ...future],
-    selection: validSelection(previous, selection)
+    selection: validSelection(previous, selection),
+    ...transcriptAt(project, 'before')
   })
   setStatus('Undo')
 }
@@ -163,9 +164,27 @@ export function redo(): void {
     project: next,
     past: [...past, project],
     future: future.slice(1),
-    selection: validSelection(next, selection)
+    selection: validSelection(next, selection),
+    ...transcriptAt(next, 'after')
   })
   setStatus('Redo')
+}
+
+// Transcripts live outside the project, but a corrected word is an undo step
+// with the captions it changed: the step's project remembers the transcript
+// before and after it.
+const transcriptEdits = new WeakMap<Project, { mediaId: string; before: MediaTranscript; after: MediaTranscript }>()
+
+/** Undoing (`before`) or redoing (`after`) the step that made `step`: its transcript, unless the file was transcribed again since. */
+function transcriptAt(step: Project, side: 'before' | 'after'): Partial<EditorState> {
+  const edit = transcriptEdits.get(step)
+  const { transcripts, savedTranscripts } = get()
+  if (!edit || transcripts[edit.mediaId] !== edit[side === 'before' ? 'after' : 'before']) return {}
+  const next = { ...transcripts, [edit.mediaId]: edit[side] }
+  // Back to what was saved: no unsaved transcript change left.
+  const keys = Object.keys(next)
+  const saved = keys.length === Object.keys(savedTranscripts).length && keys.every((k) => next[k] === savedTranscripts[k])
+  return { transcripts: saved ? savedTranscripts : next }
 }
 
 // Ui state
@@ -2025,6 +2044,29 @@ export function setTranscript(mediaId: string, transcript: MediaTranscript | nul
     else delete transcripts[mediaId]
     return { transcripts }
   })
+}
+
+/**
+ * Corrects words `from`..`to` of a file's transcript to `text` (a misheard
+ * word, a name, several words or none): captions made from those words show
+ * the new text. One undo step, even when no caption shows them.
+ */
+export function editTranscript(mediaId: string, from: number, to: number, text: string): boolean {
+  const { project, transcripts } = get()
+  const before = transcripts[mediaId]
+  if (!before || from < 0 || to < from || to >= before.words.length) return false
+  const after = editTranscriptWords(before, from, to, text)
+  const same = after.words.length === before.words.length && after.words.every((w, i) => w.text === before.words[i].text)
+  if (same) return false
+  lastCoalesced = null
+  const edited = produce(project, (d) => followTranscriptEdit(d.events, mediaId, from, to, before, after))
+  const next = edited === project ? { ...project } : edited
+  transcriptEdits.set(next, { mediaId, before, after })
+  set({ ...withHistory(project, next), transcripts: { ...transcripts, [mediaId]: after } })
+  set((s) => ({ selection: validSelection(next, s.selection) }))
+  const count = to - from + 1
+  setStatus(text.trim() ? `Corrected ${count === 1 ? 'a word' : `${count} words`} in the transcript` : `Took ${count === 1 ? 'a word' : `${count} words`} out of the transcript`)
+  return true
 }
 
 /**

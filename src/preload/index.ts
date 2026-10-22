@@ -50,6 +50,15 @@ contextBridge.exposeInMainWorld('boar', {
   },
   readAsset: (url: string): Promise<Uint8Array> => ipcRenderer.invoke('app:readAsset', url),
   systemInfo: (): Promise<unknown> => ipcRenderer.invoke('app:systemInfo'),
+  log: (level: string, message: string): void => ipcRenderer.send('log:write', level, message),
+  readLog: (): Promise<unknown> => ipcRenderer.invoke('log:read'),
+  revealLog: (): Promise<void> => ipcRenderer.invoke('log:reveal'),
+  takeCrashNotice: (): Promise<string | null> => ipcRenderer.invoke('log:crashNotice'),
+  onProblem(callback: (message: string) => void): () => void {
+    const listener = (_event: unknown, message: string): void => callback(message)
+    ipcRenderer.on('log:problem', listener)
+    return () => ipcRenderer.removeListener('log:problem', listener)
+  },
   findProxy: (source: string): Promise<string | null> => ipcRenderer.invoke('proxy:find', source),
   createProxy: (source: string): Promise<number> => ipcRenderer.invoke('proxy:create', source),
   writeProxy: (id: number, position: number, data: Uint8Array): Promise<void> => ipcRenderer.invoke('proxy:write', id, position, data),

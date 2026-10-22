@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest'
 import { mixedTracks } from '@/core/timeline'
 import { GifWriter, gifDelays, gifFormat } from '@/engine/gif'
 import { withExtension } from '@/engine/targets'
+import { ExportCancelled, type RenderStage, RenderStalled, guarded, stallFallback } from '@/engine/stall'
+import type { ExportSettings } from '@/engine/export'
 import { FPS30, project, track } from './helpers'
 
 describe('tracks a render mixes', () => {
@@ -117,5 +119,35 @@ describe('GIF writing', () => {
     const gif = new GifWriter(4, 4, { colors: 64, dither: true, loop: false })
     gif.add(solid(4, 4, [10, 200, 30]), 10)
     expect(readGif(gif.finish()).loops).toBe(false)
+  })
+})
+
+describe('renders that stop moving', () => {
+  const never = new Promise<never>(() => undefined)
+
+  test('a step that never ends counts as stalled, and Cancel ends the wait at once', async () => {
+    const stalled = (): RenderStalled => new RenderStalled('videoEncoder', 3, true, '')
+    await expect(guarded(never, 0.3, () => false, stalled)).rejects.toBeInstanceOf(RenderStalled)
+    await expect(guarded(never, 30, () => true, stalled)).rejects.toBeInstanceOf(ExportCancelled)
+    await expect(guarded(Promise.resolve(5), 1, () => false, stalled)).resolves.toBe(5)
+  })
+
+  test('the next try: bitrate rate control, then the processor, then nothing', async () => {
+    const base: ExportSettings = { codec: 'avc', quality: 'high', encoder: 'auto', includeAudio: true, masterDb: 0, autoCrossfade: true }
+    const stall = (stage: RenderStage, quantizer = false): RenderStalled => new RenderStalled(stage, 5, quantizer, '')
+    type Can = (hardwareAcceleration: 'prefer-hardware' | 'prefer-software') => Promise<boolean>
+    const both: Can = async () => true
+    const retry = async (s: RenderStalled, settings: ExportSettings, can: Can = both): Promise<unknown> =>
+      (await stallFallback(s, settings, can))?.retry ?? null
+    expect(await retry(stall('videoEncoder', true), base)).toEqual({ preferBitrate: true })
+    expect(await retry(stall('videoEncoder', true), { ...base, preferBitrate: true })).toEqual({ encoder: 'cpu', preferBitrate: false })
+    expect(await retry(stall('videoEncoder'), { ...base, encoder: 'cpu' })).toBeNull()
+    // Automatic on a system without a hardware encoder was the processor's already.
+    expect(await retry(stall('videoEncoder'), base, async (h) => h === 'prefer-software')).toBeNull()
+    expect(await retry(stall('videoEncoder'), { ...base, encoder: 'gpu' }, async (h) => h === 'prefer-software')).toEqual({ encoder: 'cpu', preferBitrate: false })
+    expect(await retry(stall('decoder'), base)).toEqual({ softwareDecode: true })
+    expect(await retry(stall('decoder'), { ...base, softwareDecode: true })).toBeNull()
+    expect(await retry(stall('audioEncoder'), { ...base, audioCodec: 'aac' })).toEqual({ audioCodec: 'opus' })
+    expect(await retry(stall('audioEncoder'), { ...base, audioCodec: 'opus' })).toBeNull()
   })
 })

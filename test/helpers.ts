@@ -88,13 +88,15 @@ export function load(
   extra: { media?: MediaItem[]; transcripts?: Record<string, MediaTranscript>; options?: Partial<EditorOptions>; selection?: string[]; cursor?: Flicks } = {}
 ): void {
   const { options } = useEditor.getState()
+  const transcripts = extra.transcripts ?? {}
   useEditor.setState({
     project: p,
     savedProject: p,
     past: [],
     future: [],
     media: extra.media ?? [media('m')],
-    transcripts: extra.transcripts ?? {},
+    transcripts,
+    savedTranscripts: transcripts,
     selection: extra.selection ?? [],
     selectedTrackId: null,
     timeSelection: null,

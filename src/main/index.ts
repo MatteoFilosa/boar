@@ -13,6 +13,7 @@ import { blockExternalRequests, disableBackgroundNetworking } from './privacy'
 import { registerProxyIpc } from './proxies'
 import { abandonAutosaveSession, endAutosaveSession, registerAutosaveIpc } from './autosave'
 import { addRecentProject, clearRecentProjects, findRecentProject, keepRecentProjects, recentProjects } from './recent'
+import { log, registerLogIpc, setCrashNotice, startLog, watchWindow } from './log'
 
 // `--smoke`: load the UI hidden, report renderer errors, exit. Used to verify builds.
 const smoke = process.argv.includes('--smoke')
@@ -68,9 +69,12 @@ app.on('open-file', (event, path) => {
 // One editor at a time (they share settings and caches): opening Boar or a
 // project again goes to the window that is already open. Development and
 // smoke runs are left alone so they can run next to an installed copy.
+let secondInstance = false
 if (app.isPackaged && !smoke) {
-  if (!app.requestSingleInstanceLock()) app.exit(0)
-  else {
+  if (!app.requestSingleInstanceLock()) {
+    secondInstance = true
+    app.exit(0)
+  } else {
     app.on('second-instance', (_event, argv, workingDir) => {
       const path = projectInArgs(argv, workingDir)
       if (path) requestProjectOpen(path)
@@ -81,6 +85,9 @@ if (app.isPackaged && !smoke) {
     })
   }
 }
+
+// The problem log (Help › Problem Log); a second instance only hands its project over.
+if (!secondInstance) startLog(smoke)
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -120,11 +127,16 @@ function createWindow(): void {
   win.webContents.on('will-navigate', (event) => event.preventDefault())
 
   if (smoke) runSmokeTest(win)
-  else win.once('ready-to-show', () => win.show())
+  else {
+    win.once('ready-to-show', () => win.show())
+    watchWindow(win)
+  }
 
   // The page crashed or was killed: offer to start it again, which offers the autosaved project back.
   win.webContents.on('render-process-gone', (_event, details) => {
     if (smoke || details.reason === 'clean-exit') return
+    log('error', 'app', `The editor page stopped: ${details.reason}, exit code ${details.exitCode}`)
+    setCrashNotice(`The editor stopped unexpectedly (${details.reason}).`)
     abandonAutosaveSession(pageId)
     void dialog
       .showMessageBox(win, {
@@ -460,6 +472,7 @@ app.whenReady().then(() => {
   registerUpdateIpc()
   registerProxyIpc()
   registerAutosaveIpc(projectPaths, smoke)
+  registerLogIpc()
   // AI agents (MCP): not in smoke runs, which may overlap a running editor.
   if (!smoke) void registerMcp(() => mainWindow)
   createWindow()

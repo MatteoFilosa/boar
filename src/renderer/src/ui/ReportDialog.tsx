@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ExternalLink, X } from 'lucide-react'
+import { ExternalLink, FileText, X } from 'lucide-react'
 import * as A from '../core/actions'
 import { bridge } from '../platform'
 import { type ExportCodec, audioSupport, encoderSupport } from '../engine/export'
@@ -64,6 +64,12 @@ export function ReportDialog(): React.JSX.Element {
           </p>
           <p className="dim">Paste these details into the report. Boar sends nothing by itself.</p>
           <CopyBox label="Details" text={details} />
+          <p className="dim">
+            If Boar closed, froze or a render failed, paste the Problem Log too: it says what Boar was doing.
+          </p>
+          <button className="btn small" onClick={() => A.openDialog({ kind: 'log' })}>
+            <FileText size={13} /> Problem Log...
+          </button>
           <div className="modal-actions">
             <button className="btn primary" onClick={() => window.open(ISSUES, '_blank', 'noopener')}>
               <ExternalLink size={13} /> Open the Issue Page

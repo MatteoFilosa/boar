@@ -53,6 +53,7 @@ const KEYWORDS: Partial<Record<CommandId, string>> = {
   cycleEditTool: 'tool switch select rectangle normal',
   checkForUpdates: 'version update new',
   reportProblem: 'bug issue crash feedback idea support help github',
+  problemLog: 'log crash error debug freeze stuck render failed diagnostics',
   blurredBackground: 'vertical layout',
   splitScreen: 'layout two',
   pictureInPicture: 'pip layout overlay corner',

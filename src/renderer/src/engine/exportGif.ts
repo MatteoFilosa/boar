@@ -3,7 +3,7 @@ import { type Flicks, secondsToFlicks } from '../core/time'
 import { projectEnd } from '../core/timeline'
 import type { Project } from '../core/types'
 import { composeFrame } from './compose'
-import { ExportCancelled, type ExportProgress, FrameDecoder } from './export'
+import { ExportCancelled, type ExportProgress, FrameDecoder, RenderStalled, guarded } from './export'
 import { GIF_QUALITIES, type GifSettings, GifWriter, gifDelays, gifFormat } from './gif'
 import { prepareSegmenter } from './vision'
 
@@ -13,7 +13,7 @@ import { prepareSegmenter } from './vision'
 /** Renders the project (or `range` of it) as an animated GIF; returns the file. */
 export async function exportGif(
   project: Project,
-  settings: GifSettings,
+  settings: GifSettings & { softwareDecode?: boolean },
   onProgress: (p: ExportProgress) => void,
   isCancelled: () => boolean,
   range?: { start: Flicks; end: Flicks }
@@ -34,12 +34,13 @@ export async function exportGif(
   const layerCtx = layer.getContext('2d') as OffscreenCanvasRenderingContext2D
   ctx.imageSmoothingQuality = 'high'
   const writer = new GifWriter(width, height, { colors: quality.colors, dither: quality.dither, loop: !settings.once })
-  const decoder = new FrameDecoder()
+  const decoder = new FrameDecoder(settings.softwareDecode)
   try {
     for (let i = 0; i < frames; i++) {
       if (isCancelled()) throw new ExportCancelled()
       const t = span.start + Math.round((i * secondsToFlicks(1)) / rate)
-      await decoder.prepare(project, t)
+      const stalled = (): RenderStalled => new RenderStalled('decoder', i, false, `${i} frames made`)
+      await guarded(decoder.prepare(project, t), 30, isCancelled, stalled)
       composeFrame(ctx, layerCtx, project, settings.autoCrossfade, t, width, height, decoder.frameFor)
       writer.add(ctx.getImageData(0, 0, width, height).data, delays[i])
       if (i % 3 === 0) onProgress({ phase: 'video', progress: i / frames, frame: i, frames })

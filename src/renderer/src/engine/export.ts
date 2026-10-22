@@ -9,6 +9,7 @@ import {
   Input,
   Mp4OutputFormat,
   Output,
+  Quality,
   QUALITY_HIGH,
   QUALITY_MEDIUM,
   QUALITY_VERY_HIGH,
@@ -29,6 +30,10 @@ import { loadFonts } from '../core/fonts'
 import { prepareSegmenter } from './vision'
 import { timeStretch } from './stretch'
 import { type LoudnessResult, normalizeLoudness } from './loudness'
+import { logLine } from '../log'
+import { ExportCancelled, type RenderStage, RenderStalled, STALL_SECONDS, atMost, guarded } from './stall'
+
+export { ExportCancelled, RenderStalled, guarded } from './stall'
 
 export type ExportCodec = 'avc' | 'hevc' | 'av1' | 'vp9'
 export type ExportQuality = 'medium' | 'high' | 'veryHigh'
@@ -48,6 +53,13 @@ export interface ExportSettings {
   autoCrossfade: boolean
   /** Integrated loudness target in LUFS for the audio (null or absent = leave the mix as is). */
   loudness?: number | null
+  /**
+   * Bitrate rate control even where the encoder offers constant quality
+   * (quantizer): some hardware encoders stop answering in that mode.
+   */
+  preferBitrate?: boolean
+  /** Decode the media with the processor (a hardware decoder stopped answering). */
+  softwareDecode?: boolean
 }
 
 export interface ExportResult {
@@ -63,6 +75,8 @@ export interface ExportProgress {
   progress: number
   frame?: number
   frames?: number
+  /** Something the user should know about this render (a fallback after a stall). */
+  note?: string
 }
 
 export const CODEC_LABELS: Record<ExportCodec, string> = {
@@ -188,6 +202,7 @@ async function measureEncoderDelay(codec: ExportAudioCodec, rate: number): Promi
 const ACCELERATION = { auto: 'no-preference', gpu: 'prefer-hardware', cpu: 'prefer-software' } as const
 
 const QUALITIES = { medium: QUALITY_MEDIUM, high: QUALITY_HIGH, veryHigh: QUALITY_VERY_HIGH }
+const QUALITY_LEVELS = { medium: 'medium', high: 'high', veryHigh: 'very-high' } as const
 
 /** Codecs this machine can encode at the project size. */
 export async function supportedCodecs(width: number, height: number): Promise<ExportCodec[]> {
@@ -202,12 +217,6 @@ export async function supportedCodecs(width: number, height: number): Promise<Ex
   return out
 }
 
-export class ExportCancelled extends Error {
-  constructor() {
-    super('Export cancelled')
-  }
-}
-
 const dbToGain = (db: number): number => (db <= -60 ? 0 : Math.pow(10, db / 20))
 
 interface OpenMedia {
@@ -217,6 +226,9 @@ interface OpenMedia {
 
 /** Opens each media file once and decodes frames sequentially for every event. */
 export class FrameDecoder {
+  /** `software`: decode with the processor instead of the graphics card. */
+  constructor(private readonly software = false) {}
+
   private readonly media = new Map<string, Promise<OpenMedia>>()
   private readonly streams = new Map<
     string,
@@ -256,7 +268,7 @@ export class FrameDecoder {
       if (!s) {
         const track = await input.getPrimaryVideoTrack()
         if (!track) continue
-        const sink = new CanvasSink(track)
+        const sink = new CanvasSink(track, this.software ? { decoderOptions: { hardwareAcceleration: 'prefer-software' } } : {})
         const iterator = sink.canvases(src)
         const firstFrame = await iterator.next()
         s = { iterator, current: null, next: firstFrame.done ? null : firstFrame.value }
@@ -278,9 +290,9 @@ export class FrameDecoder {
   }
 
   async dispose(): Promise<void> {
-    for (const stream of this.streams.values()) await stream.iterator.return(undefined).catch(() => undefined)
+    for (const stream of this.streams.values()) await atMost(stream.iterator.return(undefined), 2000)
     this.streams.clear()
-    for (const pending of this.media.values()) (await pending.catch(() => null))?.input.dispose()
+    for (const pending of this.media.values()) (await atMost(pending, 2000))?.input.dispose()
     this.media.clear()
   }
 }
@@ -529,13 +541,24 @@ export async function exportProject(
   ctx.imageSmoothingQuality = 'high'
 
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target })
+  let encoderConfig: VideoEncoderConfig | null = null
+  let packets = 0
   const video = new CanvasSource(canvas, {
     codec: settings.codec,
-    quality: QUALITIES[settings.quality],
+    quality: settings.preferBitrate ? new Quality({ quality: QUALITY_LEVELS[settings.quality], preferBitrate: true }) : QUALITIES[settings.quality],
     keyFrameInterval: 2,
     // Automatic: the graphics card's encoder when it has one for this codec, otherwise software.
-    hardwareAcceleration: ACCELERATION[settings.encoder ?? 'auto']
+    hardwareAcceleration: ACCELERATION[settings.encoder ?? 'auto'],
+    // The last config offered is the one the encoder took.
+    onEncoderConfig: (config) => void (encoderConfig = config),
+    onEncodedPacket: () => void packets++
   })
+  const describeEncoder = (): string => {
+    const c = encoderConfig as VideoEncoderConfig | null
+    if (!c) return 'encoder not set up yet'
+    const rate = c.bitrateMode === 'quantizer' ? 'constant quality' : `${Math.round((c.bitrate ?? 0) / 1000)} kbps ${c.bitrateMode ?? ''}`.trim()
+    return `${c.codec} ${c.width}x${c.height}, ${rate}, ${c.hardwareAcceleration ?? 'no-preference'}`
+  }
   output.addVideoTrack(video, { frameRate: rate })
   let audio: AudioBufferSource | null = null
   let audioInfo: ExportResult['audio'] = null
@@ -549,42 +572,53 @@ export async function exportProject(
     audioInfo = { codec, encoderDelay: delay }
   }
 
-  const decoder = new FrameDecoder()
+  const decoder = new FrameDecoder(settings.softwareDecode)
   let finished = false
+  let frame = 0
+  const stalled = (stage: RenderStage) => (): RenderStalled => {
+    const what = stage === 'decoder' ? `decoding ${settings.softwareDecode ? 'in software' : 'the default way'}` : describeEncoder()
+    const detail = `${frame} frames sent, ${packets} packets out; ${what}`
+    return new RenderStalled(stage, frame, (encoderConfig as VideoEncoderConfig | null)?.bitrateMode === 'quantizer', detail)
+  }
   try {
     await output.start()
     let audioWritten = 0
     const audioChunk = project.settings.sampleRate // one second per chunk
     for (let i = 0; i < frames; i++) {
       if (isCancelled()) throw new ExportCancelled()
+      frame = i
       const t = span.start + i * frameDuration
-      await decoder.prepare(project, t)
+      await guarded(decoder.prepare(project, t), STALL_SECONDS.decoder, isCancelled, stalled('decoder'))
       composeFrame(ctx, layerCtx, project, settings.autoCrossfade, t, width, height, decoder.frameFor)
-      await video.add(i / rate, 1 / rate)
+      // The first frame also sets the encoder up.
+      await guarded(video.add(i / rate, 1 / rate), i === 0 ? STALL_SECONDS.firstFrame : STALL_SECONDS.frame, isCancelled, stalled('videoEncoder'))
+      if (i === 0) logLine('info', `Video encoder: ${describeEncoder()}`)
       // Keep audio slightly ahead of video so the muxer can interleave.
       if (audio && mix) {
         const wanted = Math.min(mix.length, Math.ceil(((i + 1) / rate + 1) * mix.sampleRate))
         while (audioWritten < wanted) {
           const piece = sliceAudio(mix, audioWritten, Math.min(wanted, audioWritten + audioChunk))
           if (!piece) break
-          await audio.add(piece)
+          await guarded(audio.add(piece), STALL_SECONDS.frame, isCancelled, stalled('audioEncoder'))
           audioWritten += piece.length
         }
       }
       if (i % 5 === 0) onProgress({ phase: 'video', progress: i / frames, frame: i, frames })
     }
+    frame = frames
     if (audio && mix && audioWritten < mix.length) {
       const rest = sliceAudio(mix, audioWritten, mix.length)
-      if (rest) await audio.add(rest)
+      if (rest) await guarded(audio.add(rest), STALL_SECONDS.frame, isCancelled, stalled('audioEncoder'))
     }
     onProgress({ phase: 'finalizing', progress: 1, frame: frames, frames })
     video.close()
     audio?.close()
-    await output.finalize()
+    // Finishing waits for the encoders to hand over their last frames.
+    await guarded(output.finalize(), STALL_SECONDS.finalize, () => false, stalled('videoEncoder'))
     finished = true
   } finally {
     await decoder.dispose()
-    if (!finished) await output.cancel().catch(() => undefined)
+    if (!finished) await atMost(output.cancel(), 3000)
   }
   return { loudness, audio: audioInfo }
 }

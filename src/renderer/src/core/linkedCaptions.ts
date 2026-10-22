@@ -274,3 +274,111 @@ function relayCaptions(base: Project, next: Project, transcripts: Record<string,
   }
   return { ...next, events }
 }
+
+/**
+ * `text` with its words (as splitWords counts them) replaced: null keeps a
+ * word, '' takes it out with one of the spaces around it (a line break stays).
+ */
+function replaceTokens(text: string, replace: readonly (string | null)[]): string {
+  let out = ''
+  let gap = ''
+  let i = 0
+  for (const part of text.trim().split(/(\s+)/)) {
+    if (!part) continue
+    if (/^\s+$/.test(part)) {
+      gap = !gap || (part.includes('\n') && !gap.includes('\n')) ? part : gap
+      continue
+    }
+    const r = replace[i++] ?? null
+    if (r === '') continue
+    out += (out ? gap : '') + (r ?? part)
+    gap = ''
+  }
+  return out && `${/^\s*/.exec(text)?.[0] ?? ''}${out}${/\s*$/.exec(text)?.[0] ?? ''}`
+}
+
+/** The new word in a caption's own token: emphasis markers around the old one (*word*) stay around the new ones. */
+function restyled(token: string, words: string[]): string {
+  if (words.length === 0) return ''
+  const open = token.length > 1 && token.startsWith('*') ? '*' : ''
+  const close = token.length > 1 && /\*[^\p{L}\p{N}*]*$/u.test(token) ? '*' : ''
+  return `${open}${words.join(' ')}${close}`
+}
+
+/**
+ * Linked captions after words `from`..`to` of a file's transcript were
+ * corrected (editTranscriptWords, `before` -> `after`): caption words of those
+ * transcript words take the new text, the words after them keep pointing at
+ * their own word, and a caption left with nothing to show goes. Works on a
+ * draft (core/actions.ts editTranscript).
+ */
+export function followTranscriptEdit(
+  events: TimelineEvent[],
+  mediaId: string,
+  from: number,
+  to: number,
+  before: MediaTranscript,
+  after: MediaTranscript
+): void {
+  const delta = after.words.length - before.words.length
+  const count = to - from + 1
+  const fresh = after.words.slice(from, from + count + delta).map((word, j) => ({ word, index: from + j }))
+  // Each new word goes to the old word it replaces: one to one, or the old word under its middle.
+  const owned: { word: CaptionWord; index: number }[][] = Array.from({ length: count }, () => [])
+  for (const [j, item] of fresh.entries()) {
+    if (fresh.length === count) {
+      owned[j].push(item)
+      continue
+    }
+    const middle = (item.word.start + item.word.end) / 2
+    let best = 0
+    let distance = Infinity
+    for (let k = 0; k < count; k++) {
+      const old = before.words[from + k]
+      const d = middle < old.start ? old.start - middle : middle > old.end ? middle - old.end : 0
+      if (d < distance) {
+        distance = d
+        best = k
+      }
+    }
+    owned[best].push(item)
+  }
+
+  const gone = new Set<string>()
+  for (const e of events) {
+    const content = e.text
+    const words = content?.words
+    if (!content || !words?.some((w) => w.src?.[0] === mediaId && w.src[1] >= from)) continue
+    const tokens = splitWords(content.text)
+    const aligned = tokens.length === words.length
+    const nextWords: CaptionWord[] = []
+    const replace: (string | null)[] = []
+    let text = content.text
+    words.forEach((w, i) => {
+      const at = w.src?.[0] === mediaId ? w.src[1] : -1
+      if (at < from) {
+        nextWords.push(w)
+        replace.push(null)
+      } else if (at > to) {
+        nextWords.push({ ...w, src: [mediaId, at + delta] })
+        replace.push(null)
+      } else {
+        const old = before.words[at]
+        const mine = owned[at - from]
+        // Caption words run on the event's clock: new times are placed like the old word's.
+        const scale = old.end > old.start ? (w.end - w.start) / (old.end - old.start) : 0
+        const place = (t: number): number => w.start + (t - old.start) * scale
+        for (const { word, index } of mine) nextWords.push({ text: word.text, start: place(word.start), end: place(word.end), src: [mediaId, index] })
+        const said = mine.map((m) => m.word.text)
+        if (aligned) replace.push(restyled(tokens[i], said))
+        else text = text.replace(w.text, said.join(' '))
+      }
+    })
+    text = aligned ? replaceTokens(text, replace) : text.replace(/ {2,}/g, ' ').trim()
+    content.words = nextWords
+    content.text = text
+    if (nextWords.length === 0 && !text.trim()) gone.add(e.id)
+  }
+  if (gone.size === 0) return
+  for (let i = events.length - 1; i >= 0; i--) if (gone.has(events[i].id)) events.splice(i, 1)
+}

@@ -2,6 +2,7 @@ import { BufferTarget, StreamTarget, type StreamTargetChunk, type Target } from 
 import { bridge } from '../platform'
 
 export interface ExportDestination {
+  /** Where Mediabunny writes; a new one after restart(). */
   target: Target
   /** Writes a whole file made without Mediabunny (GIF); use instead of `target`. */
   writeAll(data: Uint8Array<ArrayBuffer>): Promise<void>
@@ -11,6 +12,8 @@ export interface ExportDestination {
   finish(): Promise<void>
   /** Removes a partial file after an error or cancel. */
   discard(): Promise<void>
+  /** Starts the file over with a new `target` (rendering again after a stall). */
+  restart(): Promise<void>
   reveal?: () => void
 }
 
@@ -35,29 +38,40 @@ export async function chooseDestination(suggestedName: string, type: FileType = 
   if (bridge) {
     const path = await bridge.pickExportPath(suggestedName)
     if (!path) return null
-    const id = await bridge.openFile(path)
-    let closed = false
-    const close = async (): Promise<void> => {
-      if (closed) return
-      closed = true
-      await bridge!.closeFile(id)
+    // Opening the file again empties it: a restart writes it from the start.
+    const open = async (): Promise<{ id: number; target: Target; close: () => Promise<void> }> => {
+      const id = await bridge!.openFile(path)
+      let closed = false
+      const close = async (): Promise<void> => {
+        if (closed) return
+        closed = true
+        await bridge!.closeFile(id)
+      }
+      const writable = new WritableStream<StreamTargetChunk>({
+        write: (chunk) => bridge!.writeFile(id, chunk.position, chunk.data),
+        close,
+        abort: close
+      })
+      return { id, target: new StreamTarget(writable, { chunked: true }), close }
     }
-    const writable = new WritableStream<StreamTargetChunk>({
-      write: (chunk) => bridge!.writeFile(id, chunk.position, chunk.data),
-      close,
-      abort: close
-    })
-    return {
-      target: new StreamTarget(writable, { chunked: true }),
-      writeAll: (data) => bridge!.writeFile(id, 0, data),
+    let file = await open()
+    const destination: ExportDestination = {
+      target: file.target,
+      writeAll: (data) => bridge!.writeFile(file.id, 0, data),
       label: path,
-      finish: close,
+      finish: () => file.close(),
       discard: async () => {
-        await close()
+        await file.close()
         await bridge!.discardFile(path)
+      },
+      restart: async () => {
+        await file.close()
+        file = await open()
+        destination.target = file.target
       },
       reveal: () => void bridge!.revealFile(path)
     }
+    return destination
   }
 
   const picker = (window as unknown as SaveFilePickerWindow).showSaveFilePicker
@@ -67,8 +81,8 @@ export async function chooseDestination(suggestedName: string, type: FileType = 
         suggestedName,
         types: [{ description: type.description, accept: { [type.mimeType]: [`.${type.extension}`] } }]
       })
-      const writable = await handle.createWritable()
-      return {
+      let writable = await handle.createWritable()
+      const destination: ExportDestination = {
         target: new StreamTarget(writable, { chunked: true }),
         writeAll: async (data) => {
           const writer = writable.getWriter()
@@ -77,8 +91,14 @@ export async function chooseDestination(suggestedName: string, type: FileType = 
         },
         label: handle.name,
         finish: async () => undefined,
-        discard: async () => undefined
+        discard: async () => undefined,
+        restart: async () => {
+          await writable.abort().catch(() => undefined)
+          writable = await handle.createWritable()
+          destination.target = new StreamTarget(writable, { chunked: true })
+        }
       }
+      return destination
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return null
       throw err
@@ -86,14 +106,18 @@ export async function chooseDestination(suggestedName: string, type: FileType = 
   }
 
   // Last resort: render in memory, then download.
-  const target = new BufferTarget()
+  let target = new BufferTarget()
   let whole: Uint8Array<ArrayBuffer> | null = null
-  return {
+  const destination: ExportDestination = {
     target,
     writeAll: async (data) => {
       whole = data
     },
     label: suggestedName,
+    restart: async () => {
+      target = new BufferTarget()
+      destination.target = target
+    },
     finish: async () => {
       const data = whole ?? target.buffer
       if (!data) return
@@ -106,6 +130,7 @@ export async function chooseDestination(suggestedName: string, type: FileType = 
     },
     discard: async () => undefined
   }
+  return destination
 }
 
 const RENDER_EXTENSIONS = ['mp4', 'gif', 'mp3', 'wav', 'flac', 'm4a', 'ogg']

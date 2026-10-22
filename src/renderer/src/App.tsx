@@ -16,6 +16,8 @@ import { isDirty, projectName, recoverAutosave, saveProject, startLaunchProjects
 import { startAutosave } from './core/autosave'
 import { checkForUpdates } from './ui/updates'
 import { startAgentHost } from './agent/host'
+import * as A from './core/actions'
+import { bridge } from './platform'
 
 export function App(): React.JSX.Element {
   useGlobalShortcuts()
@@ -28,13 +30,23 @@ export function App(): React.JSX.Element {
     window.__boarReady = true
     window.__boarSave = () => saveProject(false)
     startAutosave()
-    // A project left unsaved by a crash first, then the one Boar was opened with.
-    void recoverAutosave().then(startLaunchProjects)
+    // A project left unsaved by a crash first, then the one Boar was opened with,
+    // then the problem log when Boar or this page stopped unexpectedly.
+    void recoverAutosave()
+      .then(startLaunchProjects)
+      .then(() => bridge?.takeCrashNotice())
+      .then((notice) => {
+        if (notice) A.openDialog({ kind: 'log', notice })
+      })
+    const stopProblems = bridge?.onProblem((message) => A.setStatus(message))
     // A few seconds after opening, so the check never slows down the start.
     const timer = window.setTimeout(() => {
       if (useEditor.getState().options.checkUpdates) void checkForUpdates(false)
     }, 3000)
-    return () => window.clearTimeout(timer)
+    return () => {
+      window.clearTimeout(timer)
+      stopProblems?.()
+    }
   }, [])
 
   // Window title "Name * - Boar"; the main process reads __boarUnsaved on close.

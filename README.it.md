@@ -62,7 +62,7 @@
 ### Sottotitoli e testo
 
 - **Sottotitoli automatici parola per parola** con Whisper, in locale: karaoke, box sulla parola, parole che compaiono, una parola alla volta, sottotitoli classici. Per tutta la timeline (anche una clip tagliata in tanti pezzi), per le clip selezionate o per la selezione temporale. I sottotitoli seguono il montaggio: se poi tagli, accorci, sposti o elimini le clip, si spostano, si accorciano o spariscono con le loro parole (*Options › Captions Follow Clip Edits*).
-- **Montaggio dal testo** (tab *Transcript*): il parlato diventa testo; selezioni le parole, premi `Canc` e il video si taglia. Un pulsante seleziona ehm, uhm e parole ripetute; un altro accorcia le pause lunghe.
+- **Montaggio dal testo** (tab *Transcript*): il parlato diventa testo; selezioni le parole, premi `Canc` e il video si taglia. Un pulsante seleziona ehm, uhm e parole ripetute; un altro accorcia le pause lunghe. Doppio clic su una parola capita male (o seleziona le parole e premi `Invio`) per correggerla: cambiano anche i sottotitoli fatti da quelle parole.
 - Parole chiave evidenziate (`*parola*` nel testo, o in automatico) ed emoji sulle parole a tema.
 - 21 preset di testo, tra cui titolo d'aggancio in alto e progress bar; oltre 30 font inclusi; animazioni di entrata e uscita.
 - **Forme per indicare le cose** (scheda *Generators* o menu *Insert*): rettangolo, ellisse e freccia, rosse di partenza, con contorno, riempimento, angoli arrotondati, ombra e un'animazione che le disegna sullo schermo. Si ridimensionano liberamente da ogni lato o angolo; la freccia si punta trascinandone le estremità. *Solid Color* riempie il fotogramma di un solo colore.
@@ -82,7 +82,7 @@
 - Transizioni: zoom, whip pan, spin, glitch, flash, dissolvenza al nero, blur, pixel. Trascinale sull'inizio o sulla fine di una clip, o dove due clip si sovrappongono: tutta la sovrapposizione diventa la transizione e il suo nome compare sulla timeline. Clic sul nome per cambiarne tipo o durata.
 - Maschere: ellisse, rettangolo o forma custom disegnata a punti e animata con i keyframe, tutto in una finestra sopra l'immagine: un'ellisse o un rettangolo si sistemano trascinando le maniglie, oppure scrivendo posizione e dimensioni in pixel. La forma fa parte dell'immagine: spostandola con Pan/Crop la parte mascherata si sposta con lei. **Smart Select** scontorna un oggetto con un clic (altri clic aggiungono o tolgono parti) e *Track Motion* lo segue per tutta la clip.
 - Event Pan/Crop con keyframe: sulla barra dei keyframe clic, `Ctrl`+clic o `Shift`+clic per selezionarli, trascina per spostarli, `Canc` per eliminarli, `Ctrl+C` / `Ctrl+V` per copiarli al cursore o in un altro evento. Le frecce spostano il riquadro (o, nell'anteprima, l'immagine cliccata) di un pixel, dieci con `Shift`; `Shift`+trascina lo sposta lentamente.
-- **Render As** in MP4 (H.264, HEVC, AV1, VP9): scegli chi codifica, la scheda video (NVENC, Quick Sync, AMF, VideoToolbox) o il processore, e l'audio (AAC o Opus). L'anteprima e l'export usano lo stesso motore: quello che vedi è quello che esporti.
+- **Render As** in MP4 (H.264, HEVC, AV1, VP9): scegli chi codifica, la scheda video (NVENC, Quick Sync, AMF, VideoToolbox) o il processore, e l'audio (AAC o Opus). L'anteprima e l'export usano lo stesso motore: quello che vedi è quello che esporti. Se l'encoder o il decoder della scheda video smette di rispondere a metà render, Boar lo fa ripartire in un altro modo (un altro controllo del bitrate, poi il processore) invece di restare bloccato.
 - Render **solo audio** in MP3, WAV, FLAC, M4A (AAC) o OGG (Opus): tutto il mix o una sola traccia audio, con gli stessi livelli di loudness dei video.
 - Render in **GIF animata**: dimensione, frame rate e colori a scelta, in loop; con una selezione temporale diventa un breve loop di qualsiasi momento.
 
@@ -109,7 +109,7 @@ All'avvio Boar controlla se c'è una nuova versione e propone di installarla: su
 
 ### Problemi e idee
 
-*Help › Report a Problem* mostra i dettagli che servono a una segnalazione (versione di Boar, sistema, scheda video e i suoi encoder) da copiare, e apre la pagina delle segnalazioni di Boar su GitHub. Boar non invia niente da solo.
+*Help › Report a Problem* mostra i dettagli che servono a una segnalazione (versione di Boar, sistema, scheda video e i suoi encoder) da copiare, e apre la pagina delle segnalazioni di Boar su GitHub. *Help › Problem Log* mostra cosa Boar ha annotato su render, crash ed errori (driver video, impostazioni dell'encoder, dove un render si è fermato); si apre da solo dopo che Boar si è chiuso inaspettatamente. Copialo nella segnalazione: Boar non invia niente da solo.
 
 ### Sottotitoli e Transcript
 

@@ -4,7 +4,7 @@ import { FLICKS_PER_SECOND, type Flicks, fps, frameFlicks, secondsToFlicks } fro
 import { eventEnd, isGenerated, projectEnd, sourceTime, timelineTime } from '../core/timeline'
 import type { MediaItem, TimelineEvent } from '../core/types'
 import { CAPTION_STYLES, alignWords, chunkWords } from '../core/captions'
-import { type TimelineWord, defaultSpeechTrack, hasSpeech, speechTracks, timedWord, wordFlag, wordsOnTimeline } from '../core/transcript'
+import { type TimelineWord, defaultSpeechTrack, hasSpeech, speechTracks, timedWord, transcriptRun, wordFlag, wordsOnTimeline } from '../core/transcript'
 import { TEXT_PRESETS } from '../core/text'
 import { type ShapeContent, type ShapeKind, SHAPE_KINDS, convertShape } from '../core/shapes'
 import { MAX_STRETCH, MIN_STRETCH, fillZoom, framingZoom, normalizeAngle, panCropAt, sourceToOutput, upsertKey, withStretch } from '../core/pancrop'
@@ -615,6 +615,39 @@ const TOOLS: Tool[] = [
       if (!selected.size) return 'No matching words: nothing cut'
       A.deleteWords(words, selected)
       return `Cut ${selected.size} word(s). New duration ${sec(projectEnd(get().project))} s`
+    }
+  },
+  {
+    name: 'edit_transcript',
+    title: 'Correct transcript words',
+    description:
+      'Corrects misheard words in the transcript (names, spelling, punctuation); captions made from those words show the new text. Each edit gives the words as [start, end] seconds from get_transcript mode=words and the text that replaces them (one word, several, or "" to take them out of the transcript and captions; the speech is not cut: use remove_words for that).',
+    inputSchema: object({
+      track: S.int('Track number (default: the speech track)'),
+      edits: {
+        type: 'array',
+        items: { type: 'array', items: { type: ['number', 'string'] } },
+        description: '[[start, end, "new text"], ...]: the words whose middle is in [start, end] become the new text'
+      }
+    }),
+    run: (a) => {
+      const id = speechTrack(a)
+      if (!Array.isArray(a.edits) || a.edits.length === 0) throw new ToolError('"edits" must be [[start, end, "new text"], ...]')
+      const done: string[] = []
+      for (const item of a.edits as unknown[]) {
+        if (!Array.isArray(item) || item.length < 3 || typeof item[2] !== 'string') throw new ToolError('Each edit must be [start, end, "new text"]')
+        const [from, to] = [secondsToFlicks(Number(item[0])), secondsToFlicks(Number(item[1]))]
+        // Word positions are read again for each edit: a correction can change the word count.
+        const { words } = trackWords(id)
+        if (!words.length) throw new ToolError('No transcript on this track: call transcribe first')
+        const positions = words.flatMap((w, i) => ((w.start + w.end) / 2 >= from && (w.start + w.end) / 2 <= to ? [i] : []))
+        if (!positions.length) throw new ToolError(`No word between ${item[0]} and ${item[1]} s${done.length ? ` (done: ${done.join('; ')})` : ''}`)
+        const run = transcriptRun(words, positions)
+        if (!run) throw new ToolError(`The words between ${item[0]} and ${item[1]} s are not one stretch of one file: correct them one at a time`)
+        const was = positions.map((i) => words[i].text).join(' ')
+        if (A.editTranscript(run.mediaId, run.from, run.to, item[2])) done.push(`"${was}" -> "${item[2]}"`)
+      }
+      return done.length ? `Corrected: ${done.join('; ')}` : 'Nothing changed: the words already read like that'
     }
   },
   {
@@ -1927,8 +1960,9 @@ const TOOLS: Tool[] = [
         await destination.finish()
         const seconds = ((performance.now() - began) / 1000).toFixed(1)
         A.setStatus(`Rendered ${destination.label} in ${seconds} s`)
+        if (result.movedToProcessor) A.setOption('renderEncoder', 'cpu')
         const level = result.loudness ? `; loudness ${result.loudness.before.toFixed(1)} → ${result.loudness.after.toFixed(1)} LUFS` : ''
-        return `Rendered ${destination.label} in ${seconds} s (${sec(end - start)} s of the timeline${level})`
+        return `Rendered ${destination.label} in ${seconds} s (${sec(end - start)} s of the timeline${level})${result.note ? `. ${result.note}` : ''}`
       } catch (err) {
         await destination.discard().catch(() => undefined)
         throw err

@@ -27,6 +27,7 @@ import { UpdateDialog } from './UpdateDialog'
 import { ThemesDialog } from './ThemesDialog'
 import { ShortcutsWindow } from './ShortcutsWindow'
 import { ReportDialog } from './ReportDialog'
+import { LogDialog } from './LogDialog'
 
 function Modal({ title, children, width = 460 }: { title: string; children: React.ReactNode; width?: number }): React.JSX.Element {
   return (
@@ -352,6 +353,8 @@ export function Dialogs(): React.JSX.Element | null {
       return <AboutDialog />
     case 'report':
       return <ReportDialog />
+    case 'log':
+      return <LogDialog notice={dialog.notice} />
     case 'update':
       return <UpdateDialog info={dialog.info} error={dialog.error} />
   }

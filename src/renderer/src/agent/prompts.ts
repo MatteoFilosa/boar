@@ -41,7 +41,7 @@ const PROMPTS: Prompt[] = [
         '1. get_project to see the timeline. If the speech is not transcribed, call transcribe.',
         '2. get_transcript mode=words and remove_words with fillers=true. Look at the "maybe" fillers (cioè, tipo, allora, like...) in context and cut only the ones that are padding, by their [start, end].',
         '3. remove_silences with min_silence 0.5.',
-        `4. add_captions with style ${a.style || 'cap-highlight'} and emphasis=true.`,
+        `4. Fix misheard words (names, brands) with edit_transcript, then add_captions with style ${a.style || 'cap-highlight'} and emphasis=true.`,
         '5. auto_zoom mode=cuts.',
         '6. get_frame at a few times to check the result, then summarize what you changed (every step can be undone with undo).'
       ].join('\n')

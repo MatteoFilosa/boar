@@ -62,7 +62,7 @@
 ### Captions and text
 
 - **Automatic word-by-word captions** with Whisper, locally: karaoke, box on the spoken word, words popping in, one word at a time, classic subtitles. For the whole timeline (even a clip cut into many pieces), the selected clips or the time selection. Captions follow the edit: cut, trim, move or delete the clips afterwards and they move, shrink or go away with their words (*Options › Captions Follow Clip Edits*).
-- **Text-based editing** (*Transcript* tab): speech becomes text; select words, press `Delete` and the video is cut. One button selects ums, uhs and repeated words; another shortens long pauses.
+- **Text-based editing** (*Transcript* tab): speech becomes text; select words, press `Delete` and the video is cut. One button selects ums, uhs and repeated words; another shortens long pauses. Double-click a misheard word (or select words and press `Enter`) to correct it: the captions made from it change too.
 - Highlighted keywords (`*word*` in the text, or automatic) and emoji on matching words.
 - 21 text presets, including a hook title at the top and a progress bar; more than 30 bundled fonts; in and out animations.
 - **Shapes to point at things** (*Generators* tab or *Insert*): rectangle, ellipse and arrow, red to start with, with outline, fill, rounded corners, shadow and an animation that draws them on screen. Resize them freely from any side or corner; point an arrow by dragging its ends. *Solid Color* fills the frame with one color.
@@ -82,7 +82,7 @@
 - Transitions: zoom, whip pan, spin, glitch, flash, dip to black, blur, pixelate. Drag one onto the start or the end of a clip, or where two clips overlap: the whole overlap becomes the transition, and its name shows on the timeline. Click the name to change the type or the length.
 - Masks: ellipse, rectangle or a custom shape drawn with points and animated with keyframes, all in one window over the picture: drag an ellipse or rectangle into place by its handles, or type its position and size in pixels. The shape is part of the picture, so moving it with Pan/Crop takes the masked part along. **Smart Select** cuts out an object with a click (more clicks add or leave out parts) and *Track Motion* follows it through the clip.
 - Event Pan/Crop with keyframes: click, `Ctrl`+click or `Shift`+click them on the keyframe bar to select, drag to move, `Delete` to remove, `Ctrl+C` / `Ctrl+V` to copy them to the cursor or to another event. The arrow keys move the frame (or, in the preview, the clicked picture) by one pixel, ten with `Shift`; `Shift`+drag moves it slowly.
-- **Render As** MP4 (H.264, HEVC, AV1, VP9): you choose who encodes, the graphics card (NVENC, Quick Sync, AMF, VideoToolbox) or the processor, and the audio (AAC or Opus). Preview and export use the same engine: what you see is what you export.
+- **Render As** MP4 (H.264, HEVC, AV1, VP9): you choose who encodes, the graphics card (NVENC, Quick Sync, AMF, VideoToolbox) or the processor, and the audio (AAC or Opus). Preview and export use the same engine: what you see is what you export. If the graphics card's encoder or decoder stops answering in the middle of a render, Boar starts it again another way (another rate control, then the processor) instead of hanging.
 - **Sound only** renders to MP3, WAV, FLAC, M4A (AAC) or OGG (Opus): the whole mix or one audio track alone, with the same loudness targets as videos.
 - **Animated GIF** renders: size, frame rate and colors to choose, looping; with a time selection it makes a short loop of any moment.
 
@@ -109,7 +109,7 @@ Boar looks for a new release when it starts and offers to install it: on Windows
 
 ### Problems and ideas
 
-*Help › Report a Problem* shows the details a report needs (Boar version, system, graphics card and its encoders) to copy, and opens Boar's issue page on GitHub. Boar sends nothing by itself.
+*Help › Report a Problem* shows the details a report needs (Boar version, system, graphics card and its encoders) to copy, and opens Boar's issue page on GitHub. *Help › Problem Log* shows what Boar wrote down about renders, crashes and errors (graphics driver, encoder settings, where a render stopped); it opens by itself after Boar closed unexpectedly. Copy it into the report: Boar sends nothing by itself.
 
 ### Captions and Transcript
 

@@ -2181,6 +2181,12 @@ body.moving-window * {
   border: 1px solid rgba(255, 97, 97, 0.45);
 }
 
+.render-result.note {
+  background: var(--hover);
+  border: 1px solid var(--line-strong);
+  word-break: normal;
+}
+
 .caption-scope {
   display: flex;
   flex-direction: column;
@@ -3248,6 +3254,15 @@ body.dragging-track * {
   color: var(--on-accent);
 }
 
+.tr-edit {
+  field-sizing: content;
+  min-width: 5ch;
+  max-width: 100%;
+  height: 24px;
+  margin-right: 4px;
+  font-size: 14px;
+}
+
 .tr-pause {
   display: inline-block;
   margin: 0 4px 0 0;
@@ -3346,6 +3361,18 @@ body.dragging-track * {
   word-break: break-all;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.log-box pre {
+  height: min(52vh, 460px);
+  overflow: auto;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.log-notice {
+  margin: 0 0 10px;
+  word-break: normal;
 }
 
 .agent-note {

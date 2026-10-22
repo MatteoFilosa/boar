@@ -153,6 +153,7 @@ export const commands = {
   searchCommands: (): void => document.querySelector<HTMLInputElement>('#command-search')?.select(),
   about: (): void => A.openDialog({ kind: 'about' }),
   reportProblem: (): void => A.openDialog({ kind: 'report' }),
+  problemLog: (): void => A.openDialog({ kind: 'log' }),
   checkForUpdates: (): void => void checkForUpdates(true),
   toggleUpdateCheck: (): void => A.toggleOption('checkUpdates'),
   toggleProxies: (): void => A.toggleOption('proxies'),

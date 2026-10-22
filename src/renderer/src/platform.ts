@@ -51,6 +51,15 @@ export interface BoarBridge {
   onCaptionProgress(callback: (progress: CaptionProgress) => void): () => void
   /** System and app versions for problem reports (Help › Report a Problem). */
   systemInfo(): Promise<SystemInfo>
+  /** A line for the problem log (src/main/log.ts). */
+  log(level: 'info' | 'warn' | 'error', message: string): void
+  /** The end of the problem log, for Help › Problem Log. */
+  readLog(): Promise<{ text: string; path: string }>
+  revealLog(): Promise<void>
+  /** Why the last session or this page ended badly (taken once); null when nothing went wrong. */
+  takeCrashNotice(): Promise<string | null>
+  /** Problems the main process sees while Boar runs (the graphics process stopped). */
+  onProblem(callback: (message: string) => void): () => void
   /** Bytes of a bundled file:// asset (packaged app). */
   readAsset(url: string): Promise<Uint8Array>
   /** Proxies of slow-to-seek videos, kept by the main process (path of the source file). */

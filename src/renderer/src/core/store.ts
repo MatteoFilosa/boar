@@ -142,6 +142,8 @@ export type Dialog =
   | { kind: 'shortcuts' }
   | { kind: 'about' }
   | { kind: 'report' }
+  /** Help › Problem Log; `notice` when it opens by itself after a crash. */
+  | { kind: 'log'; notice?: string }
   | { kind: 'update'; info: UpdateInfo | null; error?: string }
 
 export interface EditorState {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { alignWords, chunkWords } from '@/core/captions'
 import { formatSrt, parseSrt } from '@/core/srt'
-import { type MediaTranscript, longPauses, rangesForWords, wordFlag, wordsOnTimeline } from '@/core/transcript'
+import { type MediaTranscript, editTranscriptWords, longPauses, rangesForWords, transcriptRun, wordFlag, wordsOnTimeline } from '@/core/transcript'
 import * as A from '@/core/actions'
 import { clip, ev, load, project, s, sec, spans, state, track } from './helpers'
 
@@ -155,5 +155,96 @@ describe('captions follow the clips', () => {
     load(project([track('c'), track('v')], [caption(), clip('a', 'v', 0, 6)]), { transcripts: t, options: { linkedCaptions: false } })
     A.commit((d) => void (d.events.find((e) => e.id === 'a')!.start = s(10)))
     expect(spans('c')).toEqual([[1, 4]])
+  })
+})
+
+describe('correcting the transcript', () => {
+  const t = (): Record<string, MediaTranscript> => ({ m: transcript(['hello', 1, 1.5], ['big', 2, 2.5], ['world', 3, 3.5]) })
+  const caption = (text = 'hello big world'): ReturnType<typeof clip> =>
+    clip('cap', 'c', 1, 3, {
+      mediaId: '',
+      text: {
+        ...({} as NonNullable<ReturnType<typeof clip>['text']>),
+        text,
+        words: [
+          { text: 'hello', start: 0, end: 0.5, src: ['m', 0] },
+          { text: 'big', start: 1, end: 1.5, src: ['m', 1] },
+          { text: 'world', start: 2, end: 2.5, src: ['m', 2] }
+        ]
+      }
+    })
+  const words = (): [string, number, number, number | undefined][] =>
+    (ev('cap').text?.words ?? []).map((w) => [w.text, w.start, w.end, w.src?.[1]])
+
+  test('a word keeps its time; more or fewer words share it', () => {
+    const { m } = t()
+    expect(editTranscriptWords(m, 1, 1, 'huge').words[1]).toEqual({ text: 'huge', start: 2, end: 2.5 })
+    const split = editTranscriptWords(m, 1, 1, 'very large').words
+    expect(split.map((w) => w.text)).toEqual(['hello', 'very', 'large', 'world'])
+    expect(split[1].start).toBe(2)
+    expect(split[2].end).toBe(2.5)
+    expect(editTranscriptWords(m, 0, 1, 'hi').words.map((w) => [w.text, w.start, w.end])).toEqual([
+      ['hi', 1, 2.5],
+      ['world', 3, 3.5]
+    ])
+    expect(editTranscriptWords(m, 1, 1, ' ').words.map((w) => w.text)).toEqual(['hello', 'world'])
+  })
+
+  test('only consecutive words of one file make a run', () => {
+    const tw = wordsOnTimeline([clip('a', 'v', 0, 2.3), clip('b', 'v', 10, 2, { offsetSeconds: 2.8 })], t())
+    expect(transcriptRun(tw, [1, 0])).toEqual({ mediaId: 'm', from: 0, to: 1 })
+    expect(transcriptRun(tw, [0, 2])).toBeNull()
+  })
+
+  test('the caption shows the corrected word, and undo brings both back', () => {
+    load(project([track('c'), track('v')], [caption(), clip('a', 'v', 0, 6)]), { transcripts: t() })
+    expect(A.editTranscript('m', 1, 1, 'huge')).toBe(true)
+    expect(ev('cap').text?.text).toBe('hello huge world')
+    expect(words()[1]).toEqual(['huge', 1, 1.5, 1])
+    expect(state().transcripts.m.words[1].text).toBe('huge')
+    A.undo()
+    expect(ev('cap').text?.text).toBe('hello big world')
+    expect(state().transcripts.m.words[1].text).toBe('big')
+    expect(state().transcripts).toBe(state().savedTranscripts)
+    A.redo()
+    expect(state().transcripts.m.words[1].text).toBe('huge')
+  })
+
+  test('two words for one: later words keep pointing at their own word', () => {
+    load(project([track('c'), track('v')], [caption('hello *big* world'), clip('a', 'v', 0, 6)]), { transcripts: t() })
+    A.editTranscript('m', 1, 1, 'very large')
+    expect(ev('cap').text?.text).toBe('hello *very large* world')
+    expect(words().map((w) => [w[0], w[3]])).toEqual([
+      ['hello', 0],
+      ['very', 1],
+      ['large', 2],
+      ['world', 3]
+    ])
+    // The two share the old word's time on the caption's clock, by length.
+    expect([words()[1][1], words()[2][2]]).toEqual([1, 1.5])
+    expect(words()[1][2]).toBeCloseTo(1 + (0.5 * 5) / 11)
+    // Linked captions still follow clip edits with the shifted indices.
+    A.cutRanges(['a'], [{ start: s(2.8), end: s(3.8) }], 'remove')
+    expect(ev('cap').text?.text).toBe('hello *very large*')
+  })
+
+  test('a word taken out leaves the caption; a caption with nothing left goes', () => {
+    load(project([track('c'), track('v')], [caption('hello\nbig world'), clip('a', 'v', 0, 6)]), { transcripts: t() })
+    A.editTranscript('m', 1, 1, '')
+    expect(ev('cap').text?.text).toBe('hello\nworld')
+    expect(words().map((w) => w[3])).toEqual([0, 1])
+    A.editTranscript('m', 0, 1, '')
+    expect(spans('c')).toEqual([])
+    // Undoing the edits does not cut the speech: the clip never changed.
+    expect(spans('v')).toEqual([[0, 6]])
+  })
+
+  test('a correction without captions is still one undo step', () => {
+    load(project([track('v')], [clip('a', 'v', 0, 6)]), { transcripts: t() })
+    expect(A.editTranscript('m', 2, 2, 'World!')).toBe(true)
+    expect(state().past.length).toBe(1)
+    expect(A.editTranscript('m', 2, 2, 'World!')).toBe(false)
+    A.undo()
+    expect(state().transcripts.m.words[2].text).toBe('world')
   })
 })

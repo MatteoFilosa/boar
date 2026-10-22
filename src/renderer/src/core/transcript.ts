@@ -1,4 +1,4 @@
-import type { CaptionWord } from './text'
+import { type CaptionWord, retimeWords } from './text'
 import { type Flicks, FLICKS_PER_SECOND, secondsToFlicks } from './time'
 import { sourceLength, timelineTime } from './timeline'
 import type { Project, TimelineEvent } from './types'
@@ -53,6 +53,26 @@ export function wordsOnTimeline(events: readonly TimelineEvent[], transcripts: R
     })
   }
   return out
+}
+
+/**
+ * The transcript with words `from`..`to` (indices, both included) corrected to
+ * `text`: the same number of words keep their own times, otherwise the new
+ * words share the old ones' time by length. Empty text takes the words out
+ * (the speech stays: cutting it is deleteWords).
+ */
+export function editTranscriptWords(t: MediaTranscript, from: number, to: number, text: string): MediaTranscript {
+  const words = retimeWords(t.words.slice(from, to + 1), text).map(({ text, start, end }) => ({ text, start, end }))
+  return { ...t, words: [...t.words.slice(0, from), ...words, ...t.words.slice(to + 1)] }
+}
+
+/** The words of `words` (positions) as one run of a transcript, if they are: same file, consecutive indices. */
+export function transcriptRun(words: readonly TimelineWord[], positions: readonly number[]): { mediaId: string; from: number; to: number } | null {
+  const run = [...positions].sort((a, b) => a - b).map((i) => words[i])
+  if (run.length === 0 || run.some((w) => !w)) return null
+  const { mediaId, index } = run[0]
+  if (run.some((w, k) => w.mediaId !== mediaId || w.index !== index + k)) return null
+  return { mediaId, from: index, to: index + run.length - 1 }
 }
 
 /** A timeline word as a caption word (seconds), linked to its place in the transcript. */
