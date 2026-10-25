@@ -4,6 +4,7 @@ import type { Flicks } from './time'
 import type { MediaTranscript } from './transcript'
 import type { ShortCandidate } from './shorts'
 import type { TransitionSide } from './transitions'
+import type { SafeGuide } from './safeZones'
 import type { UpdateInfo } from '../platform'
 
 export type PreviewQuality = 'draft' | 'preview' | 'good' | 'best'
@@ -32,8 +33,10 @@ export interface EditorOptions {
   loop: boolean
   previewQuality: PreviewQuality
   masterDb: number
-  /** Show title/action safe areas (16:9) or social app UI zones (9:16) over the preview. */
+  /** Show title/action safe areas (horizontal) or the areas a short video app covers (vertical) over the preview. */
   safeAreas: boolean
+  /** Which app's covered areas vertical projects show. */
+  safeGuide: SafeGuide
   /** Deleting, cutting and pasting close/open gaps automatically. */
   autoRipple: boolean
   rippleMode: RippleMode
@@ -77,6 +80,7 @@ const DEFAULT_OPTIONS: EditorOptions = {
   previewQuality: 'preview',
   masterDb: 0,
   safeAreas: false,
+  safeGuide: 'reels',
   autoRipple: false,
   rippleMode: 'tracks',
   renderLoudness: -14,

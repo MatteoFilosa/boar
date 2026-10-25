@@ -2,6 +2,8 @@ import * as A from '../core/actions'
 import { type EventAttribute, mediaById, useEditor } from '../core/store'
 import { FLICKS_PER_SECOND, type Flicks, fps, frameFlicks, secondsToFlicks } from '../core/time'
 import { eventEnd, isGenerated, projectEnd, sourceTime, timelineTime } from '../core/timeline'
+import { eventBox } from '../core/eventBox'
+import { SAFE_GUIDES, type SafeSide, coveredSides, fillsFrame, safeRect, safeSpec } from '../core/safeZones'
 import type { MediaItem, TimelineEvent } from '../core/types'
 import { CAPTION_STYLES, alignWords, chunkWords } from '../core/captions'
 import { type TimelineWord, defaultSpeechTrack, hasSpeech, speechTracks, timedWord, transcriptRun, wordFlag, wordsOnTimeline } from '../core/transcript'
@@ -13,7 +15,8 @@ import { smartOutline, trackOutline } from '../engine/smartMask'
 import { AUDIO_FX, VIDEO_FX, cloneFx, fxDef, hexToColor } from '../core/fx'
 import { TRANSITIONS } from '../core/transitions'
 import type { Corner } from '../core/layouts'
-import { renderStill, supportedCodecs } from '../engine/export'
+import { encoderSupport, renderStill } from '../engine/export'
+import { usableChoice } from '../engine/encoders'
 import { type RenderKind, renderFileType, renderProject } from '../engine/render'
 import { type SoundFormat, soundSupport } from '../engine/exportSound'
 import { chooseDestination, withExtension } from '../engine/targets'
@@ -821,6 +824,58 @@ const TOOLS: Tool[] = [
       A.setFrameSize(w, h)
       A.closeDialog()
       return `Format ${w}x${h}`
+    }
+  },
+  {
+    name: 'check_safe_zones',
+    title: 'Check what the app covers',
+    description:
+      'Finds texts, shapes and pictures that reach into the parts of a vertical video that Instagram Reels, TikTok or YouTube Shorts cover with their buttons, account name and caption (margins from their ad guidelines), or outside action safe (5%) in a horizontal project. Returns the safe area as fractions of the frame and each event that crosses it, with what covers it. Also shows the guides over the preview.',
+    inputSchema: object({
+      platform: S.str('Default: the one chosen in the preview', SAFE_GUIDES),
+      start: S.num('Seconds (default 0)'),
+      end: S.num('Seconds (default: the end of the timeline)'),
+      show: S.bool('Show the guides over the preview (default true)')
+    }),
+    readOnly: true,
+    run: (a) => {
+      const guide = oneOf(a, 'platform', SAFE_GUIDES, get().options.safeGuide)
+      if (bool(a, 'show', true)) {
+        A.setOption('safeGuide', guide)
+        A.setOption('safeAreas', true)
+      }
+      const { project } = get()
+      const { width: W, height: H } = project.settings
+      const from = secondsToFlicks(num(a, 'start', { min: 0, def: 0 }))
+      const to = a.end === undefined ? projectEnd(project) : secondsToFlicks(num(a, 'end', { min: 0 }))
+      const spec = safeSpec(guide, W, H)
+      const safe = safeRect(spec, W, H)
+      const index = new Map(project.tracks.map((t, i) => [t.id, i]))
+      const muted = new Set(project.tracks.filter((t) => t.muted).map((t) => t.id))
+      const covered = project.events
+        .filter((e) => e.kind === 'video' && !muted.has(e.trackId) && e.start < to && eventEnd(e) > from)
+        .flatMap((e) => {
+          // Start, middle, last frame and every Pan/Crop key: enough for moves and zooms.
+          const last = eventEnd(e) - frameFlicks(project.settings.frameRate)
+          const times = [e.start, e.start + e.length / 2, last, ...e.panCrop.map((k) => timelineTime(e, k.time))]
+          const sides = new Set<SafeSide>()
+          for (const t of times.filter((t) => t >= e.start && t <= last && t >= from && t < to)) {
+            const box = eventBox(e, t, W, H)
+            if (!box || (!e.text && !e.shape && fillsFrame(box, W, H))) continue
+            for (const side of coveredSides(box, spec, W, H)) sides.add(side)
+          }
+          if (sides.size === 0) return []
+          const { id, track, start, end, text, shape, media } = describeEvent(e, index)
+          return [{ id, track, start, end, text, shape, media, under: [...sides] }]
+        })
+      const r = (v: number): number => Math.round(v * 1000) / 1000
+      return {
+        guide: H > W ? `${spec.label} (${spec.source})` : 'Action safe 5% (horizontal project)',
+        safeArea: { x: r(safe.x / W), y: r(safe.y / H), width: r(safe.w / W), height: r(safe.h / H) },
+        buttons: H > W && spec.buttons ? { x: r(spec.buttons.x), y: r(spec.buttons.y), note: 'button column from here to the right and bottom edges' } : undefined,
+        covered,
+        note: covered.length ? 'Move these inside the safe area (add_text y, set_shape, set_pan_crop) or shorten them' : 'Nothing important is covered'
+      }
     }
   },
   {
@@ -1925,10 +1980,11 @@ const TOOLS: Tool[] = [
         if (!(await soundSupport())[options.renderSound]) throw new ToolError(`This system cannot encode ${format}: use mp3, wav or flac`)
       }
       if (kind === 'video') {
-        const { width, height } = state.project.settings
-        const codecs = await supportedCodecs(width, height)
-        if (!codecs.length) throw new ToolError('This system has no video encoder for the project size')
-        if (!codecs.includes(options.renderCodec)) options.renderCodec = codecs[0]
+        const { width, height, frameRate } = state.project.settings
+        const usable = usableChoice(await encoderSupport(width, height, fps(frameRate)), options.renderCodec, options.renderEncoder)
+        if (!usable) throw new ToolError('This system has no video encoder for the project size and frame rate')
+        options.renderCodec = usable.codec
+        options.renderEncoder = usable.encoder
       }
       let tracks: string[] | undefined
       if (a.track !== undefined) {

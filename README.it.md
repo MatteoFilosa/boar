@@ -53,7 +53,7 @@
 
 ### Verticale e social
 
-- Progetto 16:9, **9:16** o 1:1 con un clic, safe area delle app nell'anteprima.
+- Progetto 16:9, **9:16** o 1:1 con un clic. Safe area di Instagram Reels, TikTok e YouTube Shorts nell'anteprima: testi, forme e immagini che i pulsanti o la didascalia dell'app coprirebbero sono bordati di rosso. L'ingranaggio sopra l'anteprima apre Project Properties (dimensioni, frame rate).
 - **Auto Reframe**: trova il volto e muove l'inquadratura per seguirlo, con un movimento morbido.
 - **Layout**: sfondo sfocato (niente bande nere con il 16:9 in verticale), schermo diviso sopra/sotto, riquadro nell'angolo.
 - **Auto Zoom**: zoom alternato a ogni taglio, zoom rapido sui momenti più forti della voce o lento avvicinamento.

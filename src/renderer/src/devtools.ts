@@ -3,10 +3,13 @@
 import { ALL_FORMATS, AudioBufferSink, BufferSource, BufferTarget, CanvasSink, Input } from 'mediabunny'
 import * as actions from './core/actions'
 import { type TimeRange, useEditor } from './core/store'
-import { type ExportCodec, type ExportProgress, exportProject } from './engine/export'
+import { type ExportCodec, type ExportProgress, type ExportSettings, exportProject } from './engine/export'
 
-/** Renders the project (or `range`, in flicks, like Render loop region only) into memory. */
-async function renderToBuffer(codec: ExportCodec = 'avc', range?: TimeRange): Promise<unknown> {
+/**
+ * Renders the project (or `range`, in flicks, like Render loop region only)
+ * into memory; `settings` overrides the render settings (e.g. `encoderRate`).
+ */
+async function renderToBuffer(codec: ExportCodec = 'avc', range?: TimeRange, settings?: Partial<ExportSettings>): Promise<unknown> {
   const s = useEditor.getState()
   const target = new BufferTarget()
   const started = performance.now()
@@ -19,7 +22,8 @@ async function renderToBuffer(codec: ExportCodec = 'avc', range?: TimeRange): Pr
       includeAudio: true,
       masterDb: s.options.masterDb,
       autoCrossfade: s.options.autoCrossfade,
-      loudness: s.options.renderLoudness
+      loudness: s.options.renderLoudness,
+      ...settings
     },
     (p) => (lastProgress = p),
     () => false,
@@ -31,12 +35,21 @@ async function renderToBuffer(codec: ExportCodec = 'avc', range?: TimeRange): Pr
   const input = new Input({ formats: ALL_FORMATS, source: new BufferSource(buffer) })
   const video = await input.getPrimaryVideoTrack()
   const audio = await input.getPrimaryAudioTrack()
+  const stats = video && (await video.computePacketStats())
   return {
     ms: Math.round(performance.now() - started),
     bytes: buffer.byteLength,
     duration: await input.computeDuration(),
     loudness: result.loudness,
-    video: video && { codec: video.codec, width: video.displayWidth, height: video.displayHeight },
+    video: video &&
+      stats && {
+        codec: video.codec,
+        width: video.displayWidth,
+        height: video.displayHeight,
+        frames: stats.packetCount,
+        fps: stats.averagePacketRate,
+        kbps: Math.round(stats.averageBitrate / 1000)
+      },
     audio: audio && { codec: audio.codec, sampleRate: audio.sampleRate, channels: audio.numberOfChannels }
   }
 }

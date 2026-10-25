@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import * as A from '../core/actions'
-import { mediaById, useEditor } from '../core/store'
-import { textBounds } from '../core/text'
-import { type PanCropKey, type PanCropState, normalizeAngle, panCropAt, placeBox, placeSource, sourcePlacement, stretchBox, upsertKey } from '../core/pancrop'
+import { useEditor } from '../core/store'
+import { type PanCropKey, type PanCropState, type PictureBox, normalizeAngle, panCropAt, placeBox, placeSource, stretchBox, upsertKey } from '../core/pancrop'
+import { eventBox, imageSize, visibleEvents } from '../core/eventBox'
 import { eventEnd, sourceTime } from '../core/timeline'
-import { moveShape, shapeBox, shapeFromBox } from '../core/shapes'
+import { moveShape, shapeFromBox } from '../core/shapes'
 import type { Project, TimelineEvent } from '../core/types'
 import type { Flicks } from '../core/time'
 import { getEngine } from '../engine/preview'
@@ -21,36 +21,7 @@ import { MOD } from '../platform'
 // through their Event Pan/Crop (a keyframe at the cursor when the event already
 // has several), so the export matches exactly.
 
-interface Box {
-  /** Center and size in project pixels, rotation in radians (clockwise). */
-  cx: number
-  cy: number
-  w: number
-  h: number
-  angle: number
-}
-
-const imageSize = (ev: TimelineEvent): { w: number; h: number } | null => {
-  const m = mediaById(ev.mediaId)
-  return m && m.width && m.height ? { w: m.width, h: m.height } : null
-}
-
-function mediaBox(ev: TimelineEvent, t: Flicks, W: number, H: number): Box | null {
-  const src = imageSize(ev)
-  if (!src) return null
-  const state = panCropAt(ev.panCrop, sourceTime(ev, t))
-  const at = sourcePlacement(state, src.w, src.h, W, H)
-  return { cx: at.x, cy: at.y, w: at.w, h: at.h, angle: (-state.rotation * Math.PI) / 180 }
-}
-
-function eventBox(ev: TimelineEvent, t: Flicks, W: number, H: number): Box | null {
-  if (ev.text) {
-    const b = textBounds(ev.text, W, H)
-    return { cx: b.left + b.width / 2, cy: b.top + b.height / 2, w: b.width, h: b.height, angle: (ev.text.rotation * Math.PI) / 180 }
-  }
-  if (ev.shape) return shapeBox(ev.shape, W, H)
-  return mediaBox(ev, t, W, H)
-}
+type Box = PictureBox
 
 /** Pan/Crop state that puts the source center at (cx, cy) with the given zoom, rotation (degrees) and stretch. */
 function stateFor(ev: TimelineEvent, cx: number, cy: number, s: Pick<PanCropState, 'zoom' | 'rotation' | 'stretch'>, W: number, H: number): PanCropState {
@@ -72,15 +43,6 @@ function editableEvents(project: Project, selection: string[], t: Flicks): Timel
   return project.events
     .filter((e) => selection.includes(e.id) && e.kind === 'video' && e.start <= t && t < eventEnd(e))
     .filter((e) => e.text || e.shape || imageSize(e))
-    .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0))
-}
-
-/** Every visual event at t, front-most first (click-to-select in the preview). */
-function visibleEvents(project: Project, t: Flicks): TimelineEvent[] {
-  const order = new Map(project.tracks.map((tr, i) => [tr.id, i]))
-  const hidden = new Set(project.tracks.filter((tr) => tr.muted).map((tr) => tr.id))
-  return project.events
-    .filter((e) => e.kind === 'video' && !hidden.has(e.trackId) && e.start <= t && t < eventEnd(e))
     .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0))
 }
 

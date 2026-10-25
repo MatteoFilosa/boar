@@ -53,7 +53,7 @@
 
 ### Vertical and social
 
-- 16:9, **9:16** or 1:1 project in one click, with the apps' safe areas in the preview.
+- 16:9, **9:16** or 1:1 project in one click. Safe areas for Instagram Reels, TikTok and YouTube Shorts in the preview: texts, shapes and pictures the app's buttons or caption would cover are outlined in red. The gear above the preview opens Project Properties (size, frame rate).
 - **Auto Reframe**: finds the face and moves the framing to follow it, smoothly.
 - **Layouts**: blurred background (no black bars when 16:9 footage goes vertical), top/bottom split screen, picture in picture.
 - **Auto Zoom**: alternating zoom on every cut, a quick punch-in on the strongest moments of the voice, or a slow push-in.

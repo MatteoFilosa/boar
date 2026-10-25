@@ -82,7 +82,7 @@ const PROMPTS: Prompt[] = [
         '2. Pick moments that work on their own: a strong hook in the first 3 seconds, one clear idea, a satisfying ending, whole sentences. A Short may join 2-3 ranges if the story stays clear.',
         '3. propose_shorts with a title, a punchy hook line (*key words* highlighted) and a one-line reason for each, best first. They appear in the Shorts tab.',
         '4. Tell the user what you found and ask which ones to make (or make the first if they asked you to go ahead).',
-        '5. make_short number=N (framing reframe for a person talking, blurred for screen recordings or wide shots). Then get_frame at 1-2 times to check framing and captions.',
+        '5. make_short number=N (framing reframe for a person talking, blurred for screen recordings or wide shots). Then get_frame at 1-2 times to check framing and captions, and check_safe_zones: move any hook, caption or shape the app would cover.',
         '6. Tell the user to Render it (Ctrl+M; loudness is normalized to -14 LUFS). For the next one, back_to_long_video with discard=true once they rendered or saved it, then make_short again.'
       ].join('\n')
   },

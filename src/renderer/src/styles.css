@@ -1380,6 +1380,36 @@ input[type='range'] {
   background: rgba(255, 80, 80, 0.16);
 }
 
+.safe-ui {
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.safe-hit {
+  position: absolute;
+  border: 2px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.safe-hit-label {
+  position: absolute;
+  transform: translateY(-100%);
+  max-width: 60%;
+  padding: 1px 5px;
+  background: var(--danger);
+  color: var(--on-accent);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 2px;
+}
+
+.safe-hit-label.inside {
+  transform: none;
+}
+
 .safe-label {
   position: absolute;
   left: 6px;

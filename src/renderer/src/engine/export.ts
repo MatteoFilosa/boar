@@ -32,8 +32,10 @@ import { timeStretch } from './stretch'
 import { type LoudnessResult, normalizeLoudness } from './loudness'
 import { logLine } from '../log'
 import { ExportCancelled, type RenderStage, RenderStalled, STALL_SECONDS, atMost, guarded } from './stall'
+import { type EncoderSupport, VIDEO_CODECS, codecSupport, tellRate } from './encoders'
 
 export { ExportCancelled, RenderStalled, guarded } from './stall'
+export type { EncoderSupport } from './encoders'
 
 export type ExportCodec = 'avc' | 'hevc' | 'av1' | 'vp9'
 export type ExportQuality = 'medium' | 'high' | 'veryHigh'
@@ -60,6 +62,11 @@ export interface ExportSettings {
   preferBitrate?: boolean
   /** Decode the media with the processor (a hardware decoder stopped answering). */
   softwareDecode?: boolean
+  /**
+   * Frame rate the video encoder is told instead of the project's: the
+   * graphics card's encoder takes the size only at this rate (`encoders.ts`).
+   */
+  encoderRate?: number
 }
 
 export interface ExportResult {
@@ -86,23 +93,15 @@ export const CODEC_LABELS: Record<ExportCodec, string> = {
   vp9: 'VP9 (open format)'
 }
 
-export interface EncoderSupport {
-  /** The graphics card has an encoder for this codec at this size. */
-  gpu: boolean
-  /** A software encoder (on the processor) is available. */
-  cpu: boolean
-}
-
-/** For each codec, whether the graphics card and the processor can encode it at the project size. */
-export async function encoderSupport(width: number, height: number): Promise<Record<ExportCodec, EncoderSupport>> {
-  const check = (codec: ExportCodec, hardwareAcceleration: 'prefer-hardware' | 'prefer-software'): Promise<boolean> =>
-    canEncodeVideo(codec, { width, height, hardwareAcceleration }).catch(() => false)
-  const entries = await Promise.all(
-    (['avc', 'hevc', 'av1', 'vp9'] as const).map(async (codec) => {
-      const [gpu, cpu] = await Promise.all([check(codec, 'prefer-hardware'), check(codec, 'prefer-software')])
-      return [codec, { gpu, cpu }] as const
-    })
+/** Whether the graphics card and the processor can encode `codec` at this size and frame rate. */
+export const videoEncoderSupport = (codec: ExportCodec, width: number, height: number, rate: number): Promise<EncoderSupport> =>
+  codecSupport(rate, (hardwareAcceleration, frameRate) =>
+    canEncodeVideo(codec, { width, height, hardwareAcceleration, frameRate }).catch(() => false)
   )
+
+/** For each codec, whether the graphics card and the processor can encode it at the project size and frame rate. */
+export async function encoderSupport(width: number, height: number, rate: number): Promise<Record<ExportCodec, EncoderSupport>> {
+  const entries = await Promise.all(VIDEO_CODECS.map(async (codec) => [codec, await videoEncoderSupport(codec, width, height, rate)] as const))
   return Object.fromEntries(entries) as Record<ExportCodec, EncoderSupport>
 }
 
@@ -203,19 +202,6 @@ const ACCELERATION = { auto: 'no-preference', gpu: 'prefer-hardware', cpu: 'pref
 
 const QUALITIES = { medium: QUALITY_MEDIUM, high: QUALITY_HIGH, veryHigh: QUALITY_VERY_HIGH }
 const QUALITY_LEVELS = { medium: 'medium', high: 'high', veryHigh: 'very-high' } as const
-
-/** Codecs this machine can encode at the project size. */
-export async function supportedCodecs(width: number, height: number): Promise<ExportCodec[]> {
-  const out: ExportCodec[] = []
-  for (const codec of ['avc', 'hevc', 'av1', 'vp9'] as const) {
-    try {
-      if (await canEncodeVideo(codec, { width, height })) out.push(codec)
-    } catch {
-      // Not supported here.
-    }
-  }
-  return out
-}
 
 const dbToGain = (db: number): number => (db <= -60 ? 0 : Math.pow(10, db / 20))
 
@@ -549,15 +535,20 @@ export async function exportProject(
     keyFrameInterval: 2,
     // Automatic: the graphics card's encoder when it has one for this codec, otherwise software.
     hardwareAcceleration: ACCELERATION[settings.encoder ?? 'auto'],
-    // The last config offered is the one the encoder took.
-    onEncoderConfig: (config) => void (encoderConfig = config),
+    // The last config offered is the one the encoder took. Mediabunny checks
+    // and configures the object it hands over, so a told frame rate goes in here.
+    onEncoderConfig: (config) => {
+      if (settings.encoderRate) tellRate(config, rate, settings.encoderRate)
+      encoderConfig = config
+    },
     onEncodedPacket: () => void packets++
   })
   const describeEncoder = (): string => {
     const c = encoderConfig as VideoEncoderConfig | null
     if (!c) return 'encoder not set up yet'
-    const rate = c.bitrateMode === 'quantizer' ? 'constant quality' : `${Math.round((c.bitrate ?? 0) / 1000)} kbps ${c.bitrateMode ?? ''}`.trim()
-    return `${c.codec} ${c.width}x${c.height}, ${rate}, ${c.hardwareAcceleration ?? 'no-preference'}`
+    const bitrate = c.bitrateMode === 'quantizer' ? 'constant quality' : `${Math.round((c.bitrate ?? 0) / 1000)} kbps ${c.bitrateMode ?? ''}`.trim()
+    const told = settings.encoderRate ? `, told ${c.framerate} fps` : ''
+    return `${c.codec} ${c.width}x${c.height}, ${bitrate}, ${c.hardwareAcceleration ?? 'no-preference'}${told}`
   }
   output.addVideoTrack(video, { frameRate: rate })
   let audio: AudioBufferSource | null = null

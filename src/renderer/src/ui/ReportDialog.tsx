@@ -26,7 +26,7 @@ function gpuName(): string {
 /** What a bug report needs to know about this copy of Boar and this machine. */
 async function systemDetails(): Promise<string> {
   const system = bridge ? await bridge.systemInfo().catch(() => null) : null
-  const [video, audio] = await Promise.all([encoderSupport(1920, 1080).catch(() => null), audioSupport().catch(() => null)])
+  const [video, audio] = await Promise.all([encoderSupport(1920, 1080, 30).catch(() => null), audioSupport().catch(() => null)])
   const encoders = video
     ? (Object.keys(CODEC_NAMES) as ExportCodec[])
         .map((c) => `${CODEC_NAMES[c]} ${[video[c].gpu && 'GPU', video[c].cpu && 'CPU'].filter(Boolean).join('+') || 'no'}`)
@@ -37,7 +37,7 @@ async function systemDetails(): Promise<string> {
     `System: ${system ? system.os : navigator.userAgent}`,
     ...(system ? [`Electron ${system.electron}, Chromium ${system.chrome}`] : []),
     `GPU: ${gpuName()}`,
-    `Video encoders (1080p): ${encoders}`,
+    `Video encoders (1080p30): ${encoders}`,
     `Audio encoders: ${audio ? [audio.aac && 'AAC', audio.opus && 'Opus'].filter(Boolean).join(', ') || 'none' : 'unknown'}`
   ].join('\n')
 }

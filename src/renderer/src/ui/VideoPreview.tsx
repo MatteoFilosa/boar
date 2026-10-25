@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
+  ChevronDown,
   Grid2x2,
   Maximize,
   Minimize,
@@ -7,9 +8,11 @@ import {
   Play,
   RectangleHorizontal,
   RectangleVertical,
+  Settings,
   Square
 } from 'lucide-react'
-import { endColorPick, setCursor, setFrameSize, setFxParam, setOption, setStatus } from '../core/actions'
+import { endColorPick, openDialog, setCursor, setFrameSize, setFxParam, setOption, setStatus } from '../core/actions'
+import { SAFE_GUIDES } from '../core/safeZones'
 import { colorToHex } from '../core/fx'
 import { useEditor, type PreviewQuality } from '../core/store'
 import { projectEnd } from '../core/timeline'
@@ -18,6 +21,8 @@ import { QUALITY_SCALE, getEngine } from '../engine/preview'
 import { setFullScreenHost, toggleFullScreenPreview } from './fullScreen'
 import { shortcutLabel } from './shortcuts'
 import { TransformOverlay } from './TransformOverlay'
+import { GUIDE_LABELS, SafeZones } from './SafeZones'
+import { openContextMenu } from './ContextMenu'
 import { Transport } from './Transport'
 
 const QUALITIES: { id: PreviewQuality; label: string }[] = [
@@ -32,31 +37,6 @@ const ASPECTS = [
   { label: '9:16', icon: RectangleVertical, width: 1080, height: 1920 },
   { label: '1:1', icon: Square, width: 1080, height: 1080 }
 ]
-
-/**
- * Guides drawn over the preview only (never rendered). Vertical projects show
- * the areas usually covered by app buttons and captions (approximate);
- * horizontal ones show action/title safe.
- */
-function SafeAreas({ vertical }: { vertical: boolean }): React.JSX.Element {
-  if (!vertical) {
-    return (
-      <div className="safe-overlay">
-        <div className="safe-rect" style={{ inset: '5%' }} />
-        <div className="safe-rect inner" style={{ inset: '10%' }} />
-      </div>
-    )
-  }
-  return (
-    <div className="safe-overlay">
-      <div className="safe-band" style={{ left: 0, right: 0, top: 0, height: '10%' }} />
-      <div className="safe-band" style={{ left: 0, right: 0, bottom: 0, height: '22%' }} />
-      <div className="safe-band" style={{ right: 0, top: '10%', bottom: '22%', width: '14%' }} />
-      <div className="safe-rect" style={{ left: '5%', right: '14%', top: '10%', bottom: '22%' }} />
-      <span className="safe-label">App UI zones (approx.)</span>
-    </div>
-  )
-}
 
 /** Eyedropper of an effect's color: shows the color under the pointer, a click picks it. */
 function ColorPickOverlay({ width }: { width: number }): React.JSX.Element | null {
@@ -171,6 +151,7 @@ export function VideoPreview(): React.JSX.Element {
   const settings = useEditor((s) => s.project.settings)
   const quality = useEditor((s) => s.options.previewQuality)
   const safeAreas = useEditor((s) => s.options.safeAreas)
+  const safeGuide = useEditor((s) => s.options.safeGuide)
   const hostRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [display, setDisplay] = useState({ width: 0, height: 0 })
@@ -258,14 +239,38 @@ export function VideoPreview(): React.JSX.Element {
           ))}
         </select>
         <div className="tool-sep" />
-        <button
-          className={`tool-btn${safeAreas ? ' active' : ''}`}
-          title="Safe areas overlay (social app UI zones in vertical projects)"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setOption('safeAreas', !safeAreas)}
-        >
-          <Grid2x2 size={14} />
-        </button>
+        <div className="split-btn">
+          <button
+            className={`tool-btn${safeAreas ? ' active' : ''}`}
+            title={`Safe areas overlay: ${GUIDE_LABELS[safeGuide]} in vertical projects, action/title safe in horizontal ones`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setOption('safeAreas', !safeAreas)}
+          >
+            <Grid2x2 size={14} />
+          </button>
+          <button
+            className={`tool-btn split-btn-arrow${safeAreas ? ' active' : ''}`}
+            title="Which app's safe areas"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              openContextMenu(r.left, r.bottom + 2, [
+                ...SAFE_GUIDES.map((g) => ({
+                  label: GUIDE_LABELS[g],
+                  checked: safeAreas && g === safeGuide,
+                  run: () => {
+                    setOption('safeGuide', g)
+                    setOption('safeAreas', true)
+                  }
+                })),
+                'separator' as const,
+                { label: 'Safe areas off', checked: !safeAreas, run: () => setOption('safeAreas', false) }
+              ])
+            }}
+          >
+            <ChevronDown size={12} />
+          </button>
+        </div>
         <div className="tool-sep" />
         {ASPECTS.map((a) => {
           const Icon = a.icon
@@ -283,6 +288,15 @@ export function VideoPreview(): React.JSX.Element {
             </button>
           )
         })}
+        <div className="tool-sep" />
+        <button
+          className="tool-btn"
+          title={`Project Properties (${shortcutLabel('properties')}): ${settings.width}x${settings.height}, ${fps} fps`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => openDialog({ kind: 'projectProperties' })}
+        >
+          <Settings size={14} />
+        </button>
         <button
           className="tool-btn preview-full-screen"
           title={`Full screen preview (${shortcutLabel('fullScreenPreview')})`}
@@ -300,7 +314,7 @@ export function VideoPreview(): React.JSX.Element {
             style={{ width: display.width, height: display.height }}
             onDoubleClick={() => getEngine().togglePlay(false)}
           />
-          {!full && safeAreas && <SafeAreas vertical={settings.height > settings.width} />}
+          {!full && safeAreas && <SafeZones />}
           {!full && <TransformOverlay width={display.width} />}
           {!full && <ColorPickOverlay width={display.width} />}
         </div>

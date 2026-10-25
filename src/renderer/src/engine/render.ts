@@ -1,8 +1,8 @@
-import { canEncodeVideo } from 'mediabunny'
 import type { EditorOptions } from '../core/store'
-import { type Flicks, flicksToSeconds } from '../core/time'
+import { type Flicks, flicksToSeconds, fps, rateLabel } from '../core/time'
 import type { Project } from '../core/types'
-import { type ExportProgress, type ExportQuality, type ExportSettings, exportProject } from './export'
+import { CODEC_LABELS, type ExportProgress, type ExportQuality, type ExportSettings, exportProject, videoEncoderSupport } from './export'
+import { describeSupport, encoderProblem, toldRate } from './encoders'
 import { ExportCancelled, RenderStalled, type StallRetry, stallFallback } from './stall'
 import { exportGif } from './exportGif'
 import { SOUND_FORMAT_INFO, type SoundFormat, exportSound } from './exportSound'
@@ -57,22 +57,27 @@ async function renderVideo(
   onProgress: (p: ExportProgress) => void,
   isCancelled: () => boolean
 ): Promise<RenderResult> {
+  const { width, height, frameRate } = project.settings
+  const support = await videoEncoderSupport(base.codec, width, height, fps(frameRate))
+  logLine('info', `Video encoders for ${base.codec} here: ${describeSupport(support)}`)
+  const format = `${width}x${height}, ${rateLabel(frameRate)} fps`
+  const problem = encoderProblem(base.codec, CODEC_LABELS[base.codec].replace(/ \(.*\)$/, ''), base.encoder ?? 'auto', support, format)
+  if (problem) throw new Error(problem)
   const key = `${base.codec}/${base.encoder ?? 'auto'}`
   const earlier = known.get(key)
   let settings: ExportSettings = { ...base, ...earlier?.retry }
   let note = earlier?.note ?? null
   if (earlier) logLine('info', `Using what worked after an earlier stall: ${JSON.stringify(earlier.retry)}`)
   for (;;) {
+    settings.encoderRate = toldRate(support, settings.encoder ?? 'auto')
+    if (settings.encoderRate) logLine('info', `The graphics card's encoder takes ${format} only told ${settings.encoderRate} fps: every frame is encoded all the same`)
     try {
       const result = await exportProject(project, destination.target, settings, (p) => onProgress(note ? { ...p, note } : p), isCancelled, job.range)
       return { loudness: result.loudness, note, movedToProcessor: settings.encoder === 'cpu' && base.encoder !== 'cpu' }
     } catch (err) {
       if (!(err instanceof RenderStalled)) throw err
       logLine('warn', `${err.message} (${err.detail})`)
-      const { width, height } = project.settings
-      const next = await stallFallback(err, settings, (hardwareAcceleration) =>
-        canEncodeVideo(settings.codec, { width, height, hardwareAcceleration }).catch(() => false)
-      )
+      const next = await stallFallback(err, settings, async (hardwareAcceleration) => (hardwareAcceleration === 'prefer-hardware' ? support.gpu : support.cpu))
       if (!next) throw err
       logLine('info', `Rendering again: ${JSON.stringify(next.retry)}`)
       settings = { ...settings, ...next.retry }

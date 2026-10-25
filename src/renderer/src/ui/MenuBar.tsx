@@ -9,6 +9,8 @@ import logo from '../assets/logo.png'
 import { MenuIcon } from './ContextMenu'
 import { CommandSearch } from './CommandSearch'
 import { interfaceScaleLabel } from './interfaceScale'
+import { SAFE_GUIDES } from '../core/safeZones'
+import { GUIDE_LABELS } from './SafeZones'
 
 export interface Item {
   label: string
@@ -126,6 +128,19 @@ function useMenus(): Menu[] {
         quality('best', 'Preview Quality: Best (Full)'),
         'separator',
         { label: 'Safe Areas Overlay', command: 'toggleSafeAreas', checked: options.safeAreas },
+        {
+          label: 'Safe Areas For',
+          submenu: SAFE_GUIDES.map(
+            (g): Item => ({
+              label: GUIDE_LABELS[g],
+              checked: options.safeGuide === g,
+              run: () => {
+                setOption('safeGuide', g)
+                setOption('safeAreas', true)
+              }
+            })
+          )
+        },
         { label: 'Full Screen Preview', command: 'fullScreenPreview' }
       ]
     },

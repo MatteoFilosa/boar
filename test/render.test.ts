@@ -3,7 +3,8 @@ import { mixedTracks } from '@/core/timeline'
 import { GifWriter, gifDelays, gifFormat } from '@/engine/gif'
 import { withExtension } from '@/engine/targets'
 import { ExportCancelled, type RenderStage, RenderStalled, guarded, stallFallback } from '@/engine/stall'
-import type { ExportSettings } from '@/engine/export'
+import type { ExportCodec, ExportSettings } from '@/engine/export'
+import { type Acceleration, type EncoderSupport, codecSupport, describeSupport, encoderProblem, tellRate, toldRate, usableChoice } from '@/engine/encoders'
 import { FPS30, project, track } from './helpers'
 
 describe('tracks a render mixes', () => {
@@ -149,5 +150,65 @@ describe('renders that stop moving', () => {
     expect(await retry(stall('decoder'), { ...base, softwareDecode: true })).toBeNull()
     expect(await retry(stall('audioEncoder'), { ...base, audioCodec: 'aac' })).toEqual({ audioCodec: 'opus' })
     expect(await retry(stall('audioEncoder'), { ...base, audioCodec: 'opus' })).toBeNull()
+  })
+})
+
+describe('video encoders at the project frame rate', () => {
+  type Can = (acceleration: Acceleration, frameRate: number) => Promise<boolean>
+  // A graphics card offered 1440p only up to 30 fps, and no software encoder.
+  const upTo30: Can = async (a, r) => a === 'prefer-hardware' && r <= 30
+  const none: Can = async () => false
+
+  test('a card that refuses the rate but takes the size at 30 fps is told 30 fps', async () => {
+    const support = await codecSupport(59.94, upTo30)
+    expect(support).toEqual({ gpu: true, cpu: false, gpuRate: 30 })
+    expect(toldRate(support, 'auto')).toBe(30)
+    expect(toldRate(support, 'gpu')).toBe(30)
+    expect(toldRate(support, 'cpu')).toBeUndefined()
+    expect(describeSupport(support)).toBe('graphics card only told 30 fps, processor no')
+  })
+
+  test('a rate the card takes, or 30 fps and below, is told as it is', async () => {
+    expect(await codecSupport(59.94, async () => true)).toEqual({ gpu: true, cpu: true })
+    expect(await codecSupport(25, upTo30)).toEqual({ gpu: true, cpu: false })
+    expect(toldRate(await codecSupport(25, upTo30), 'auto')).toBeUndefined()
+    // Refused at 30 too: the processor's encoder, at the real rate.
+    const software: Can = async (a) => a === 'prefer-software'
+    const support = await codecSupport(59.94, software)
+    expect(support).toEqual({ gpu: false, cpu: true })
+    expect(toldRate(support, 'auto')).toBeUndefined()
+  })
+
+  test('bitrate rate control goes down with the told rate, constant quality stays', () => {
+    const vbr = { framerate: 59.94, bitrate: 10_000_000, bitrateMode: 'variable' }
+    tellRate(vbr, 59.94, 30)
+    expect(vbr).toEqual({ framerate: 30, bitrate: 5_005_005, bitrateMode: 'variable' })
+    const quantizer: { framerate?: number; bitrate?: number; bitrateMode: string } = { framerate: 59.94, bitrateMode: 'quantizer' }
+    tellRate(quantizer, 59.94, 30)
+    expect(quantizer).toEqual({ framerate: 30, bitrateMode: 'quantizer' })
+  })
+
+  test('a codec nothing here can encode gets a clear reason', async () => {
+    const format = '2560x1440, 59.940 fps'
+    const nothing = await codecSupport(59.94, none)
+    expect(encoderProblem('hevc', 'H.265 / HEVC', 'auto', nothing, format)).toMatch(/cannot encode H.265 \/ HEVC at 2560x1440, 59.940 fps:.*Render H\.264/)
+    expect(encoderProblem('avc', 'H.264 / AVC', 'auto', nothing, format)).toMatch(/Render another format/)
+    expect(encoderProblem('avc', 'H.264 / AVC', 'gpu', { gpu: false, cpu: true }, format)).toMatch(/graphics card cannot encode/)
+    expect(encoderProblem('avc', 'H.264 / AVC', 'cpu', { gpu: true, cpu: false }, format)).toMatch(/no software encoder/)
+    expect(encoderProblem('avc', 'H.264 / AVC', 'gpu', { gpu: true, cpu: false, gpuRate: 30 }, format)).toBeNull()
+  })
+
+  test('a remembered choice that cannot work here falls back to one that can', () => {
+    const support: Record<ExportCodec, EncoderSupport> = {
+      avc: { gpu: false, cpu: true },
+      hevc: { gpu: false, cpu: false },
+      av1: { gpu: true, cpu: true },
+      vp9: { gpu: false, cpu: true }
+    }
+    expect(usableChoice(support, 'hevc', 'gpu')).toEqual({ codec: 'avc', encoder: 'auto' })
+    expect(usableChoice(support, 'hevc', 'cpu')).toEqual({ codec: 'avc', encoder: 'cpu' })
+    expect(usableChoice(support, 'av1', 'gpu')).toEqual({ codec: 'av1', encoder: 'gpu' })
+    const nothing = { gpu: false, cpu: false }
+    expect(usableChoice({ avc: nothing, hevc: nothing, av1: nothing, vp9: nothing }, 'avc', 'auto')).toBeNull()
   })
 })

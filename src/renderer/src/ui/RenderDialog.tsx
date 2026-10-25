@@ -4,6 +4,7 @@ import * as A from '../core/actions'
 import { useEditor } from '../core/store'
 import { flicksToSeconds, formatTimecode, fps, rateLabel } from '../core/time'
 import { mixedTracks, projectEnd } from '../core/timeline'
+import { usableChoice } from '../engine/encoders'
 import {
   CODEC_LABELS,
   type EncoderSupport,
@@ -112,25 +113,25 @@ export function RenderDialog(): React.JSX.Element {
   const soundAvailable = (f: SoundFormat): boolean =>
     f === 'm4a' ? !audioCodecs || audioCodecs.aac : f === 'ogg' ? !audioCodecs || audioCodecs.opus : true
 
+  const rate = fps(frameRate)
   useEffect(() => {
     let alive = true
-    void Promise.all([encoderSupport(width, height), audioSupport()]).then(([video, sound]) => {
+    void Promise.all([encoderSupport(width, height, rate), audioSupport()]).then(([video, sound]) => {
       if (!alive) return
       setSupport(video)
       setAudioCodecs(sound)
       // A remembered choice this machine cannot do falls back to what it can.
       const s = useEditor.getState().options
-      const codecOk = video[s.renderCodec].gpu || video[s.renderCodec].cpu
-      const next = codecOk ? s.renderCodec : ((['avc', 'hevc', 'av1', 'vp9'] as const).find((c) => video[c].gpu || video[c].cpu) ?? 'avc')
-      if (next !== s.renderCodec) A.setOption('renderCodec', next)
-      if ((s.renderEncoder === 'gpu' && !video[next].gpu) || (s.renderEncoder === 'cpu' && !video[next].cpu)) A.setOption('renderEncoder', 'auto')
+      const usable = usableChoice(video, s.renderCodec, s.renderEncoder) ?? { codec: 'avc', encoder: 'auto' }
+      if (usable.codec !== s.renderCodec) A.setOption('renderCodec', usable.codec)
+      if (usable.encoder !== s.renderEncoder) A.setOption('renderEncoder', usable.encoder)
       if (s.renderAudio !== 'none' && !sound[s.renderAudio]) A.setOption('renderAudio', sound.aac ? 'aac' : sound.opus ? 'opus' : 'none')
       if ((s.renderSound === 'm4a' && !sound.aac) || (s.renderSound === 'ogg' && !sound.opus)) A.setOption('renderSound', 'mp3')
     })
     return () => {
       alive = false
     }
-  }, [width, height])
+  }, [width, height, rate])
 
   const chooseCodec = (c: ExportCodec): void => {
     A.setOption('renderCodec', c)
@@ -220,7 +221,13 @@ export function RenderDialog(): React.JSX.Element {
                 {(['avc', 'hevc', 'av1', 'vp9'] as const).map((c) => (
                   <option key={c} value={`video:${c}`} disabled={!available(c)}>
                     MP4 · {CODEC_LABELS[c]}
-                    {support ? (support[c].gpu ? ' · graphics card' : support[c].cpu ? ' · processor only (slower)' : ' · not available') : ''}
+                    {support
+                      ? support[c].gpu
+                        ? ' · graphics card'
+                        : support[c].cpu
+                          ? ' · processor only (slower)'
+                          : ` · not available at ${width}x${height}, ${rateLabel(frameRate)} fps`
+                      : ''}
                   </option>
                 ))}
               </optgroup>
