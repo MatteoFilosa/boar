@@ -38,6 +38,7 @@ import oswald from '@fontsource-variable/oswald/files/oswald-latin-wght-normal.w
 import outfit from '@fontsource-variable/outfit/files/outfit-latin-wght-normal.woff2?url'
 import playfairDisplay from '@fontsource-variable/playfair-display/files/playfair-display-latin-wght-normal.woff2?url'
 import playfairDisplayItalic from '@fontsource-variable/playfair-display/files/playfair-display-latin-wght-italic.woff2?url'
+import robotoCondensed from '@fontsource-variable/roboto-condensed/files/roboto-condensed-latin-wght-normal.woff2?url'
 import rubik from '@fontsource-variable/rubik/files/rubik-latin-wght-normal.woff2?url'
 import sora from '@fontsource-variable/sora/files/sora-latin-wght-normal.woff2?url'
 import spaceGrotesk from '@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2?url'
@@ -93,6 +94,8 @@ export const FONT_CATALOG: FontInfo[] = [
   { family: 'Bebas Neue', category: 'Condensed', regular: 400, bold: 400, files: single(bebasNeue) },
   { family: 'Anton', category: 'Condensed', regular: 400, bold: 400, files: single(anton) },
   { family: 'Oswald', category: 'Condensed', regular: 400, bold: 700, files: variable(oswald, '200 700') },
+  // 450: the weight of the plain text phone apps put on a white box (Story box preset).
+  { family: 'Roboto Condensed', category: 'Condensed', regular: 450, bold: 700, files: variable(robotoCondensed, '100 900') },
   {
     family: 'Barlow Condensed',
     category: 'Condensed',

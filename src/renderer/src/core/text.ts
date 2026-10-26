@@ -209,6 +209,25 @@ export const TEXT_PRESETS: TextPreset[] = [
     }
   },
   {
+    id: 'story',
+    label: 'Story box',
+    description: 'Plain black text on a white box behind each line, there from the first frame',
+    content: {
+      ...BASE,
+      text: 'Plain text on a white box\nbehind each line',
+      font: 'Roboto Condensed',
+      size: 56,
+      bold: false,
+      color: '#000000',
+      shadow: false,
+      boxColor: '#ffffff',
+      boxOpacity: 1,
+      boxStyle: 'lines',
+      y: 0.22,
+      maxWidth: 0.8
+    }
+  },
+  {
     id: 'neon',
     label: 'Neon',
     description: 'Glowing neon sign',

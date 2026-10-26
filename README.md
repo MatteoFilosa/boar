@@ -64,7 +64,7 @@
 - **Automatic word-by-word captions** with Whisper, locally: karaoke, box on the spoken word, words popping in, one word at a time, classic subtitles. For the whole timeline (even a clip cut into many pieces), the selected clips or the time selection. Captions follow the edit: cut, trim, move or delete the clips afterwards and they move, shrink or go away with their words (*Options › Captions Follow Clip Edits*).
 - **Text-based editing** (*Transcript* tab): speech becomes text; select words, press `Delete` and the video is cut. One button selects ums, uhs and repeated words; another shortens long pauses. Double-click a misheard word (or select words and press `Enter`) to correct it: the captions made from it change too.
 - Highlighted keywords (`*word*` in the text, or automatic) and emoji on matching words.
-- 21 text presets, including a hook title at the top and a progress bar; more than 30 bundled fonts; in and out animations.
+- 22 text presets, including a hook title at the top and a progress bar; more than 30 bundled fonts; in and out animations.
 - **Shapes to point at things** (*Generators* tab or *Insert*): rectangle, ellipse and arrow, red to start with, with outline, fill, rounded corners, shadow and an animation that draws them on screen. Resize them freely from any side or corner; point an arrow by dragging its ends. *Solid Color* fills the frame with one color.
 - Handles right in the preview to move, scale, stretch and rotate text, images and video (the side handles of a picture stretch it one way, `Ctrl`+drag on a corner stretches it freely; drag just outside a corner to rotate, Shift for 15° steps).
 
