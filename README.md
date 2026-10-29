@@ -43,6 +43,7 @@
 - **Auto Ripple** (`Ctrl+L`): deleting, cutting or pasting closes the gaps by itself, on the affected tracks or on all of them; moving an event or dragging one of its edges moves what comes after it too.
 - **Speed**: `Ctrl` + drag an edge to speed up or slow down (0.25x–4x, audio keeps its pitch).
 - **Reverse** (right-click a clip, or *Tools › Reverse*): the clip plays backwards, picture and sound, in the same place. The first time Boar makes a reversed copy on your PC and keeps it with your media, so it is instant afterwards; reversing the clip again plays it forward.
+- **Camcorder footage** (.mpg, .mod, .vob from cameras that record standard definition on a DVD, a hard disk or a memory card: MPEG-2 or MPEG-1 video with AC-3 sound): Boar decodes it itself and makes an editable copy when you import it. Each field becomes a whole frame (50 or 60 frames a second, motion as smooth as it was filmed, no combing) and the pixels become square, so 16:9 footage keeps its real proportions. The copy stays on your PC (about half the clip's length to make, on the graphics card) and the project remembers the original file, so a missing copy is made again.
 - **Paste Event Attributes** (`Ctrl+Shift+V`): copy an event and give its look to the selected ones: Video and Audio FX, Pan/Crop, mask, level or volume and text style. *Selectively Paste Event Attributes* lets you choose which.
 - **Selection edit tool** (toolbar or `Ctrl+D`): drag a dashed rectangle anywhere, over events too, to select many at once without moving them (`Shift` adds, `Ctrl` toggles).
 - Split, groups, markers, snapping, frame quantization, context menus and 200 undo levels.
@@ -210,6 +211,7 @@ Ideas that make everyday editing of spoken videos, Shorts and captions quicker f
 | `Ctrl+Shift+V` | paste the copied event's attributes (FX, Pan/Crop, mask, level, text style) onto the selected events |
 | `Ctrl+D` | switch between the normal edit tool and the selection tool |
 | `Ctrl+S` / `Ctrl+O` | save / open project (`.boar`; double-clicking a project file or dropping it on Boar opens it too; *File › Open Recent* lists the last ten) |
+| `Ctrl+Shift+N` | new window, to work on another project side by side (starting Boar again opens one too; a project double-clicked in the file manager opens in a new window unless the last one used is empty) |
 | `Ctrl+M` | Render As |
 | `Ctrl+F` | search commands, options and effects |
 | `Ctrl+R` / `Ctrl+Shift+R` | rotate the selected video, image or text 90° clockwise / counterclockwise |

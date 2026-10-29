@@ -15,8 +15,10 @@ import type { MediaItem, MediaKind } from '../core/types'
 import { bridge, mediaPathUrl } from '../platform'
 import { type AnimatedImage, animationCache, imageCache, notifyMediaCache, peakCache, thumbCache, type Peaks, type ThumbStrip } from './cache'
 import { isSlowToSeek, setUpProxy } from './proxy'
+import { takeTurns } from './turns'
+import { isProgramStream } from './mpeg/programStream'
 
-const VIDEO_EXT = ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'mts', 'm2ts', 'ts', 'wmv', 'mpg', 'mpeg', '3gp']
+const VIDEO_EXT = ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'mts', 'm2ts', 'ts', 'wmv', 'mpg', 'mpeg', 'mod', 'vob', '3gp']
 const AUDIO_EXT = ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus', 'wma', 'aif', 'aiff']
 const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'avif']
 
@@ -101,7 +103,8 @@ function whenReady(id: string): Promise<MediaItem | null> {
  */
 export function importPaths(paths: string[]): Promise<MediaItem | null>[] {
   return paths.map((path) => {
-    const existing = useEditor.getState().media.find((m) => m.path === path && m.status !== 'error')
+    // A camcorder file in Project Media points at its copy and remembers the original.
+    const existing = useEditor.getState().media.find((m) => (m.path === path || m.convertedFrom === path) && m.status !== 'error')
     if (existing) return whenReady(existing.id)
     const name = path.split(/[\\/]/).pop() ?? path
     const kind = kindOfName(name)
@@ -200,11 +203,12 @@ export function importFiles(files: Iterable<File>): Promise<MediaItem | null>[] 
 export function track(item: MediaItem): Promise<MediaItem | null> {
   setStatus(`Analyzing ${item.name}…`)
   return analyzeMedia(item).then(
-    () => {
+    (soundLeftOut) => {
       const ready = mediaById(item.id)
-      // A sound track the system cannot decode (AC-3 from some cameras...) leaves the clip silent: say so.
+      // A sound track the system cannot decode (DTS, MPEG audio layer II...) leaves the clip silent: say so.
       const silent = ready && ready.kind === 'video' && !ready.hasAudio && ready.audioCodec
-      setStatus(silent ? `Imported ${item.name} without sound: its audio (${ready.audioCodec}) cannot be decoded here` : `Imported ${item.name}`)
+      if (soundLeftOut) setStatus(`Imported ${item.name} without sound: ${soundLeftOut}`)
+      else setStatus(silent ? `Imported ${item.name} without sound: its audio (${ready.audioCodec}) cannot be decoded here` : `Imported ${item.name}`)
       return ready && ready.status === 'ready' ? ready : null
     },
     (err: unknown) => {
@@ -216,7 +220,12 @@ export function track(item: MediaItem): Promise<MediaItem | null> {
   )
 }
 
-async function analyzeMedia(item: MediaItem): Promise<void> {
+// The files of a project decode their thumbnails and waveforms a few at a time.
+const pictureTurns = takeTurns(2)
+const soundTurns = takeTurns(2)
+
+/** Reads a media item's properties, thumbnails and waveform; resolves with why its sound was left out, if it was. */
+async function analyzeMedia(item: MediaItem): Promise<string | null> {
   if (item.kind === 'image') {
     const blob = item.file ?? (await (await fetch(item.url)).blob())
     const bitmap = await createImageBitmap(blob)
@@ -226,7 +235,23 @@ async function analyzeMedia(item: MediaItem): Promise<void> {
     // The picture is its own poster (media reopened from a project or relinked start without one).
     updateMedia(item.id, { status: 'ready', width: bitmap.width, height: bitmap.height, hasVideo: true, poster: item.url })
     notifyMediaCache()
-    return
+    return null
+  }
+
+  // Camcorder files Chromium cannot read play from an editable copy (made once, see convert.ts).
+  if (item.kind === 'video') {
+    const head = await readHead(item)
+    if (!head && item.convertedFrom && bridge) {
+      // The copy is gone: made again from the camcorder file.
+      updateMedia(item.id, { path: item.convertedFrom, url: mediaPathUrl(item.convertedFrom) })
+    }
+    if ((!head && item.convertedFrom && bridge) || (head && isProgramStream(head))) {
+      const { convertCameraFile } = await import('./convert')
+      const soundLeftOut = await convertCameraFile(item.id)
+      const converted = mediaById(item.id)
+      if (converted) await analyzeMedia(converted)
+      return soundLeftOut
+    }
   }
 
   const input = new Input({ formats: ALL_FORMATS, source: inputSource(item) })
@@ -277,12 +302,26 @@ async function analyzeMedia(item: MediaItem): Promise<void> {
           })
       )
     }
-    if (video && videoOk) jobs.push(buildThumbnails(item.id, video, Math.max(0, first), seconds))
-    if (audio && audioOk) jobs.push(buildPeaks(item.id, audio, Math.max(0, first), seconds))
+    if (video && videoOk) jobs.push(pictureTurns(() => buildThumbnails(item.id, video, Math.max(0, first), seconds)))
+    if (audio && audioOk) jobs.push(soundTurns(() => buildPeaks(item.id, audio, Math.max(0, first), seconds)))
     keepInput = true
     void Promise.allSettled(jobs).then(() => input.dispose())
   } finally {
     if (!keepInput) input.dispose()
+  }
+  return null
+}
+
+/** The first bytes of a media file, null when it cannot be read. */
+async function readHead(media: MediaItem): Promise<Uint8Array | null> {
+  try {
+    if (media.file) return new Uint8Array(await media.file.slice(0, 16).arrayBuffer())
+    if (!media.url) return null
+    const response = await fetch(media.url, { headers: { Range: 'bytes=0-15' } })
+    if (!response.ok) return null
+    return new Uint8Array(await response.arrayBuffer()).subarray(0, 16)
+  } catch {
+    return null
   }
 }
 
@@ -342,6 +381,8 @@ async function buildThumbnails(
   first: number,
   seconds: number
 ): Promise<void> {
+  // Removed while waiting for its turn (another project opened).
+  if (!mediaById(mediaId)) return
   const aspect = video.displayWidth / video.displayHeight || 16 / 9
   const height = 72
   const width = Math.max(8, Math.round(height * aspect))
@@ -367,6 +408,7 @@ async function buildThumbnails(
 const PEAKS_PER_SECOND = 100
 
 async function buildPeaks(mediaId: string, audio: InputAudioTrack, first: number, seconds: number): Promise<void> {
+  if (!mediaById(mediaId)) return
   const channelCount = Math.min(2, Math.max(1, audio.numberOfChannels))
   const total = Math.ceil(seconds * PEAKS_PER_SECOND) + 2
   const peaks: Peaks = {

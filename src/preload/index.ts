@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('boar', {
   recoverAutosave: (): Promise<{ path: string | null; json: string; savedAt: number } | null> => ipcRenderer.invoke('autosave:recover'),
   writeAutosave: (json: string, projectPath: string | null): Promise<void> => ipcRenderer.invoke('autosave:write', json, projectPath),
   clearAutosave: (): Promise<void> => ipcRenderer.invoke('autosave:clear'),
+  newWindow: (): void => ipcRenderer.send('app:newWindow'),
   onLaunchProject(callback: () => void): () => void {
     const listener = (): void => callback()
     ipcRenderer.on('project:launch', listener)
@@ -67,6 +68,8 @@ contextBridge.exposeInMainWorld('boar', {
   deleteProxy: (source: string): Promise<void> => ipcRenderer.invoke('proxy:delete', source),
   findReversed: (source: string, range: string, name: string): Promise<string | null> => ipcRenderer.invoke('reverse:find', source, range, name),
   createReversed: (source: string, range: string, name: string): Promise<number> => ipcRenderer.invoke('reverse:create', source, range, name),
+  findConverted: (source: string): Promise<string | null> => ipcRenderer.invoke('convert:find', source),
+  createConverted: (source: string): Promise<number> => ipcRenderer.invoke('convert:create', source),
   setProgress: (value: number): void => ipcRenderer.send('app:progress', value),
   libraryFolders: (): Promise<unknown> => ipcRenderer.invoke('library:folders'),
   addLibraryFolder: (): Promise<string | null> => ipcRenderer.invoke('library:addFolder'),

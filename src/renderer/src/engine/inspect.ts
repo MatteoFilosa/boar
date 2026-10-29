@@ -1,4 +1,5 @@
 import { ALL_FORMATS, CanvasSink, Input, type Source } from 'mediabunny'
+import { type CameraFileFacts, probeProgramStream } from '../media/mpeg/probe'
 
 // Looking into media files without putting them on the timeline (MCP tools
 // look_at_media, media_info, freeze_frame): an agent can skim hours of
@@ -38,6 +39,17 @@ export function probeMedia(source: Source): Promise<MediaFacts> {
       videoCodec: (await video.getCodec()) ?? '',
       audioTracks: audio.length
     }
+  })
+}
+
+/** A camcorder file (MPEG program stream, converted on import) read through its media URL; null for other files. */
+export function probeCameraFile(url: string): Promise<CameraFileFacts | null> {
+  return probeProgramStream(async (start, end) => {
+    const response = await fetch(url, { headers: { Range: `bytes=${start}-${end - 1}` } })
+    if (!response.ok) throw new Error(`cannot read the file (${response.status})`)
+    const data = new Uint8Array(await response.arrayBuffer())
+    const size = Number(/\/(\d+)$/.exec(response.headers.get('content-range') ?? '')?.[1] ?? data.length)
+    return { data, size }
   })
 }
 

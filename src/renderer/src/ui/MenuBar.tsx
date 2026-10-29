@@ -7,6 +7,7 @@ import { type CommandId, commands } from './commands'
 import { shortcutLabel } from './shortcuts'
 import logo from '../assets/logo.png'
 import { MenuIcon } from './ContextMenu'
+import { isElectron } from '../platform'
 import { CommandSearch } from './CommandSearch'
 import { interfaceScaleLabel } from './interfaceScale'
 import { SAFE_GUIDES } from '../core/safeZones'
@@ -49,6 +50,7 @@ function useMenus(): Menu[] {
       label: 'File',
       entries: [
         { label: 'New', command: 'newProject' },
+        ...(isElectron ? [{ label: 'New Window', command: 'newWindow' } as Item] : []),
         { label: 'Open...', command: 'openProject' },
         {
           label: 'Open Recent',

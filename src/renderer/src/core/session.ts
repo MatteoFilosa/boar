@@ -171,6 +171,7 @@ function loadProject(opened: { path: string | null; json: string }, recoveredAt?
   }
   for (const m of get().media) {
     if (m.url.startsWith('blob:')) URL.revokeObjectURL(m.url)
+    if (m.poster.startsWith('blob:') && m.poster !== m.url) URL.revokeObjectURL(m.poster)
     dropMediaCache(m.id)
   }
   const media: MediaItem[] = parsed.media.map((saved) => ({
@@ -194,7 +195,8 @@ function loadProject(opened: { path: string | null; json: string }, recoveredAt?
     sampleRate: 0,
     channels: 0,
     poster: '',
-    reverseOf: saved.reverseOf
+    reverseOf: saved.reverseOf,
+    convertedFrom: saved.convertedFrom
   }))
   const recovered = recoveredAt !== undefined
   set({

@@ -50,6 +50,7 @@ export const BINDINGS: Binding[] = [
   { key: 'q', ctrl: true, command: 'addAudioTrack' },
   { key: 'i', ctrl: true, command: 'importMedia' },
   { key: 'n', ctrl: true, command: 'newProject' },
+  { key: 'n', ctrl: true, shift: true, command: 'newWindow' },
   { key: 'o', ctrl: true, command: 'openProject' },
   { key: 's', ctrl: true, command: 'saveProject' },
   { key: 's', ctrl: true, shift: true, command: 'saveProjectAs' },

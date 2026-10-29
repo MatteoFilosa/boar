@@ -141,4 +141,11 @@ export interface MediaItem {
   slowSeek?: boolean
   /** Set on the reversed copies Reverse makes (saved with the project). */
   reverseOf?: ReverseLink
+  /**
+   * Camcorder file (MPEG-1/2 program stream) that `path` is an editable copy
+   * of (saved with the project; the copy is made again from it when missing).
+   */
+  convertedFrom?: string
+  /** 0..1 while that copy is being made. */
+  convertProgress?: number
 }

@@ -132,8 +132,8 @@ export function registerAutosaveIpc(projectPaths: Set<string>, smoke: boolean): 
         }
         const json = await readFile(join(folder(), `${name}.boar`), 'utf8')
         try {
-          const data = JSON.parse(json) as { media?: { path?: string }[] }
-          allowMediaPaths((data.media ?? []).map((m) => m.path ?? ''))
+          const data = JSON.parse(json) as { media?: { path?: string; convertedFrom?: string }[] }
+          allowMediaPaths((data.media ?? []).flatMap((m) => [m.path ?? '', m.convertedFrom ?? '']))
         } catch {
           // Damaged copy: the renderer reports it.
         }

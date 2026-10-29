@@ -43,6 +43,7 @@
 - **Auto Ripple** (`Ctrl+L`): eliminando, tagliando o incollando i buchi si chiudono da soli, sulle tracce interessate o su tutte; spostando un evento o trascinandone un bordo si sposta anche quello che viene dopo.
 - **Velocità**: `Ctrl` + trascina un bordo per accelerare o rallentare (0.25x–4x, l'audio mantiene l'intonazione).
 - **Reverse** (clic destro su una clip, o *Tools › Reverse*): la clip va al contrario, video e audio, nello stesso punto. La prima volta Boar ne crea una copia invertita sul tuo PC e la tiene con i tuoi media, così dopo è immediato; un secondo Reverse la riporta in avanti.
+- **Video delle videocamere** (.mpg, .mod, .vob delle videocamere che registrano in definizione standard su DVD, hard disk o scheda di memoria: video MPEG-2 o MPEG-1 con audio AC-3): Boar li decodifica da solo e ne crea una copia modificabile quando li importi. Ogni semiquadro diventa un fotogramma intero (50 o 60 al secondo, movimento fluido come è stato ripreso, senza righe) e i pixel diventano quadrati, così il 16:9 mantiene le proporzioni giuste. La copia resta sul tuo PC (crearla richiede circa metà della durata della clip, sulla scheda video) e il progetto ricorda il file originale, così una copia mancante viene rifatta.
 - **Paste Event Attributes** (`Ctrl+Shift+V`): copi un evento e dai il suo aspetto a quelli selezionati: Video e Audio FX, Pan/Crop, maschera, livello o volume e stile del testo. *Selectively Paste Event Attributes* ti fa scegliere cosa.
 - **Strumento di selezione** (toolbar o `Ctrl+D`): trascina un rettangolo tratteggiato ovunque, anche sopra gli eventi, per selezionarne tanti insieme senza spostarli (`Shift` aggiunge, `Ctrl` alterna).
 - Split, gruppi, marker, snapping, quantizzazione ai frame, menu contestuali e 200 livelli di annulla.
@@ -210,6 +211,7 @@ Le idee che rendono più veloce il montaggio di tutti i giorni di video parlati,
 | `Ctrl+Shift+V` | incolla gli attributi dell'evento copiato (FX, Pan/Crop, maschera, livello, stile del testo) sugli eventi selezionati |
 | `Ctrl+D` | passa dallo strumento normale a quello di selezione e viceversa |
 | `Ctrl+S` / `Ctrl+O` | salva / apri progetto (`.boar`; si apre anche con un doppio clic sul file o trascinandolo su Boar; *File › Open Recent* elenca gli ultimi dieci) |
+| `Ctrl+Shift+N` | nuova finestra, per lavorare a un altro progetto in parallelo (anche riavviando Boar se ne apre una; un progetto aperto con doppio clic dal file manager va in una nuova finestra, a meno che l'ultima usata sia vuota) |
 | `Ctrl+M` | Render As |
 | `Ctrl+F` | cerca comandi, opzioni ed effetti |
 | `Ctrl+R` / `Ctrl+Shift+R` | ruota video, immagine o testo selezionato di 90° in senso orario / antiorario |

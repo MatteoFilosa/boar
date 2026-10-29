@@ -13,6 +13,7 @@ import { shortcutLabel } from './shortcuts'
 
 function describe(m: MediaItem): string {
   if (m.status === 'error') return m.error
+  if (m.convertProgress !== undefined) return `Converting ${Math.round(m.convertProgress * 100)}%`
   if (m.status === 'analyzing') return 'Analyzing…'
   const parts: string[] = []
   if (m.kind !== 'image') parts.push(formatDuration(m.duration))
@@ -43,7 +44,7 @@ function MediaTile({ media, selected, onSelect }: { media: MediaItem; selected: 
   return (
     <div
       className={`media-tile${selected ? ' selected' : ''}${media.status === 'error' ? ' error' : ''}`}
-      title={`${media.name}\n${describe(media)}${media.path ? `\n${media.path}` : ''}\nDrag to the timeline or double-click to add at the cursor.`}
+      title={`${media.name}\n${describe(media)}${media.convertedFrom ? `\n${media.convertedFrom}\nEdited through a copy Boar made of this camcorder file: ${media.path}` : media.path ? `\n${media.path}` : ''}\nDrag to the timeline or double-click to add at the cursor.`}
       onPointerDown={(e) => {
         if (e.button !== 0) return
         onSelect()
@@ -62,6 +63,11 @@ function MediaTile({ media, selected, onSelect }: { media: MediaItem; selected: 
         ) : null}
         {media.status === 'analyzing' && <LoaderCircle className="spin media-badge" size={16} />}
         {media.status === 'error' && <AlertTriangle className="media-badge warn" size={16} />}
+        {media.convertProgress !== undefined && (
+          <div className="media-proxy-bar" title="Making an editable copy of this camcorder file (deinterlaced, square pixels)">
+            <div style={{ width: `${Math.round(media.convertProgress * 100)}%` }} />
+          </div>
+        )}
         {media.proxyProgress !== undefined && (
           <div className="media-proxy-bar" title="Making a proxy for smooth scrubbing">
             <div style={{ width: `${Math.round(media.proxyProgress * 100)}%` }} />

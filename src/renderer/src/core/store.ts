@@ -279,6 +279,15 @@ useEditor.subscribe((s, p) => {
   }
 })
 
+// Options changed in another window: this one follows, so it never writes its older copy back.
+if (typeof window.addEventListener === 'function') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === OPTIONS_KEY && e.newValue !== null && e.newValue !== JSON.stringify(useEditor.getState().options)) {
+      useEditor.setState({ options: loadOptions() })
+    }
+  })
+}
+
 let mediaIndexSource: MediaItem[] | null = null
 let mediaIndex = new Map<string, MediaItem>()
 

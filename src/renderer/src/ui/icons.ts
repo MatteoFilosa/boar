@@ -64,13 +64,15 @@ import {
   PictureInPicture2,
   Bot,
   Circle,
-  MoveUpRight
+  MoveUpRight,
+  AppWindow
 } from 'lucide-react'
 import type { CommandId } from './commands'
 
 /** Icon shown next to a command in the menus and the right-click menu. */
 export const COMMAND_ICONS: Partial<Record<CommandId, LucideIcon>> = {
   newProject: FilePlus,
+  newWindow: AppWindow,
   openProject: FolderOpen,
   saveProject: Save,
   saveProjectAs: SaveAll,

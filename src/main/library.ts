@@ -11,7 +11,7 @@ import { mergeVideoAudio } from './remux'
 // list, read and write inside them.
 
 const MEDIA_EXT = new Set([
-  'mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'mts', 'm2ts', 'ts', 'wmv', 'mpg', 'mpeg', '3gp',
+  'mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'mts', 'm2ts', 'ts', 'wmv', 'mpg', 'mpeg', 'mod', 'vob', '3gp',
   'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus', 'wma', 'aif', 'aiff',
   'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'avif'
 ])

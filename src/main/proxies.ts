@@ -37,6 +37,21 @@ async function reversedPath(source: string, range: string, name: string): Promis
   return join(reversedDir(), key, `${stem}${ext}`)
 }
 
+// Converted copies: camcorder files the editor cannot read (MPEG-2 program
+// streams) become H.264 files, made by the renderer like proxies. Projects use
+// them in place of the original, so they are never pruned; a folder named after
+// the source's path, size and modification time finds the same copy again.
+
+const convertedDir = (): string => join(app.getPath('userData'), 'Converted Media')
+
+async function convertedPath(source: string): Promise<string> {
+  if (!isAbsolute(source)) throw new Error('Not a file path')
+  const s = await stat(source)
+  const key = createHash('sha1').update(`${source}|${s.size}|${s.mtimeMs}`).digest('hex').slice(0, 16)
+  const stem = basename(source, extname(source)).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/, '').slice(0, 120) || 'Converted'
+  return join(convertedDir(), key, `${stem}.mp4`)
+}
+
 const writing = new Map<number, { handle: FileHandle; part: string; path: string }>()
 let nextId = 1
 
@@ -54,6 +69,7 @@ async function prune(): Promise<void> {
 export function registerProxyIpc(): void {
   allowMediaDir(proxyDir())
   allowMediaDir(reversedDir())
+  allowMediaDir(convertedDir())
   void prune()
 
   /** The proxy of a source file, if it exists (and marks it as used). */
@@ -81,6 +97,21 @@ export function registerProxyIpc(): void {
   /** Starts writing a reversed copy; written and finished like a proxy. */
   ipcMain.handle('reverse:create', async (_event, source: string, range: string, name: string) => {
     const path = await reversedPath(source, range, name)
+    await mkdir(dirname(path), { recursive: true })
+    const part = `${path}.part`
+    const handle = await open(part, 'w')
+    const id = nextId++
+    writing.set(id, { handle, part, path })
+    return id
+  })
+  /** The converted copy of a camcorder file, if it was made before. */
+  ipcMain.handle('convert:find', async (_event, source: string) => {
+    const path = await convertedPath(source).catch(() => null)
+    return path && existsSync(path) ? path : null
+  })
+  /** Starts writing a converted copy; written and finished like a proxy. */
+  ipcMain.handle('convert:create', async (_event, source: string) => {
+    const path = await convertedPath(source)
     await mkdir(dirname(path), { recursive: true })
     const part = `${path}.part`
     const handle = await open(part, 'w')

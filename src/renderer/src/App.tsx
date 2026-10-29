@@ -49,12 +49,13 @@ export function App(): React.JSX.Element {
     }
   }, [])
 
-  // Window title "Name * - Boar"; the main process reads __boarUnsaved on close.
+  // Window title "Name * - Boar"; the main process reads __boarUnsaved on close and __boarIdle for projects from the file manager.
   useEffect(() => {
     const update = (): void => {
       const s = useEditor.getState()
       const dirty = isDirty()
       window.__boarUnsaved = dirty ? projectName(s.projectPath) : null
+      window.__boarIdle = !dirty && !s.projectPath && s.project.events.length === 0 && s.media.length === 0
       document.title = `${projectName(s.projectPath)}${dirty ? ' *' : ''} - Boar`
     }
     update()

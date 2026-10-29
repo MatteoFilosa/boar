@@ -25,6 +25,8 @@ export default defineConfig(({ command }) => ({
       // MediaPipe's large wasm stays a file and is read through IPC (media/assets.ts).
       assetsInlineLimit: (file: string) => (file.endsWith('.wasm') && !file.includes('vision_wasm') ? true : undefined)
     },
+    // Inline workers are one file: the AC-3 decoder's Node-only dynamic import stays inside it.
+    worker: { rollupOptions: { output: { inlineDynamicImports: true } } },
     plugins: [react()]
   }
 }))

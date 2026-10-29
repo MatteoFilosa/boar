@@ -30,7 +30,7 @@ import { DEFAULT_SHORT_OPTIONS, type ShortFraming, backToLongVideo, makeShort } 
 import { bridge, mediaPathUrl } from '../platform'
 import { type Source, UrlSource } from 'mediabunny'
 import { inputSource } from '../media/source'
-import { clock, contactSheet, frameImage, probeMedia } from '../engine/inspect'
+import { clock, contactSheet, frameImage, probeCameraFile, probeMedia } from '../engine/inspect'
 import { transcribeMedia } from '../engine/transcribe'
 import { reverseEvents } from '../engine/reverse'
 import { importFiles, importPaths, kindOfName } from '../media/importer'
@@ -438,7 +438,9 @@ const TOOLS: Tool[] = [
           duration: sec(m.duration),
           size: m.width ? `${m.width}x${m.height}` : undefined,
           audio: m.hasAudio,
-          transcript: !!transcripts[m.id]
+          transcript: !!transcripts[m.id],
+          status: m.status === 'ready' ? undefined : m.convertProgress !== undefined ? `converting ${Math.round(m.convertProgress * 100)}%` : m.status === 'error' ? `error: ${m.error}` : m.status,
+          camcorder_file: m.convertedFrom
         }))
       }
     }
@@ -1318,15 +1320,30 @@ const TOOLS: Tool[] = [
   {
     name: 'import_media',
     title: 'Import media files',
-    description: 'Adds files (absolute paths: videos, sounds, images) to Project Media without placing them. add_media also imports by path.',
+    description:
+      'Adds files (absolute paths: videos, sounds, images) to Project Media without placing them. add_media also imports by path. ' +
+      'Camcorder files (.mpg, .mod, .vob: MPEG-2 or MPEG-1) are converted to an editable copy first (about half their length each, two at a time); ' +
+      'files still converting after a minute come back with their progress: get_project shows when they are ready.',
     inputSchema: object({ paths: { type: 'array', items: { type: 'string' }, description: 'Absolute file paths' } }, ['paths']),
     run: async (a) => {
       if (!bridge) throw new ToolError('Importing files needs the desktop app')
       if (!Array.isArray(a.paths) || a.paths.some((p) => typeof p !== 'string')) throw new ToolError('"paths" must be an array of file paths')
-      const media = await Promise.all(importPaths(a.paths as string[]))
-      return media.map((m, i) =>
-        m ? { media_id: m.id, name: m.name, kind: m.kind, duration: sec(m.duration), size: m.width ? `${m.width}x${m.height}` : undefined } : { path: (a.paths as string[])[i], error: 'not imported' }
-      )
+      const paths = a.paths as string[]
+      const done = Promise.all(importPaths(paths))
+      const media = await Promise.race([done, new Promise<null>((resolve) => setTimeout(() => resolve(null), 60_000))])
+      if (media) {
+        return media.map((m, i) =>
+          m ? { media_id: m.id, name: m.name, kind: m.kind, duration: sec(m.duration), size: m.width ? `${m.width}x${m.height}` : undefined } : { path: paths[i], error: 'not imported' }
+        )
+      }
+      // Long conversions go on in Boar: say where each file is.
+      return paths.map((path) => {
+        const m = get().media.find((x) => x.path === path || x.convertedFrom === path)
+        if (!m) return { path, error: 'not imported' }
+        if (m.status === 'ready') return { media_id: m.id, name: m.name, kind: m.kind, duration: sec(m.duration), size: m.width ? `${m.width}x${m.height}` : undefined }
+        if (m.status === 'error') return { media_id: m.id, name: m.name, error: m.error }
+        return { media_id: m.id, name: m.name, status: m.convertProgress !== undefined ? `converting ${Math.round(m.convertProgress * 100)}%` : 'analyzing' }
+      })
     }
   },
   {
@@ -1432,7 +1449,18 @@ const TOOLS: Tool[] = [
             audioTracks: facts.audioTracks
           })
         } catch (err) {
-          out.push({ path, name, error: fileError(err) })
+          const camera = await probeCameraFile(mediaPathUrl(path)).catch(() => null)
+          if (camera) {
+            out.push({
+              path,
+              duration: Math.round(camera.duration * 10) / 10,
+              length: clock(camera.duration),
+              size: `${camera.width}x${camera.height}`,
+              fps: camera.fps,
+              audioTracks: camera.audioTracks,
+              note: `${camera.codec} camcorder file: importing it makes an editable copy${camera.interlaced ? ', one frame per field' : ''} (size and fps are the copy's)`
+            })
+          } else out.push({ path, name, error: fileError(err) })
         }
       }
       return out
@@ -1464,7 +1492,10 @@ const TOOLS: Tool[] = [
         count,
         columns: Math.round(num(a, 'columns', { min: 1, max: 12, def: 4 })),
         cellWidth: Math.round(num(a, 'width', { min: 120, max: 640, def: 320 }))
-      }).catch((err: unknown) => {
+      }).catch(async (err: unknown) => {
+        if (a.path !== undefined && (await probeCameraFile(mediaPathUrl(str(a, 'path'))).catch(() => null))) {
+          throw new ToolError(`${name} is a camcorder file Boar reads through an editable copy: import it (import_media), then look at it by media_id`)
+        }
         throw new ToolError(`${name}: ${fileError(err)}`)
       })
       const step = sheet.times.length > 1 ? sheet.times[1] - sheet.times[0] : 0

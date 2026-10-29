@@ -28,6 +28,7 @@ async function paste(): Promise<void> {
 /** Every user command, shared by menus, toolbar and keyboard shortcuts. */
 export const commands = {
   newProject: A.newProject,
+  newWindow: (): void => bridge?.newWindow(),
   openProject: (): void => void openProject(),
   saveProject: (): void => void saveProject(false),
   saveProjectAs: (): void => void saveProject(true),

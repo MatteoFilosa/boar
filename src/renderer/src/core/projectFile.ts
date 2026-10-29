@@ -29,6 +29,8 @@ export interface SavedMedia {
   size: number
   /** Reversed copy of another media file (Reverse). */
   reverseOf?: ReverseLink
+  /** Converted copy of this camcorder file. */
+  convertedFrom?: string
 }
 
 const isReverseLink = (r: unknown): r is ReverseLink => {
@@ -50,7 +52,15 @@ export function serializeProject(
     savedAt: new Date().toISOString(),
     project,
     // Keep everything in Project Media, used or not.
-    media: saved.map((m) => ({ id: m.id, name: m.name, kind: m.kind, path: m.path, size: m.size, ...(m.reverseOf ? { reverseOf: m.reverseOf } : {}) })),
+    media: saved.map((m) => ({
+      id: m.id,
+      name: m.name,
+      kind: m.kind,
+      path: m.path,
+      size: m.size,
+      ...(m.reverseOf ? { reverseOf: m.reverseOf } : {}),
+      ...(m.convertedFrom ? { convertedFrom: m.convertedFrom } : {})
+    })),
     transcripts: Object.fromEntries(saved.filter((m) => transcripts[m.id]).map((m) => [m.id, transcripts[m.id]])),
     shorts
   }
@@ -111,6 +121,10 @@ export function parseProject(json: string): {
   )
   const media = (data.media ?? [])
     .filter((m) => m && m.id && m.name)
-    .map(({ reverseOf, ...m }) => (isReverseLink(reverseOf) ? { ...m, reverseOf } : m))
+    .map(({ reverseOf, convertedFrom, ...m }) => ({
+      ...m,
+      ...(isReverseLink(reverseOf) ? { reverseOf } : {}),
+      ...(typeof convertedFrom === 'string' && convertedFrom ? { convertedFrom } : {})
+    }))
   return { project, media, transcripts, shorts }
 }

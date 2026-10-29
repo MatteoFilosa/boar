@@ -2449,6 +2449,7 @@ export function newProject(): void {
   if (hasUnsavedChanges(get()) && !window.confirm('The project has unsaved changes. Discard them?')) return
   for (const m of get().media) {
     if (m.url.startsWith('blob:')) URL.revokeObjectURL(m.url)
+    if (m.poster.startsWith('blob:') && m.poster !== m.url) URL.revokeObjectURL(m.poster)
     dropMediaCache(m.id)
   }
   const fresh = emptyProject()

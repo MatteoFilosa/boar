@@ -24,15 +24,22 @@ disableBackgroundNetworking()
 // Own taskbar identity on Windows (icon and grouping), instead of Electron's.
 if (process.platform === 'win32') app.setAppUserModelId('io.github.matteofilosa.boar')
 
-let mainWindow: BrowserWindow | null = null
+/** Editor windows, each with its own project. Agents (MCP) work in the one used last. */
+const windows = new Set<BrowserWindow>()
+let lastWindow: BrowserWindow | null = null
+const editorWindow = (): BrowserWindow | null => lastWindow ?? [...windows].at(-1) ?? null
+
 let quitting = false
 app.on('before-quit', () => (quitting = true))
 
 // Projects opened from the file manager (double click, Open with, drag onto
 // the app icon): the path comes in the command line on Windows and Linux, or
-// as an open-file event on macOS. The renderer takes it when it is ready.
+// as an open-file event on macOS. The window's page takes it when it is ready.
 
-let launchProject: string | null = null
+/** The project the first window opens. */
+let startProject: string | null = null
+/** Projects waiting for their window's page (webContents id → path). */
+const launchPaths = new Map<number, string>()
 
 const isProjectFile = (path: string): boolean => extname(path).toLowerCase() === '.boar' && existsSync(path)
 
@@ -46,29 +53,40 @@ function projectInArgs(argv: string[], workingDir = process.cwd()): string | nul
   return null
 }
 
-function requestProjectOpen(path: string): void {
-  launchProject = path
-  const win = mainWindow
-  // No window yet (starting), or none left (macOS keeps the app running): the
-  // new window takes the project when its page is ready.
-  if (!win) {
-    if (app.isReady()) createWindow()
-    return
-  }
+function showWindow(win: BrowserWindow): void {
   if (win.isMinimized()) win.restore()
   win.focus()
+}
+
+/** Opens a project in the window used last when it shows an empty untitled project, else in a new window. */
+async function requestProjectOpen(path: string): Promise<void> {
+  // Starting: the first window takes it.
+  if (!app.isReady()) {
+    startProject = path
+    return
+  }
+  const win = editorWindow()
+  const idle = win ? await win.webContents.executeJavaScript('window.__boarIdle === true').catch(() => false) : false
+  if (!win || win.isDestroyed() || !idle) {
+    createWindow(path)
+    return
+  }
+  launchPaths.set(win.webContents.id, path)
+  showWindow(win)
   win.webContents.send('project:launch')
 }
 
-launchProject = projectInArgs(process.argv)
+startProject = projectInArgs(process.argv)
 app.on('open-file', (event, path) => {
   event.preventDefault()
-  if (isProjectFile(path)) requestProjectOpen(path)
+  if (isProjectFile(path)) void requestProjectOpen(path)
 })
 
-// One editor at a time (they share settings and caches): opening Boar or a
-// project again goes to the window that is already open. Development and
-// smoke runs are left alone so they can run next to an installed copy.
+// One process, several windows: they share settings and caches, which a second
+// process could not use (its storage would stay locked by the first). Opening
+// Boar again opens another window; a project goes to an empty window or a new
+// one. Development and smoke runs are left alone so they can run next to an
+// installed copy.
 let secondInstance = false
 if (app.isPackaged && !smoke) {
   if (!app.requestSingleInstanceLock()) {
@@ -77,11 +95,8 @@ if (app.isPackaged && !smoke) {
   } else {
     app.on('second-instance', (_event, argv, workingDir) => {
       const path = projectInArgs(argv, workingDir)
-      if (path) requestProjectOpen(path)
-      else if (mainWindow) {
-        if (mainWindow.isMinimized()) mainWindow.restore()
-        mainWindow.focus()
-      }
+      if (path) void requestProjectOpen(path)
+      else createWindow()
     })
   }
 }
@@ -89,10 +104,14 @@ if (app.isPackaged && !smoke) {
 // The problem log (Help › Problem Log); a second instance only hands its project over.
 if (!secondInstance) startLog(smoke)
 
-function createWindow(): void {
+/** A new editor window, opening `project` when given; placed a little below and right of the window used last. */
+function createWindow(project: string | null = null): void {
+  const near = editorWindow()
+  const bounds = near && !near.isDestroyed() && !near.isMaximized() && !near.isFullScreen() ? near.getBounds() : null
   const win = new BrowserWindow({
-    width: 1600,
-    height: 940,
+    ...(bounds ? { x: bounds.x + 32, y: bounds.y + 32 } : {}),
+    width: bounds?.width ?? 1600,
+    height: bounds?.height ?? 940,
     minWidth: 1100,
     minHeight: 680,
     show: false,
@@ -111,10 +130,15 @@ function createWindow(): void {
     }
   })
   win.setMenu(null)
-  mainWindow = win
+  windows.add(win)
+  lastWindow = win
   const pageId = win.webContents.id
+  if (project) launchPaths.set(pageId, project)
+  win.on('focus', () => (lastWindow = win))
   win.on('closed', () => {
-    if (mainWindow === win) mainWindow = null
+    windows.delete(win)
+    if (lastWindow === win) lastWindow = null
+    launchPaths.delete(pageId)
     // Closed normally (unsaved changes were asked about): no copy to recover.
     endAutosaveSession(pageId)
   })
@@ -138,10 +162,12 @@ function createWindow(): void {
     log('error', 'app', `The editor page stopped: ${details.reason}, exit code ${details.exitCode}`)
     setCrashNotice(`The editor stopped unexpectedly (${details.reason}).`)
     abandonAutosaveSession(pageId)
+    // Other windows keep working: only this one closes.
+    const others = windows.size > 1
     void dialog
       .showMessageBox(win, {
         type: 'error',
-        buttons: ['Reload', 'Quit'],
+        buttons: ['Reload', others ? 'Close' : 'Quit'],
         defaultId: 0,
         cancelId: 1,
         noLink: true,
@@ -154,7 +180,7 @@ function createWindow(): void {
         else {
           // No page left to ask about unsaved changes: they wait in the autosave.
           win.destroy()
-          app.quit()
+          if (!others) app.quit()
         }
       })
   })
@@ -327,8 +353,8 @@ function registerIpc(): void {
   const readProject = async (path: string): Promise<{ path: string; json: string }> => {
     const json = await readFile(path, 'utf8')
     try {
-      const data = JSON.parse(json) as { media?: { path?: string }[] }
-      allowMediaPaths((data.media ?? []).map((m) => m.path ?? ''))
+      const data = JSON.parse(json) as { media?: { path?: string; convertedFrom?: string }[] }
+      allowMediaPaths((data.media ?? []).flatMap((m) => [m.path ?? '', m.convertedFrom ?? '']))
     } catch {
       // Invalid file: the renderer reports it.
     }
@@ -344,12 +370,14 @@ function registerIpc(): void {
     if (result.canceled || !path) return null
     return readProject(path)
   })
-  // The project Boar was started with (or asked to open by the file manager).
-  ipcMain.handle('project:takeLaunch', async () => {
-    const path = launchProject
-    launchProject = null
+  // The project this window was opened for (Boar started with it, or the file manager sent it).
+  ipcMain.handle('project:takeLaunch', async (event) => {
+    const path = launchPaths.get(event.sender.id)
+    launchPaths.delete(event.sender.id)
     return path ? readProject(path) : null
   })
+  // File › New Window.
+  ipcMain.on('app:newWindow', () => createWindow())
   // A .boar file dropped on the window.
   ipcMain.handle('project:openDropped', async (_event, path: unknown) => {
     if (typeof path !== 'string' || !isProjectFile(path)) throw new Error('Not a Boar project')
@@ -474,8 +502,9 @@ app.whenReady().then(() => {
   registerAutosaveIpc(projectPaths, smoke)
   registerLogIpc()
   // AI agents (MCP): not in smoke runs, which may overlap a running editor.
-  if (!smoke) void registerMcp(() => mainWindow)
-  createWindow()
+  if (!smoke) void registerMcp(editorWindow)
+  createWindow(startProject)
+  startProject = null
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

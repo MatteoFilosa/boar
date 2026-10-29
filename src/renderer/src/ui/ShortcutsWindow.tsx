@@ -31,7 +31,7 @@ const GROUPS: { name: string; commands: CommandId[] }[] = [
   },
   {
     name: 'Project',
-    commands: ['newProject', 'openProject', 'saveProject', 'saveProjectAs', 'importMedia', 'render', 'properties']
+    commands: ['newProject', 'newWindow', 'openProject', 'saveProject', 'saveProjectAs', 'importMedia', 'render', 'properties']
   },
   { name: 'View and help', commands: ['fullScreenPreview', 'interfaceBigger', 'interfaceSmaller', 'interfaceReset', 'searchCommands', 'shortcuts'] }
 ]
@@ -71,6 +71,7 @@ const DESCRIPTIONS: Partial<Record<CommandId, string>> = {
   addAudioTrack: 'Insert audio track',
   importMedia: 'Import media',
   newProject: 'New project',
+  newWindow: 'New window (another project side by side)',
   properties: 'Project properties',
   goToStart: 'Go to start',
   goToEnd: 'Go to end',

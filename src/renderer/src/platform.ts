@@ -18,8 +18,10 @@ export interface BoarBridge {
   openProject(): Promise<{ path: string; json: string } | null>
   /** Writes a theme file where the user picks. Null if cancelled. */
   saveTheme(json: string, name: string): Promise<string | null>
-  /** The project the app was started with or asked to open from the file manager (taken once). */
+  /** The project this window was opened for, by the file manager or at start (taken once). */
   takeLaunchProject(): Promise<{ path: string; json: string } | null>
+  /** Opens another editor window (same process, shared settings). */
+  newWindow(): void
   /** Reads a .boar file dropped on the window. */
   openDroppedProject(path: string): Promise<{ path: string; json: string }>
   /** File › Open Recent, newest first (src/main/recent.ts). */
@@ -36,7 +38,7 @@ export interface BoarBridge {
   writeAutosave(json: string, projectPath: string | null): Promise<void>
   /** Nothing unsaved any more: deletes the copy. */
   clearAutosave(): Promise<void>
-  /** Called when the file manager asks the running app to open a project. */
+  /** Called when the file manager sends a project to this window (it shows an empty untitled one). */
   onLaunchProject(callback: () => void): () => void
   captionsStatus(): Promise<CaptionStatus>
   downloadModel(id: string): Promise<void>
@@ -72,6 +74,9 @@ export interface BoarBridge {
   /** Reversed copies (Reverse) of a range of a source file in the app's folder, written with writeProxy / finishProxy / abortProxy. */
   findReversed(source: string, range: string, name: string): Promise<string | null>
   createReversed(source: string, range: string, name: string): Promise<number>
+  /** Converted copies of camcorder files (media/convert.ts) in the app's folder, written like proxies. */
+  findConverted(source: string): Promise<string | null>
+  createConverted(source: string): Promise<number>
   /** Progress on the taskbar button: 0..1, above 1 indeterminate, below 0 hidden. */
   setProgress(value: number): void
   /** Media library folders picked by the user (Explorer tab). */
@@ -223,6 +228,8 @@ declare global {
     __boarReady?: boolean
     /** Name of the project when it has unsaved changes, else null; read by the main process before closing. */
     __boarUnsaved?: string | null
+    /** True while the window shows an empty untitled project: the main process opens projects from the file manager in it. */
+    __boarIdle?: boolean
     /** Saves the project (asking for a path if it has none); false if cancelled. */
     __boarSave?: () => Promise<boolean>
     /** Renders a project made of generated media and compares it with the expected output (smoke test). */

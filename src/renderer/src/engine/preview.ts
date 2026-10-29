@@ -453,7 +453,8 @@ class PreviewEngine {
     for (const [id, slot] of this.videos) {
       if (wantVideo.has(id)) continue
       if (!slot.el.paused) slot.el.pause()
-      if (now - slot.lastUsed > RELEASE_AFTER_MS) this.releaseVideo(id)
+      // A file no longer in the project (another one opened) lets its decoder go at once.
+      if (now - slot.lastUsed > RELEASE_AFTER_MS || !mediaById(slot.mediaId)) this.releaseVideo(id)
     }
     for (const [id, slot] of this.audios) {
       if (wantAudio.has(id)) continue
@@ -463,7 +464,7 @@ class PreviewEngine {
     }
     closeIdleSounds(now)
     for (const [mediaId, list] of this.spareAudio) {
-      const keep = list.filter((slot) => now - slot.lastUsed < SPARE_AUDIO_MS)
+      const keep = mediaById(mediaId) ? list.filter((slot) => now - slot.lastUsed < SPARE_AUDIO_MS) : []
       for (const slot of list) if (!keep.includes(slot)) this.destroyAudio(slot)
       if (keep.length) this.spareAudio.set(mediaId, keep)
       else this.spareAudio.delete(mediaId)
