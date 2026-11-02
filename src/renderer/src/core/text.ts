@@ -149,6 +149,21 @@ const CAPTION = {
   animDuration: 0.18
 }
 
+/** Date stamps of old video cameras. */
+const CAMCORDER = {
+  ...BASE,
+  font: 'VT323',
+  size: 66,
+  bold: false,
+  strokeWidth: 4,
+  shadow: false,
+  align: 'right' as const,
+  // Bottom right of a 16:9 picture in a vertical frame, left of the app buttons.
+  x: 0.86,
+  y: 0.655,
+  maxWidth: 0.6
+}
+
 export const TEXT_PRESETS: TextPreset[] = [
   { id: 'title', label: 'Title', description: 'Big centered title', content: { ...BASE, animIn: 'fade', animOut: 'fade' } },
   {
@@ -251,6 +266,18 @@ export const TEXT_PRESETS: TextPreset[] = [
       animIn: 'typewriter',
       animDuration: 1
     }
+  },
+  {
+    id: 'camcorder',
+    label: 'Camcorder date',
+    description: 'Date and time of an old video camera, bottom right',
+    content: { ...CAMCORDER, text: '31 12 1999\n23:59' }
+  },
+  {
+    id: 'vhs',
+    label: 'VHS date',
+    description: 'Time over date like a tape camcorder, bottom right',
+    content: { ...CAMCORDER, text: 'PM 11:59\nDEC. 31 1999' }
   },
   {
     id: 'elegant',

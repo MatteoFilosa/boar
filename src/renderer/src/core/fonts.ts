@@ -25,6 +25,7 @@ import pressStart2p from '@fontsource/press-start-2p/files/press-start-2p-latin-
 import righteous from '@fontsource/righteous/files/righteous-latin-400-normal.woff2?url'
 import shrikhand from '@fontsource/shrikhand/files/shrikhand-latin-400-normal.woff2?url'
 import specialElite from '@fontsource/special-elite/files/special-elite-latin-400-normal.woff2?url'
+import vt323 from '@fontsource/vt323/files/vt323-latin-400-normal.woff2?url'
 import yellowtail from '@fontsource/yellowtail/files/yellowtail-latin-400-normal.woff2?url'
 import caveat from '@fontsource-variable/caveat/files/caveat-latin-wght-normal.woff2?url'
 import dancingScript from '@fontsource-variable/dancing-script/files/dancing-script-latin-wght-normal.woff2?url'
@@ -117,6 +118,7 @@ export const FONT_CATALOG: FontInfo[] = [
   { family: 'Tilt Neon', category: 'Display & Fun', regular: 400, bold: 400, files: single(tiltNeon) },
   { family: 'Monoton', category: 'Display & Fun', regular: 400, bold: 400, files: single(monoton) },
   { family: 'Press Start 2P', category: 'Display & Fun', regular: 400, bold: 400, files: single(pressStart2p) },
+  { family: 'VT323', category: 'Display & Fun', regular: 400, bold: 400, files: single(vt323) },
   {
     family: 'Playfair Display',
     category: 'Serif',
