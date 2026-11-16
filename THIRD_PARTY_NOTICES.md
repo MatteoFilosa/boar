@@ -19,6 +19,8 @@ Boar bundles or downloads the following components. Each keeps its own license.
 | [MediaPipe Tasks Vision](https://github.com/google-ai-edge/mediapipe) and its models (BlazeFace short range, Selfie Segmenter, MagicTouch) | Apache-2.0 | Face detection (Auto Reframe, Auto Zoom), background removal, Smart Select masks |
 | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with [ggml](https://github.com/ggml-org/ggml) | MIT | Speech recognition (captions, Transcript) |
 | [Silero VAD](https://github.com/snakers4/silero-vad) (whisper.cpp format, from [ggml-org/whisper-vad](https://huggingface.co/ggml-org/whisper-vad)) | MIT | Finds the parts with speech before transcribing |
+| [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) (onnxruntime-web) | MIT | Runs the caption translation models |
+| [Tokenizers.js](https://github.com/huggingface/tokenizers.js) (@huggingface/tokenizers) | Apache-2.0 | Splits text for the translation models |
 | [web-noise-suppressor](https://github.com/sapphi-red/web-noise-suppressor) | MIT; includes RNNoise (BSD-3-Clause), SpeexDSP (BSD-3-Clause) and [GTCRN](https://github.com/Xiaobin-Rong/gtcrn) (MIT) | Noise reduction |
 | Fonts via [Fontsource](https://fontsource.org/): Caveat, Dancing Script, Fredoka, Inter, League Spartan, Montserrat, Nunito, Oswald, Outfit, Playfair Display, Roboto Condensed, Rubik, Sora, Space Grotesk, TikTok Sans, Tilt Neon, Unbounded, Abril Fatface, Anton, Archivo Black, Bangers, Barlow Condensed, Bebas Neue, Bungee, Courier Prime, DM Serif Display, Instrument Serif, Lilita One, Lobster, Monoton, Pacifico, Poppins, Press Start 2P, Righteous, Shrikhand, VT323 | SIL Open Font License 1.1 | Text and captions |
 | Fonts via Fontsource: Luckiest Guy, Permanent Marker, Special Elite, Yellowtail | Apache-2.0 | Text and captions |
@@ -28,6 +30,7 @@ Boar bundles or downloads the following components. Each keeps its own license.
 | Component | License | When |
 | --- | --- | --- |
 | Whisper models in whisper.cpp format (`ggml-*.bin`, from Hugging Face) | MIT | When the user downloads a speech model (captions, Transcript tab) |
+| [Opus-MT](https://github.com/Helsinki-NLP/Opus-MT) translation models by Helsinki-NLP (University of Helsinki), in the ONNX conversion by [Xenova](https://huggingface.co/Xenova) (`Xenova/opus-mt-*`, from Hugging Face) | CC-BY-4.0 | When the user translates captions on this computer |
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Unlicense | When the user installs it for Download from Link |
 
 ## Development only

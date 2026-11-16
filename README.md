@@ -65,6 +65,7 @@
 - **Automatic word-by-word captions** with Whisper, locally: karaoke, box on the spoken word, words popping in, one word at a time, classic subtitles. For the whole timeline (even a clip cut into many pieces), the selected clips or the time selection. Captions follow the edit: cut, trim, move or delete the clips afterwards and they move, shrink or go away with their words (*Options › Captions Follow Clip Edits*).
 - **Text-based editing** (*Transcript* tab): speech becomes text; select words, press `Delete` and the video is cut. One button selects ums, uhs and repeated words; another shortens long pauses. Double-click a misheard word (or select words and press `Enter`) to correct it: the captions made from it change too.
 - Highlighted keywords (`*word*` in the text, or automatic) and emoji on matching words.
+- **Translate Captions** (*Tools* menu or right-click a caption): English, Italian, French, Spanish and German, on your PC. The translation goes on its own track ("Captions (EN)") with the same style and timing, and the other caption tracks are muted: unmute a track to switch language. An AI agent connected through MCP can write the translation itself.
 - 24 text presets, including a hook title at the top and a progress bar; more than 30 bundled fonts; in and out animations.
 - **Shapes to point at things** (*Generators* tab or *Insert*): rectangle, ellipse and arrow, red to start with, with outline, fill, rounded corners, shadow and an animation that draws them on screen. Resize them freely from any side or corner; point an arrow by dragging its ends. *Solid Color* fills the frame with one color.
 - Handles right in the preview to move, scale, stretch and rotate text, images and video (the side handles of a picture stretch it one way, `Ctrl`+drag on a corner stretches it freely; drag just outside a corner to rotate, Shift for 15° steps).
@@ -114,7 +115,7 @@ Boar looks for a new release when it starts and offers to install it: on Windows
 
 ### Captions and Transcript
 
-Speech recognition ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)) is built into Boar: nothing else to install. The first time, the app downloads the Whisper model you pick (148 MB for the lightest one).
+Speech recognition ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)) is built into Boar: nothing else to install. The first time, the app downloads the Whisper model you pick (148 MB for the lightest one). Translate Captions downloads an [Opus-MT](https://github.com/Helsinki-NLP/Opus-MT) model the first time it translates from one language into another (about 110-130 MB each; a pair without its own model goes through English).
 
 ### From source
 
@@ -207,7 +208,7 @@ Ideas that make everyday editing of spoken videos, Shorts and captions quicker f
 | `Ctrl+L` | Auto Ripple |
 | `Ctrl` + drag an edge | change speed |
 | `Ctrl+Z` / `Ctrl+Y` | undo / redo |
-| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copy / cut / paste (images from the clipboard too) |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copy / cut / paste (images from the clipboard too); events copied in one window paste into another, with their files. Dragging events or Project Media over another Boar window copies them there |
 | `Ctrl+Shift+V` | paste the copied event's attributes (FX, Pan/Crop, mask, level, text style) onto the selected events |
 | `Ctrl+D` | switch between the normal edit tool and the selection tool |
 | `Ctrl+S` / `Ctrl+O` | save / open project (`.boar`; double-clicking a project file or dropping it on Boar opens it too; *File › Open Recent* lists the last ten) |

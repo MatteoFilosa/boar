@@ -65,6 +65,7 @@
 - **Sottotitoli automatici parola per parola** con Whisper, in locale: karaoke, box sulla parola, parole che compaiono, una parola alla volta, sottotitoli classici. Per tutta la timeline (anche una clip tagliata in tanti pezzi), per le clip selezionate o per la selezione temporale. I sottotitoli seguono il montaggio: se poi tagli, accorci, sposti o elimini le clip, si spostano, si accorciano o spariscono con le loro parole (*Options › Captions Follow Clip Edits*).
 - **Montaggio dal testo** (tab *Transcript*): il parlato diventa testo; selezioni le parole, premi `Canc` e il video si taglia. Un pulsante seleziona ehm, uhm e parole ripetute; un altro accorcia le pause lunghe. Doppio clic su una parola capita male (o seleziona le parole e premi `Invio`) per correggerla: cambiano anche i sottotitoli fatti da quelle parole.
 - Parole chiave evidenziate (`*parola*` nel testo, o in automatico) ed emoji sulle parole a tema.
+- **Traduzione dei sottotitoli** (menu *Tools* o clic destro su un sottotitolo): inglese, italiano, francese, spagnolo e tedesco, sul tuo PC. La traduzione va su una traccia sua ("Captions (EN)") con lo stesso stile e gli stessi tempi, e le altre tracce di sottotitoli vengono silenziate: togli il muto a una traccia per cambiare lingua. Un agente AI collegato via MCP può scrivere la traduzione da sé.
 - 24 preset di testo, tra cui titolo d'aggancio in alto e progress bar; oltre 30 font inclusi; animazioni di entrata e uscita.
 - **Forme per indicare le cose** (scheda *Generators* o menu *Insert*): rettangolo, ellisse e freccia, rosse di partenza, con contorno, riempimento, angoli arrotondati, ombra e un'animazione che le disegna sullo schermo. Si ridimensionano liberamente da ogni lato o angolo; la freccia si punta trascinandone le estremità. *Solid Color* riempie il fotogramma di un solo colore.
 - Maniglie direttamente nell'anteprima per spostare, scalare, stirare e ruotare testi, immagini e video (le maniglie sui lati di un'immagine la stirano in una direzione, `Ctrl`+trascina un angolo la stira liberamente; per ruotare trascina appena fuori da un angolo, Shift per scatti di 15°).
@@ -114,7 +115,7 @@ All'avvio Boar controlla se c'è una nuova versione e propone di installarla: su
 
 ### Sottotitoli e Transcript
 
-Il riconoscimento vocale ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)) è integrato in Boar: non serve installare nient'altro. La prima volta l'app scarica il modello Whisper che scegli (148 MB per il più leggero).
+Il riconoscimento vocale ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)) è integrato in Boar: non serve installare nient'altro. La prima volta l'app scarica il modello Whisper che scegli (148 MB per il più leggero). La traduzione dei sottotitoli scarica un modello [Opus-MT](https://github.com/Helsinki-NLP/Opus-MT) la prima volta che traduce da una lingua a un'altra (circa 110-130 MB l'uno; una coppia senza un modello suo passa dall'inglese).
 
 ### Dai sorgenti
 
@@ -207,7 +208,7 @@ Le idee che rendono più veloce il montaggio di tutti i giorni di video parlati,
 | `Ctrl+L` | Auto Ripple |
 | `Ctrl` + trascina un bordo | cambia velocità |
 | `Ctrl+Z` / `Ctrl+Y` | annulla / ripeti |
-| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copia / taglia / incolla (anche immagini dagli appunti) |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | copia / taglia / incolla (anche immagini dagli appunti); gli eventi copiati in una finestra si incollano in un'altra, con i loro file. Trascinare eventi o elementi di Project Media sopra un'altra finestra di Boar li copia lì |
 | `Ctrl+Shift+V` | incolla gli attributi dell'evento copiato (FX, Pan/Crop, maschera, livello, stile del testo) sugli eventi selezionati |
 | `Ctrl+D` | passa dallo strumento normale a quello di selezione e viceversa |
 | `Ctrl+S` / `Ctrl+O` | salva / apri progetto (`.boar`; si apre anche con un doppio clic sul file o trascinandolo su Boar; *File › Open Recent* elenca gli ultimi dieci) |
