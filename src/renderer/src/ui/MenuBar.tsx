@@ -183,6 +183,7 @@ function useMenus(): Menu[] {
         { label: 'Generate Captions (Whisper)...', command: 'captions' },
         { label: 'Highlight Key Words in Captions', command: 'highlightKeywords' },
         { label: 'Add Emoji to Captions', command: 'addEmoji' },
+        { label: 'Translate Captions...', command: 'translateCaptions' },
         { label: 'Auto Reframe 9:16 (follow the face)...', command: 'autoReframe' },
         { label: 'Auto Zoom (punch-in on talking heads)...', command: 'autoZoom' },
         { label: 'Remove Background (AI)', command: 'removeBackground', disabled: !hasSelection }

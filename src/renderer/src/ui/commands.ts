@@ -9,6 +9,7 @@ import { toggleFullScreenPreview } from './fullScreen'
 import { checkForUpdates } from './updates'
 import { stepInterfaceScale } from './interfaceScale'
 import { reverseEvents } from '../engine/reverse'
+import { pasteEvents } from './windowLink'
 
 /**
  * Ctrl+V: an image on the system clipboard (a screenshot, "Copy image" in the
@@ -18,7 +19,7 @@ import { reverseEvents } from '../engine/reverse'
 async function paste(): Promise<void> {
   const path = bridge ? await bridge.clipboardImage().catch(() => null) : null
   if (!path) {
-    A.pasteAtCursor()
+    pasteEvents()
     return
   }
   const media = await importPaths([path])[0]
@@ -103,6 +104,7 @@ export const commands = {
   aiAgents: (): void => A.openDialog({ kind: 'agents' }),
   highlightKeywords: (): void => void A.enhanceCaptions('emphasis'),
   addEmoji: (): void => void A.enhanceCaptions('emoji'),
+  translateCaptions: (): void => A.openDialog({ kind: 'translate' }),
   autoZoom: (): void => {
     getEngine().pause()
     A.openDialog({ kind: 'autoZoom' })

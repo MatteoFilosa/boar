@@ -279,7 +279,7 @@ export function TranscriptPanel(): React.JSX.Element {
         const result = await transcribeMedia(media, 0, media.duration / FLICKS_PER_SECOND, model, language, (p) =>
           setBusy((b) => (b ? { ...b, ...p } : b))
         )
-        A.setTranscript(media.id, { language, model, words: alignWords(result) })
+        A.setTranscript(media.id, { language: result.language ?? language, model, words: alignWords(result) })
       }
       A.setStatus('Transcript ready: select words and press Delete to cut them')
       celebrate('Transcript ready')

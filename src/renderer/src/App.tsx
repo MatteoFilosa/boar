@@ -18,6 +18,7 @@ import { checkForUpdates } from './ui/updates'
 import { startAgentHost } from './agent/host'
 import * as A from './core/actions'
 import { bridge } from './platform'
+import { linkWindows } from './ui/windowLink'
 
 export function App(): React.JSX.Element {
   useGlobalShortcuts()
@@ -39,6 +40,7 @@ export function App(): React.JSX.Element {
         if (notice) A.openDialog({ kind: 'log', notice })
       })
     const stopProblems = bridge?.onProblem((message) => A.setStatus(message))
+    const unlinkWindows = linkWindows()
     // A few seconds after opening, so the check never slows down the start.
     const timer = window.setTimeout(() => {
       if (useEditor.getState().options.checkUpdates) void checkForUpdates(false)
@@ -46,6 +48,7 @@ export function App(): React.JSX.Element {
     return () => {
       window.clearTimeout(timer)
       stopProblems?.()
+      unlinkWindows()
     }
   }, [])
 

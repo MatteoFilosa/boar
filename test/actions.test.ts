@@ -272,7 +272,7 @@ describe('clipboard', () => {
       options: { autoRipple: true }
     })
     A.copySelection()
-    A.pasteAtCursor()
+    A.pasteClipboard()
     expect(spans('v')).toEqual([
       [0, 2],
       [2, 4],

@@ -20,6 +20,7 @@ import { SilenceDialog } from './SilenceDialog'
 import { DuckingDialog } from './DuckingDialog'
 import { TransitionWindow } from './TransitionBrowser'
 import { ReframeDialog } from './ReframeDialog'
+import { TranslateDialog } from './TranslateDialog'
 import { ReverseDialog } from './ReverseDialog'
 import { AutoZoomDialog } from './AutoZoomDialog'
 import { AgentDialog } from './AgentDialog'
@@ -343,6 +344,8 @@ export function Dialogs(): React.JSX.Element | null {
       return <ReframeDialog />
     case 'reverse':
       return <ReverseDialog />
+    case 'translate':
+      return <TranslateDialog trackId={dialog.trackId} />
     case 'autoZoom':
       return <AutoZoomDialog />
     case 'agents':

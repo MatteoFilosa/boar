@@ -10,6 +10,8 @@ export interface TranscriptPiece {
 }
 
 export interface Transcript {
+  /** The language the speech engine heard (or was told). */
+  language?: string
   segments: TranscriptPiece[]
   tokens: TranscriptPiece[]
 }

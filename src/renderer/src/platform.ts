@@ -1,4 +1,21 @@
 import type { Transcript } from './core/captions'
+import type { EventClipboard } from './core/clipboard'
+import type { Flicks } from './core/time'
+
+/**
+ * What a drag between editor windows carries: a Project Media drag id
+ * ('path:…', 'text:…', 'fx:…' work in any window) or 'clip' with events or
+ * files of the source project, and the length the drop preview shows.
+ */
+export interface WindowDragItem {
+  id: string
+  clip?: EventClipboard
+  length: Flicks
+  /** Events: the grabbed event's track in the clipboard, which goes to the track under the pointer. */
+  anchorTrackId?: string
+  /** Events: from their earliest start to the point grabbed (they land that much before the pointer). */
+  grab?: Flicks
+}
 
 /** API exposed by src/preload/index.ts. Absent when the UI runs in a plain browser. */
 export interface BoarBridge {
@@ -91,7 +108,28 @@ export interface BoarBridge {
   clipboardImage(): Promise<string | null>
   /** Writes a dropped file that has no path (dragged out of a web page) to the app's media folder; returns its path. */
   keepMediaFile(name: string, data: Uint8Array): Promise<string>
-  claimClipboard(): Promise<void>
+  /** Caption translation models (src/main/translate.ts): language pairs like 'it-en' and whether they are on disk. */
+  translateStatus(): Promise<{ pair: string; sizeMB: number; installed: boolean }[]>
+  downloadTranslateModel(pair: string): Promise<void>
+  readTranslateModel(pair: string, file: string): Promise<Uint8Array>
+  onTranslateProgress(callback: (progress: { pair: string; progress: number }) => void): () => void
+  /** Copied events, for every editor window (also replaces an image on the system clipboard). */
+  shareEvents(clip: EventClipboard): Promise<void>
+  /** Events copied last in any window (null when none). */
+  sharedEvents(): Promise<EventClipboard | null>
+  onSharedEvents(callback: (clip: EventClipboard) => void): () => void
+  /**
+   * A drag left this window (`item` on the first call, then null): the main
+   * process shows it to the editor window under the pointer.
+   */
+  dragOutside(item: WindowDragItem | null): void
+  /** The pointer came back in or the drag was cancelled. */
+  endDragOutside(): void
+  /** Released outside the window: true when another editor window took it. */
+  dropOutside(): Promise<boolean>
+  /** A drag from another window over this one (client coordinates; null when it left). */
+  onWindowDrag(callback: (drag: { x: number; y: number; item?: WindowDragItem } | null) => void): () => void
+  onWindowDrop(callback: (drop: { x: number; y: number; item: WindowDragItem }) => void): () => void
   youtubeStatus(): Promise<YoutubeStatus>
   installYtDlp(): Promise<void>
   updateYtDlp(): Promise<string>

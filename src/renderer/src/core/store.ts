@@ -70,6 +70,8 @@ export interface EditorOptions {
   linkedCaptions: boolean
   /** Finished tasks end with the boar reaching the flag and confetti. */
   celebrations: boolean
+  /** Translate Captions: the language chosen last. */
+  translateTo: string
 }
 
 const DEFAULT_OPTIONS: EditorOptions = {
@@ -99,7 +101,8 @@ const DEFAULT_OPTIONS: EditorOptions = {
   theme: 'dark',
   uiScale: 1,
   linkedCaptions: true,
-  celebrations: true
+  celebrations: true,
+  translateTo: 'en'
 }
 
 const OPTIONS_KEY = 'boar.options'
@@ -140,6 +143,8 @@ export type Dialog =
   | { kind: 'reframe' }
   /** Progress while Reverse makes a reversed copy (engine/reverse.ts). */
   | { kind: 'reverse' }
+  /** Translate Captions; `trackId`: the caption track to start with. */
+  | { kind: 'translate'; trackId?: string }
   | { kind: 'autoZoom' }
   | { kind: 'agents' }
   | { kind: 'saveSfx'; eventId: string }

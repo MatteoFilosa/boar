@@ -80,7 +80,34 @@ contextBridge.exposeInMainWorld('boar', {
     ipcRenderer.invoke('library:save', dir, name, ext, data),
   clipboardImage: (): Promise<string | null> => ipcRenderer.invoke('clipboard:image'),
   keepMediaFile: (name: string, data: Uint8Array): Promise<string> => ipcRenderer.invoke('media:keep', name, data),
-  claimClipboard: (): Promise<void> => ipcRenderer.invoke('clipboard:claim'),
+  shareEvents: (clip: unknown): Promise<void> => ipcRenderer.invoke('clipboard:share', clip),
+  sharedEvents: (): Promise<unknown> => ipcRenderer.invoke('clipboard:shared'),
+  onSharedEvents(callback: (clip: unknown) => void): () => void {
+    const listener = (_event: unknown, clip: unknown): void => callback(clip)
+    ipcRenderer.on('clipboard:shared', listener)
+    return () => ipcRenderer.removeListener('clipboard:shared', listener)
+  },
+  translateStatus: (): Promise<unknown> => ipcRenderer.invoke('translate:status'),
+  downloadTranslateModel: (pair: string): Promise<void> => ipcRenderer.invoke('translate:download', pair),
+  readTranslateModel: (pair: string, file: string): Promise<Uint8Array> => ipcRenderer.invoke('translate:read', pair, file),
+  onTranslateProgress(callback: (progress: unknown) => void): () => void {
+    const listener = (_event: unknown, progress: unknown): void => callback(progress)
+    ipcRenderer.on('translate:progress', listener)
+    return () => ipcRenderer.removeListener('translate:progress', listener)
+  },
+  dragOutside: (item: unknown): void => ipcRenderer.send('drag:outside', item),
+  endDragOutside: (): void => ipcRenderer.send('drag:end'),
+  dropOutside: (): Promise<boolean> => ipcRenderer.invoke('drag:drop'),
+  onWindowDrag(callback: (drag: unknown) => void): () => void {
+    const listener = (_event: unknown, drag: unknown): void => callback(drag)
+    ipcRenderer.on('drag:over', listener)
+    return () => ipcRenderer.removeListener('drag:over', listener)
+  },
+  onWindowDrop(callback: (drop: unknown) => void): () => void {
+    const listener = (_event: unknown, drop: unknown): void => callback(drop)
+    ipcRenderer.on('drag:drop', listener)
+    return () => ipcRenderer.removeListener('drag:drop', listener)
+  },
   youtubeStatus: (): Promise<unknown> => ipcRenderer.invoke('youtube:status'),
   installYtDlp: (): Promise<void> => ipcRenderer.invoke('youtube:install'),
   updateYtDlp: (): Promise<string> => ipcRenderer.invoke('youtube:update'),

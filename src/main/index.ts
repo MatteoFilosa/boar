@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { allowMediaPaths, handleMediaProtocol, registerMediaScheme } from './media-protocol'
 import { registerCaptionIpc, whisperPath, whisperRuns } from './captions'
 import { registerLibraryIpc } from './library'
+import { registerWindowLink } from './windowLink'
+import { registerTranslateIpc } from './translate'
 import { registerMcp } from './mcp'
 import { extendToolPath } from './toolPath'
 import { registerUpdateIpc } from './updates'
@@ -134,7 +136,12 @@ function createWindow(project: string | null = null): void {
   lastWindow = win
   const pageId = win.webContents.id
   if (project) launchPaths.set(pageId, project)
-  win.on('focus', () => (lastWindow = win))
+  win.on('focus', () => {
+    lastWindow = win
+    // The set keeps the order windows were focused in (drags between windows look for the one on top).
+    windows.delete(win)
+    windows.add(win)
+  })
   win.on('closed', () => {
     windows.delete(win)
     if (lastWindow === win) lastWindow = null
@@ -497,6 +504,8 @@ app.whenReady().then(() => {
   registerIpc()
   registerCaptionIpc()
   registerLibraryIpc()
+  registerWindowLink(() => [...windows].reverse())
+  registerTranslateIpc()
   registerUpdateIpc()
   registerProxyIpc()
   registerAutosaveIpc(projectPaths, smoke)

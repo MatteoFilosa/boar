@@ -39,7 +39,9 @@ import { type MediaDrag, registerMediaDrop, useMediaDrag } from '../mediaDrag'
 import { type MenuEntry, openContextMenu } from '../ContextMenu'
 import { fadeCurveIcon } from '../FadeCurveIcon'
 import { onThemeChange } from '../themes'
-import { isMac, MOD } from '../../platform'
+import { bridge, isMac, MOD, type WindowDragItem } from '../../platform'
+import { makeClipboard, clipSpan } from '../../core/clipboard'
+import { finishOutside, followOutside, incomingDrag, isOutside, pasteEvents } from '../windowLink'
 import { uid } from '../../core/ids'
 import type { Corner } from '../../core/layouts'
 import { TrackHeader, useTrackDrag } from './TrackHeader'
@@ -116,6 +118,8 @@ type Drag =
       newTrackId: string
       points: Flicks[]
       ripple: Followers | null
+      /** The pointer is outside the window (another editor window may take the events). */
+      outside?: boolean
     }
   | {
       kind: 'trim'
@@ -609,6 +613,15 @@ function beginEventDrag(
   }
 }
 
+/** The moved events as another editor window takes them (a copy; they stay here). */
+function eventsDragItem(drag: Extract<Drag, { kind: 'move' }>): WindowDragItem | null {
+  const s = get()
+  const clip = makeClipboard(s.project, s.media, s.transcripts, drag.items.map((i) => i.id))
+  if (clip.events.length === 0) return null
+  const { start, length } = clipSpan(clip)
+  return { id: 'clip', clip, length, anchorTrackId: drag.layouts[drag.anchorIndex]?.track.id, grab: Math.max(0, drag.clickTime - start) }
+}
+
 function applyDrag(drag: Exclude<Drag, { kind: 'rubber' | 'range' }>, x: number, y: number, freeMove: boolean): void {
   const s = get()
   const { view, options } = s
@@ -779,7 +792,11 @@ function eventToolEntries(ev: TimelineEvent): MenuEntry[] {
   if (ev.text) entries.push({ label: 'Edit Text...', icon: TextCursorInput, run: () => A.openTextEditor(ev.id) })
   if (ev.shape) entries.push({ label: 'Edit Shape...', icon: Shapes, run: () => A.openShapeEditor(ev.id) })
   if (ev.text?.words) {
-    entries.push({ label: 'Highlight Key Words', command: 'highlightKeywords' }, { label: 'Add Emoji', command: 'addEmoji' })
+    entries.push(
+      { label: 'Highlight Key Words', command: 'highlightKeywords' },
+      { label: 'Add Emoji', command: 'addEmoji' },
+      { label: 'Translate Captions...', run: () => A.openDialog({ kind: 'translate', trackId: ev.trackId }) }
+    )
   }
   if (ev.kind === 'video' && !isGenerated(ev)) entries.push({ label: 'Event Pan/Crop...', icon: Crop, run: () => A.openPanCrop(ev.id) })
   if (partner('video')) entries.push({ label: 'Video FX...', icon: Sparkles, run: () => A.openFxWindow('video', ev.id) })
@@ -1113,6 +1130,15 @@ export function Timeline(): React.JSX.Element {
         A.addFx(ids, mediaId.slice(3))
         return true
       }
+      if (mediaId === 'clip') {
+        // Events dragged from another editor window: the grabbed one goes to the track under the pointer.
+        const item = incomingDrag()
+        if (item?.clip) {
+          const anchor = layout && item.anchorTrackId ? { trackId: item.anchorTrackId, to: layout.track.id } : undefined
+          pasteEvents({ at: at - (item.grab ?? 0), anchor }, item.clip)
+        }
+        return true
+      }
       if (mediaId.startsWith('path:')) {
         // A file from the Explorer tab: import it, then place it where it was dropped.
         const target = layout ? layout.track.id : 'new'
@@ -1157,7 +1183,11 @@ export function Timeline(): React.JSX.Element {
           canvases.overlayDirty = true
           return
         }
-        const length = drag.mediaId.startsWith('path:')
+        // A drag from another window says how long it is.
+        const external = incomingDrag()?.id === drag.mediaId ? incomingDrag() : null
+        const length = external
+          ? external.length
+          : drag.mediaId.startsWith('path:')
           ? 0
           : drag.mediaId.startsWith('text:')
           ? A.TEXT_DEFAULT_LENGTH
@@ -1169,7 +1199,7 @@ export function Timeline(): React.JSX.Element {
               : media.duration
             : 0
         preview = {
-          x: drag.x - r.left,
+          x: drag.x - r.left - flicksToPx(external?.grab ?? 0, s.view),
           width: flicksToPx(length, s.view),
           rowTop: (layout ? layout.top : tracksHeight(s.project.tracks)) - s.view.scrollY,
           rowHeight: layout ? layout.height : 70
@@ -1299,6 +1329,19 @@ export function Timeline(): React.JSX.Element {
       return
     }
     const { clientX, clientY, altKey } = e
+    if (drag.kind === 'move' && drag.moved && bridge) {
+      // Out of the window the events wait at their place; another editor window can take a copy.
+      const out = isOutside(clientX, clientY)
+      if (out && !drag.outside) {
+        A.updateGesture(() => {})
+        useEditor.setState({ snapLine: null })
+      }
+      drag.outside = out
+      if (followOutside(clientX, clientY, () => eventsDragItem(drag))) {
+        edge.stop()
+        return
+      }
+    }
     dragTo(clientX, clientY, altKey)
     // Near an edge the view scrolls and the drag follows.
     if (drag.moved) edge.update(clientX, clientY, drag.kind === 'move' || drag.kind === 'rubber', () => dragTo(clientX, clientY, altKey))
@@ -1372,6 +1415,10 @@ export function Timeline(): React.JSX.Element {
         else if (drag.click?.mode === 'replace') A.clearSelection()
         A.setCursor(drag.clickTime)
       }
+      return
+    }
+    if (drag.kind === 'move' && finishOutside(cancelled)) {
+      A.cancelGesture()
       return
     }
     if (cancelled) A.cancelGesture()

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { setStatus, updateMedia } from './actions'
-import { parseProject, serializeProject } from './projectFile'
+import { mediaItemFromSaved, parseProject, serializeProject } from './projectFile'
 import { adoptRecoveredCopy } from './autosave'
 import { emptyProject, hasUnsavedChanges, mediaKey, useEditor } from './store'
 import type { MediaItem } from './types'
@@ -174,30 +174,7 @@ function loadProject(opened: { path: string | null; json: string }, recoveredAt?
     if (m.poster.startsWith('blob:') && m.poster !== m.url) URL.revokeObjectURL(m.poster)
     dropMediaCache(m.id)
   }
-  const media: MediaItem[] = parsed.media.map((saved) => ({
-    id: saved.id,
-    name: saved.name,
-    kind: saved.kind,
-    file: null,
-    url: saved.path && bridge ? mediaPathUrl(saved.path) : '',
-    path: saved.path,
-    size: saved.size,
-    status: 'analyzing',
-    error: '',
-    duration: 0,
-    hasVideo: saved.kind !== 'audio',
-    hasAudio: false,
-    width: 0,
-    height: 0,
-    fps: 0,
-    videoCodec: '',
-    audioCodec: '',
-    sampleRate: 0,
-    channels: 0,
-    poster: '',
-    reverseOf: saved.reverseOf,
-    convertedFrom: saved.convertedFrom
-  }))
+  const media: MediaItem[] = parsed.media.map((saved) => mediaItemFromSaved(saved, saved.path && bridge ? mediaPathUrl(saved.path) : ''))
   const recovered = recoveredAt !== undefined
   set({
     project: parsed.project,

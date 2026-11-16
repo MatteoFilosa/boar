@@ -32,6 +32,8 @@ import { type Source, UrlSource } from 'mediabunny'
 import { inputSource } from '../media/source'
 import { clock, contactSheet, frameImage, probeCameraFile, probeMedia } from '../engine/inspect'
 import { transcribeMedia } from '../engine/transcribe'
+import { captionLanguage, captionTracks, downloadNeeded, translateCaptionTrack } from '../engine/translate'
+import { languageLabel } from '../core/translation'
 import { reverseEvents } from '../engine/reverse'
 import { importFiles, importPaths, kindOfName } from '../media/importer'
 import { coverFrame, placedFrame } from '../core/layouts'
@@ -495,7 +497,7 @@ const TOOLS: Tool[] = [
         if (!m) continue
         A.setStatus(`Transcribing ${m.name}…`)
         const result = await transcribeMedia(m, 0, m.duration / F, model, language)
-        A.setTranscript(m.id, { language, model, words: alignWords(result) })
+        A.setTranscript(m.id, { language: result.language ?? language, model, words: alignWords(result) })
       }
       return `Transcribed ${media.length} file(s) with Whisper ${model}. Read it with get_transcript.`
     }
@@ -813,6 +815,46 @@ const TOOLS: Tool[] = [
       if (bool(a, 'emphasis', false)) done.push(`${A.enhanceCaptions('emphasis')} captions highlighted`)
       if (bool(a, 'emoji', false)) done.push(`emoji in ${A.enhanceCaptions('emoji')} captions`)
       return done.length ? done.join(', ') : 'Nothing to do: set emphasis or emoji to true'
+    }
+  },
+  {
+    name: 'translate_captions',
+    title: 'Translate the captions',
+    description:
+      'Puts a translation of a caption track on a new track named like it plus the language ("Captions (EN)"), with the same style and timing, and mutes the other caption tracks (unmuting one switches language; translating into the same language again replaces that track). Best: give `texts`, your own translation, one text per caption of the track in time order (the text events of that track in get_project); translate whole sentences and split each back over the captions it spans, keeping them short; "" leaves a caption out. Without `texts` Boar translates on this computer with Opus-MT (into English, Italian, French, Spanish or German; about 110 MB of models per language pair download the first time), which reads less naturally.',
+    inputSchema: object(
+      {
+        language: S.str('Language code of the translation (en, it, fr, es, de…; any code with texts)'),
+        track: S.int('The caption track (default: the track named "Captions", else the first with text)'),
+        texts: { type: 'array', items: { type: 'string' }, description: 'Your translation, one per caption in time order' },
+        from: S.str('Spoken language for the translation on this computer (default: the one Whisper heard)')
+      },
+      ['language']
+    ),
+    run: async (a) => {
+      const language = String(a.language ?? '').toLowerCase()
+      if (!/^[a-z]{2,3}$/.test(language)) throw new ToolError('"language" must be a language code like en or fr')
+      const tracks = captionTracks()
+      const id = trackId(a) ?? tracks.find((t) => t.name === 'Captions')?.id ?? tracks[0]?.id
+      if (!id || !tracks.some((t) => t.id === id)) throw new ToolError('No captions on that track: add_captions makes them')
+      const events = A.captionEvents(id)
+      if (Array.isArray(a.texts)) {
+        if (a.texts.length !== events.length) {
+          throw new ToolError(`That track has ${events.length} captions: give ${events.length} texts, one per caption in time order`)
+        }
+        A.addTranslatedCaptions(id, events.map((e) => e.id), a.texts.map((t) => (typeof t === 'string' ? t : '')), language)
+        return get().status
+      }
+      const from = typeof a.from === 'string' && a.from ? a.from.toLowerCase() : captionLanguage(id)
+      if (!from) throw new ToolError('Say which language is spoken ("from"), or give your own translation in "texts"')
+      if ((await downloadNeeded(from, language)) === null) {
+        throw new ToolError(`Boar has no model to translate ${from} into ${language}: give your own translation in "texts"`)
+      }
+      const job = translateCaptionTrack(id, from, language).then((n) => `Added ${n} captions in ${languageLabel(language)}`)
+      job.catch((err: unknown) => A.setStatus(`Translation failed: ${err instanceof Error ? err.message : String(err)}`))
+      // Downloading the models can take a while: the captions arrive when it is done.
+      const result = await Promise.race([job, new Promise<null>((resolve) => setTimeout(() => resolve(null), 55_000))])
+      return result ?? 'Still translating (downloading the models first): the new caption track appears when it is done; check with get_project'
     }
   },
   {

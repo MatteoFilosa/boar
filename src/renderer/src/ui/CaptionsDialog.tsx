@@ -104,7 +104,7 @@ export function CaptionsDialog(): React.JSX.Element {
         const media = mediaById(id)
         if (!media) continue
         const transcript = await transcribeMedia(media, 0, media.duration / FLICKS_PER_SECOND, model, language, setBusy)
-        A.setTranscript(id, { language, model, words: alignWords(transcript) })
+        A.setTranscript(id, { language: transcript.language ?? language, model, words: alignWords(transcript) })
       }
       const span = scope === 'range' ? range : null
       const words = wordsOnTimeline(clips, useEditor.getState().transcripts)

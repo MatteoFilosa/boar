@@ -38,6 +38,43 @@ const isReverseLink = (r: unknown): r is ReverseLink => {
   return !!l && typeof l.mediaId === 'string' && Number.isFinite(l.start) && Number.isFinite(l.end) && l.end > l.start
 }
 
+/** A media item read from a project file (or pasted from another window), still to be analyzed. */
+export const mediaItemFromSaved = (saved: SavedMedia, url: string): MediaItem => ({
+  id: saved.id,
+  name: saved.name,
+  kind: saved.kind,
+  file: null,
+  url,
+  path: saved.path,
+  size: saved.size,
+  status: 'analyzing',
+  error: '',
+  duration: 0,
+  hasVideo: saved.kind !== 'audio',
+  hasAudio: false,
+  width: 0,
+  height: 0,
+  fps: 0,
+  videoCodec: '',
+  audioCodec: '',
+  sampleRate: 0,
+  channels: 0,
+  poster: '',
+  reverseOf: saved.reverseOf,
+  convertedFrom: saved.convertedFrom
+})
+
+/** How a project file (and the event clipboard shared between windows) lists a media file. */
+export const savedMedia = (m: MediaItem): SavedMedia => ({
+  id: m.id,
+  name: m.name,
+  kind: m.kind,
+  path: m.path,
+  size: m.size,
+  ...(m.reverseOf ? { reverseOf: m.reverseOf } : {}),
+  ...(m.convertedFrom ? { convertedFrom: m.convertedFrom } : {})
+})
+
 export function serializeProject(
   project: Project,
   media: readonly MediaItem[],
@@ -52,15 +89,7 @@ export function serializeProject(
     savedAt: new Date().toISOString(),
     project,
     // Keep everything in Project Media, used or not.
-    media: saved.map((m) => ({
-      id: m.id,
-      name: m.name,
-      kind: m.kind,
-      path: m.path,
-      size: m.size,
-      ...(m.reverseOf ? { reverseOf: m.reverseOf } : {}),
-      ...(m.convertedFrom ? { convertedFrom: m.convertedFrom } : {})
-    })),
+    media: saved.map(savedMedia),
     transcripts: Object.fromEntries(saved.filter((m) => transcripts[m.id]).map((m) => [m.id, transcripts[m.id]])),
     shorts
   }

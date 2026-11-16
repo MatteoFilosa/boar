@@ -1,9 +1,10 @@
-import { app, ipcMain, net, type WebContents } from 'electron'
+import { app, ipcMain, type WebContents } from 'electron'
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
-import { createWriteStream, existsSync } from 'node:fs'
-import { mkdir, readFile, rename, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, readFile, rm } from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
 import { join } from 'node:path'
+import { downloadFile } from './download'
 
 // Speech to text with whisper.cpp, bundled with the app (resources/whisper):
 // on the GPU through Vulkan (Windows, Linux) or Metal (macOS), on the CPU
@@ -58,33 +59,12 @@ async function download(id: string, sender: WebContents): Promise<void> {
   const model = WHISPER_MODELS.find((m) => m.id === id)
   if (!model) throw new Error(`Unknown model ${id}`)
   await mkdir(modelsDir(), { recursive: true })
-  const target = join(modelsDir(), model.file)
-  const partial = `${target}.part`
-  const response = await net.fetch(MODEL_URL + model.file)
-  if (!response.ok || !response.body) throw new Error(`Download failed (${response.status})`)
-  const total = Number(response.headers.get('content-length')) || model.sizeMB * 1024 * 1024
-  const file = createWriteStream(partial)
-  const reader = response.body.getReader()
-  let received = 0
-  let lastReport = 0
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      received += value.byteLength
-      if (!file.write(value)) await new Promise<void>((resolve) => file.once('drain', () => resolve()))
-      if (received - lastReport > 2 * 1024 * 1024) {
-        lastReport = received
-        sender.send('captions:progress', { phase: 'download', progress: received / total })
-      }
-    }
-    await new Promise<void>((resolve, reject) => file.end((err?: Error | null) => (err ? reject(err) : resolve())))
-    await rename(partial, target)
-  } catch (err) {
-    file.destroy()
-    await rm(partial, { force: true })
-    throw err
-  }
+  await downloadFile(
+    MODEL_URL + model.file,
+    join(modelsDir(), model.file),
+    (received, total) => sender.send('captions:progress', { phase: 'download', progress: received / total }),
+    model.sizeMB * 1024 * 1024
+  )
 }
 
 interface TranscribeRequest {
@@ -102,6 +82,8 @@ export interface TranscriptPiece {
 }
 
 export interface Transcript {
+  /** The language the engine heard (or was told). */
+  language?: string
   /** Phrases with proper spacing. */
   segments: TranscriptPiece[]
   /** The same text split into tokens (often parts of words) with their own times. */
@@ -244,6 +226,8 @@ function trustedClock(clock: ((t: number) => number) | null, json: WhisperJson):
 const isSpecial = (text: string): boolean => /^\s*(\[_[A-Z]+_?\d*\]|<\|.*\|>)\s*$/.test(text)
 
 interface WhisperJson {
+  /** The language spoken (detected with -l auto). */
+  result?: { language?: string }
   transcription?: {
     offsets: { from: number; to: number }
     text: string
@@ -290,7 +274,8 @@ async function finish(id: number): Promise<Transcript> {
       const place = (x: number): number => Math.min(end, Math.max(start, start + (x / 1000 - from) * scale))
       for (const t of words) tokens.push({ start: place(t.offsets.from), end: place(t.offsets.to), text: t.text.trim() })
     }
-    return { segments, tokens }
+    const language = json.result?.language
+    return { segments, tokens, ...(typeof language === 'string' && /^[a-z]{2,3}$/.test(language) ? { language } : {}) }
   } finally {
     await rm(job.output, { force: true })
   }

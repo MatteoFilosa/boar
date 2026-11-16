@@ -30,7 +30,7 @@ export function MediaDragGhost(): React.JSX.Element | null {
             ? `${fx.kind === 'video' ? 'Video' : 'Audio'} FX: ${fx.label}`
             : transition
               ? `Transition: ${transition.label}`
-              : (path ?? media?.name)}
+              : (drag.label || path || media?.name)}
       </span>
     </div>
   )

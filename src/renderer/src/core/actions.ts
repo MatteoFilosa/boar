@@ -53,6 +53,9 @@ import type { ShortCandidate } from './shorts'
 import { type Corner, cornerFrame, coverFrame, halfFrame, placedFrame } from './layouts'
 import { dropMediaCache } from '../media/cache'
 import { followClips, followTranscriptEdit } from './linkedCaptions'
+import { type EventClipboard, makeClipboard, mapTracks, planMedia, plannedEvents } from './clipboard'
+import { mediaItemFromSaved } from './projectFile'
+import { mediaPathUrl } from '../platform'
 
 const HISTORY_LIMIT = 200
 const get = useEditor.getState
@@ -663,24 +666,34 @@ export function splitAtCursor(): void {
 
 // Clipboard and ripple
 
-let clipboard: TimelineEvent[] = []
+// The copied events are shared by every editor window: copying sends them to
+// the main process, which hands them to the other windows (receiveClipboard).
+let clipboard: EventClipboard | null = null
 
 export function copySelection(): number {
-  const { project, selection } = get()
-  const ids = new Set(selection)
-  clipboard = project.events.filter((e) => ids.has(e.id)).map((e) => structuredClone(e))
-  if (clipboard.length) {
-    setStatus(`Copied ${clipboard.length} event${clipboard.length > 1 ? 's' : ''}`)
-    // An image copied earlier must not win over these events on the next Ctrl+V.
-    void window.boar?.claimClipboard()
+  const { project, selection, media, transcripts } = get()
+  const clip = makeClipboard(project, media, transcripts, selection)
+  const count = clip.events.length
+  if (count) {
+    clipboard = clip
+    setStatus(`Copied ${count} event${count > 1 ? 's' : ''}`)
+    // Also replaces an image copied earlier, so the next Ctrl+V pastes these events.
+    void window.boar?.shareEvents(clip)
   }
-  return clipboard.length
+  return count
 }
 
-export const hasCopiedEvents = (): boolean => clipboard.length > 0
+/** Events copied in another window. */
+export function receiveClipboard(clip: EventClipboard | null): void {
+  if (clip && Array.isArray(clip.events) && Array.isArray(clip.tracks) && Array.isArray(clip.media)) clipboard = clip
+}
+
+export const clipboardContent = (): EventClipboard | null => clipboard
+
+export const hasCopiedEvents = (): boolean => !!clipboard?.events.length
 
 /** The copied events (Selectively Paste Event Attributes shows what they carry). */
-export const copiedEvents = (): readonly TimelineEvent[] => clipboard
+export const copiedEvents = (): readonly TimelineEvent[] => clipboard?.events ?? []
 
 export const EVENT_ATTRIBUTES: { key: EventAttribute; label: string; short: string }[] = [
   { key: 'fx', label: 'Video FX / Audio FX', short: 'FX' },
@@ -710,7 +723,7 @@ const mapSourceTime = (t: Flicks, from: TimelineEvent, to: TimelineEvent): Flick
 export function pasteEventAttributes(
   attributes: readonly EventAttribute[] = ALL_ATTRIBUTES,
   targetIds: readonly string[] = get().selection,
-  sources: readonly TimelineEvent[] = clipboard
+  sources: readonly TimelineEvent[] = copiedEvents()
 ): number {
   if (sources.length === 0) {
     setStatus('Copy an event first (Ctrl+C), then select the events that get its attributes')
@@ -784,45 +797,73 @@ export function cutSelection(): void {
   if (copySelection() > 0) deleteCommand(false)
 }
 
+/** Where pasted events go: their earliest start lands on `at` (default: the cursor). */
+export interface PastePlace {
+  at?: Flicks
+  /** Dropped on a track: the grabbed event's track (`trackId` in the clipboard) goes to track `to`. */
+  anchor?: { trackId: string; to: string }
+}
+
 /**
- * Pastes the copied events at the cursor, on their original tracks when they
- * still exist. With Auto Ripple, later events move right to make room.
+ * Pastes copied events, from this window or another one (one undo step). In
+ * the same project they go back to their own tracks; elsewhere to tracks of
+ * the same kind that are free there, or to new ones (see `mapTracks`). Files
+ * the project lacks are added to Project Media (`added`: the caller analyzes
+ * them) and their transcripts come along. With Auto Ripple, later events
+ * move right to make room.
  */
-export function pasteAtCursor(): void {
-  if (clipboard.length === 0) {
+export function pasteClipboard(place: PastePlace = {}, clip: EventClipboard | null = clipboard): { ids: string[]; added: MediaItem[] } {
+  if (!clip || clip.events.length === 0) {
     setStatus('Nothing to paste')
-    return
+    return { ids: [], added: [] }
   }
-  const { cursor, options } = get()
-  const earliest = Math.min(...clipboard.map((e) => e.start))
-  const span = Math.max(...clipboard.map((e) => eventEnd(e))) - earliest
+  const { media, transcripts, options } = get()
+  const plan = planMedia(clip, media, transcripts, uid)
+  const { events, skipped } = plannedEvents(clip, plan)
+  if (events.length === 0) {
+    setStatus('Nothing to paste: the copied events play files this project cannot open')
+    return { ids: [], added: [] }
+  }
+  const at = Math.max(0, place.at ?? get().cursor)
+  const earliest = Math.min(...events.map((e) => e.start))
+  const span = Math.max(...events.map(eventEnd)) - earliest
+  const added = plan.add.map((saved) => mediaItemFromSaved(saved, saved.path && window.boar ? mediaPathUrl(saved.path) : ''))
+  if (added.length) set((s) => ({ media: [...s.media, ...added] }))
+  if (Object.keys(plan.transcripts).length) set((s) => ({ transcripts: { ...s.transcripts, ...plan.transcripts } }))
+  const usedTracks = clip.tracks.filter((t) => events.some((e) => e.trackId === t.id))
   const groupMap = new Map<string, string>()
   const ids: string[] = []
   commit((d) => {
-    const targets = clipboard.map((source) => {
-      let track = d.tracks.find((t) => t.id === source.trackId)
-      if (!track) track = d.tracks.find((t) => t.kind === source.kind) ?? insertTrack(d, source.kind)
-      return { source, trackId: track.id }
-    })
+    // A track is free where nothing plays over the pasted span (with Auto Ripple, what starts later moves away).
+    const isClear = (trackId: string): boolean =>
+      d.events.every((e) => e.trackId !== trackId || eventEnd(e) <= at || e.start >= at + span || (options.autoRipple && e.start >= at))
+    const newTrack = (kind: TrackKind, name: string): Track => ({ ...makeTrack(kind, d.tracks), name })
+    const trackOf = mapTracks(usedTracks, d.tracks, newTrack, isClear, place.anchor)
     if (options.autoRipple) {
       const mode = options.rippleMode
-      const tracks = new Set(targets.map((t) => t.trackId))
-      for (const e of d.events) if (e.start >= cursor && (mode === 'all' || tracks.has(e.trackId))) e.start += span
-      if (mode !== 'tracks') for (const m of d.markers) if (m.time >= cursor) m.time += span
+      const tracks = new Set(trackOf.values())
+      for (const e of d.events) if (e.start >= at && (mode === 'all' || tracks.has(e.trackId))) e.start += span
+      if (mode !== 'tracks') for (const m of d.markers) if (m.time >= at) m.time += span
     }
-    for (const { source, trackId } of targets) {
-      let groupId = source.groupId
+    for (const e of events) {
+      let groupId = e.groupId
       if (groupId) {
         if (!groupMap.has(groupId)) groupMap.set(groupId, uid())
         groupId = groupMap.get(groupId) ?? null
       }
       const id = uid()
       ids.push(id)
-      d.events.push({ ...structuredClone(source), id, trackId, groupId, start: cursor + (source.start - earliest) })
+      d.events.push({ ...e, id, trackId: trackOf.get(e.trackId) ?? e.trackId, groupId, start: at + (e.start - earliest) })
     }
   })
   set({ selection: ids })
-  setStatus(`Pasted ${ids.length} event${ids.length > 1 ? 's' : ''}${options.autoRipple ? ' (ripple insert)' : ''}`)
+  const notes = [
+    options.autoRipple ? 'ripple insert' : '',
+    added.length ? `${added.length} file${added.length > 1 ? 's' : ''} added to Project Media` : '',
+    skipped ? `${skipped} left out: their files are not on disk` : ''
+  ].filter(Boolean)
+  setStatus(`Pasted ${ids.length} event${ids.length > 1 ? 's' : ''}${notes.length ? ` (${notes.join('; ')})` : ''}`)
+  return { ids, added }
 }
 
 type Interval = { start: Flicks; end: Flicks }
@@ -2034,6 +2075,58 @@ export function moveRange(range: TimeRange, to: Flicks): boolean {
 /** Replaces the Short candidates (Shorts tab). */
 export function setShorts(list: ShortCandidate[]): void {
   set({ shorts: list })
+}
+
+/** Text events of a track with something written, by start (what Translate Captions works on). */
+export function captionEvents(trackId: string): TimelineEvent[] {
+  return get()
+    .project.events.filter((e) => e.trackId === trackId && e.text && !e.text.progressBar && e.text.text.trim())
+    .toSorted((a, b) => a.start - b.start)
+}
+
+/** "Captions (EN)" → "Captions": the name translations of a caption track share. */
+const captionBase = (name: string): string => name.replace(/ \([A-Z]{2,3}\)$/, '') || 'Captions'
+
+/**
+ * Translate Captions: a track named like the caption track plus the
+ * language ("Captions (EN)") just above it, with a copy of each caption in
+ * `sourceIds` holding the text at the same index of `texts` ('' leaves that
+ * caption out) and its timed words shared over the same span. Translating
+ * again into a language replaces that track's captions. The caption track
+ * and its other translations are muted, so one language shows: unmuting a
+ * track switches. One undo step; returns the new track's id.
+ */
+export function addTranslatedCaptions(sourceTrackId: string, sourceIds: readonly string[], texts: readonly string[], language: string): string | null {
+  const { project } = get()
+  const source = project.tracks.find((t) => t.id === sourceTrackId)
+  if (!source) return null
+  const base = captionBase(source.name)
+  const name = `${base} (${language.toUpperCase()})`
+  const byId = new Map(project.events.map((e) => [e.id, e]))
+  let trackId = ''
+  let count = 0
+  commit((d) => {
+    let track = d.tracks.find((t) => t.kind === 'video' && t.name === name && t.id !== sourceTrackId)
+    if (track) d.events = d.events.filter((e) => e.trackId !== track!.id)
+    else {
+      track = { ...makeTrack('video', d.tracks), name }
+      d.tracks.splice(Math.max(0, d.tracks.findIndex((t) => t.id === sourceTrackId)), 0, track)
+    }
+    trackId = track.id
+    for (const t of d.tracks) {
+      if (t.kind === 'video' && (t.id === sourceTrackId || (t.name !== base && captionBase(t.name) === base))) t.muted = t.id !== track.id
+    }
+    sourceIds.forEach((id, i) => {
+      const from = byId.get(id)
+      const text = texts[i]?.trim()
+      if (!from?.text || !text) return
+      const words = from.text.words?.length ? retimeWords(from.text.words, text).map(({ src: _src, ...w }) => w) : from.text.words
+      d.events.push({ ...structuredClone(from), id: uid(), trackId, groupId: null, text: { ...structuredClone(from.text), text, words } })
+      count++
+    })
+  })
+  setStatus(`Added ${count} caption${count === 1 ? '' : 's'} on ${name} (the other caption tracks are muted: unmute one to switch language)`)
+  return trackId
 }
 
 /** Stores the transcript of a media file (null removes it). */

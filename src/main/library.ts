@@ -315,8 +315,6 @@ export function registerLibraryIpc(): void {
     allowMediaPaths([path])
     return path
   })
-  /** Copying events replaces an older image on the system clipboard, so Ctrl+V pastes the events. */
-  ipcMain.handle('clipboard:claim', () => clipboard.writeText('Boar events'))
 
   ipcMain.handle('youtube:status', async () => ({ ytdlp: await findYtDlp() }))
   ipcMain.handle('youtube:install', (event) => installYtDlp(event.sender))
