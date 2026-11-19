@@ -165,7 +165,7 @@ const CAMCORDER = {
 }
 
 export const TEXT_PRESETS: TextPreset[] = [
-  { id: 'title', label: 'Title', description: 'Big centered title', content: { ...BASE, animIn: 'fade', animOut: 'fade' } },
+  { id: 'title', label: 'Title', description: 'Big centered title', content: { ...BASE } },
   {
     id: 'shorts',
     label: 'Shorts caption',
